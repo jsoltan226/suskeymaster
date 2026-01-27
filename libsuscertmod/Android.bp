@@ -1,0 +1,52 @@
+cc_defaults {
+    name: "suscertmod_defaults",
+    cflags: ["-Wall", "-Wextra", "-pipe", "-fPIC"],
+    include_dirs: [
+        ".",
+    ],
+    local_include_dirs: [ "." ],
+}
+
+cc_library_static {
+    name: "libsuscertmod",
+    defaults: ["suscertmod_defaults"],
+
+    srcs: [
+        "./*.c",
+        "./certs/*.c"
+    ],
+
+    cflags: [
+        "-g", "-O0",
+        "-DCGD_LOG_BUILD_TAG=\"certmod\""
+    ],
+    export_include_dirs: [ "." ],
+
+    static_libs: [
+        "libsuscertsign",
+        "libcgdcore",
+        "libcrypto_sus_prebuilt",
+    ],
+
+    shared_libs: [
+    ],
+
+    stl: "none",
+
+    visibility: [ "//visibility:public" ],
+
+    target: {
+        android_arm64: {
+            enabled: true,
+        },
+        android_arm: {
+            enabled: false,
+        },
+        android_x86_64: {
+            enabled: true,
+        },
+        android_x86: {
+            enabled: false,
+        },
+    },
+}

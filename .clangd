@@ -1,0 +1,12 @@
+CompileFlags:
+  Add:
+    - "-I/home/user/.local/src/android-14/system/kmtest/include-base"
+    - "-I/home/user/.local/src/android-14/system/kmtest/include-keymaster"
+    - "-I/home/user/.local/src/android-14/system/kmtest/"
+    - "-I/home/user/.local/src/android-14/system/kmtest/cgd"
+    - "-I/home/user/.local/src/android-14/system/kmtest/libsuscertsign"
+    - "-xc++"
+    - "-std=c++20"
+    - "-fno-exceptions"
+    - "-Wpedantic"
+    - "-Wall"

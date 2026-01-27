@@ -1,0 +1,553 @@
+#define _GNU_SOURCE
+#include "key-desc.h"
+#include "keymaster-types.h"
+#include <core/log.h>
+#include <core/int.h>
+#include <core/util.h>
+#include <core/math.h>
+#include <core/hex2ascii.h>
+#include <time.h>
+#include <stdio.h>
+#include <string.h>
+
+#define MODULE_NAME "key-desc"
+
+static void dump_auth_list(const struct KM_AuthorizationList_v3 *al);
+
+static const char * get_security_level_str(enum KM_SecurityLevel sl);
+static const char * get_vbstate_str(enum KM_VerifiedBootState vb);
+
+static const char * get_keypurpose_str(enum KM_KeyPurpose kp);
+static const char * get_algorithm_str(enum KM_Algorithm alg);
+static const char * get_blockmode_str(enum KM_BlockMode bm);
+static const char * get_digest_str(enum KM_Digest dig);
+static const char * get_paddingmode_str(enum KM_PaddingMode pm);
+static const char * get_eccurve_str(enum KM_EcCurve ec);
+static const char * get_keyorigin_str(enum KM_KeyOrigin ko);
+
+enum dump_hex_indendation {
+    INDENT_0,
+    INDENT_1,
+    INDENT_2,
+    INDENT_3,
+    INDENT_4,
+};
+static void dump_hex_line(char *buf, u32 buf_size,
+        const u8 *data, u32 data_size, bool end_without_comma);
+static void dump_hex(const char *prefix, const char *postfix,
+        const VECTOR(u8) data, enum dump_hex_indendation indentation_lvl);
+
+static void dump_u64_arr(const char *prefix, const char *postfix,
+        const VECTOR(u64) arr);
+
+typedef const char * (*get_enum_str_proc_t)(int);
+static void dump_enum_arr(const char *prefix, const char *postfix,
+        const VECTOR(i32) arr, get_enum_str_proc_t get_str_proc);
+
+static void datetime_to_str(char *buf, u32 buf_size, KM_DateTime_t dt);
+
+static const char *get_indentation_str(enum dump_hex_indendation i);
+
+void key_desc_dump(const struct KM_KeyDescription_v3 *desc)
+{
+    s_log_info("===== BEGIN KEY DESCRIPTION DUMP =====");
+    s_log_info("struct KM_KeyDescription_v3 desc = {");
+    s_log_info("    .attestationVersion = %d,", desc->attestationVersion);
+    s_log_info("    .attestationSecurityLevel = %d, // %s",
+            desc->attestationSecurityLevel,
+            get_security_level_str(desc->attestationSecurityLevel)
+    );
+    s_log_info("    .keymasterVersion = %d,", desc->keymasterVersion);
+    s_log_info("    .keymasterSecurityLevel = %d, // %s",
+            desc->attestationSecurityLevel,
+            get_security_level_str(desc->attestationSecurityLevel)
+    );
+    dump_hex("    .attestationChallenge = { ", " },",
+            desc->attestationChallenge, INDENT_2);
+    dump_hex("    .uniqueId = { ", " },", desc->uniqueId, INDENT_2);
+    s_log_info("    .softwareEnforced = {");
+    dump_auth_list(&desc->softwareEnforced);
+    s_log_info("    },");
+    s_log_info("    .hardwareEnforced = {");
+    dump_auth_list(&desc->hardwareEnforced);
+    s_log_info("    }");
+    s_log_info("};");
+    s_log_info("====== END KEY DESCRIPTION DUMP ======");
+}
+
+static void dump_auth_list(const struct KM_AuthorizationList_v3 *al)
+{
+    char date_time_buf[32] = { 0 };
+
+    if (al->__purpose_present) {
+        dump_enum_arr("        .purpose = { ", " },",
+                (VECTOR(i32)) al->purpose,
+                (get_enum_str_proc_t) get_keypurpose_str
+        );
+    }
+
+    if (al->__algorithm_present)
+        s_log_info("        .algorithm = 0x%08x, // %s",
+                al->algorithm, get_algorithm_str(al->algorithm));
+
+    if (al->__keySize_present)
+        s_log_info("        .keySize = 0x%016llx,", al->keySize);
+
+    if (al->__blockMode_present) {
+        dump_enum_arr("        .blockMode = { ", " },",
+                (VECTOR(i32))al->blockMode,
+                (get_enum_str_proc_t)get_blockmode_str
+        );
+    }
+
+    if (al->__digest_present)
+        dump_enum_arr("        .digest = { ", " },",
+                (VECTOR(i32))al->digest, (get_enum_str_proc_t)get_digest_str);
+
+    if (al->__padding_present) {
+        dump_enum_arr("        .padding = { ", " },",
+                (VECTOR(i32))al->padding,
+                (get_enum_str_proc_t)get_paddingmode_str
+        );
+    }
+
+    if (al->__callerNonce_present)
+        s_log_info("        .callerNonce = %d,", al->callerNonce);
+
+    if (al->__minMacLength_present)
+        s_log_info("        .minMacLength = 0x%016llx,", al->minMacLength);
+
+    if (al->__ecCurve_present)
+        s_log_info("        .ecCurve = 0x%08x, // %s",
+                al->ecCurve, get_eccurve_str(al->ecCurve));
+
+    if (al->__rsaPublicExponent_present)
+        s_log_info("        .rsaPublicExponent = 0x%08x,",
+                al->rsaPublicExponent);
+
+    if (al->__rollbackResistance_present)
+        s_log_info("        .rollbackResistance = %d,", al->rollbackResistance);
+
+    if (al->__activeDateTime_present) {
+        datetime_to_str(date_time_buf, sizeof(date_time_buf),
+                al->activeDateTime);
+        s_log_info("        .activeDateTime = %llu, // %s",
+                al->activeDateTime, date_time_buf);
+    }
+
+    if (al->__originationExpireDateTime_present) {
+        datetime_to_str(date_time_buf, sizeof(date_time_buf),
+                al->originationExpireDateTime);
+        s_log_info("        .originationExpireDateTime = %llu, // %s",
+                al->originationExpireDateTime, date_time_buf);
+    }
+
+    if (al->__usageExpireDateTime_present) {
+        datetime_to_str(date_time_buf, sizeof(date_time_buf),
+                al->usageExpireDateTime);
+        s_log_info("        .usageExpireDateTime = %llu, // %s",
+                al->usageExpireDateTime, date_time_buf);
+    }
+
+    if (al->__userSecureId_present)
+        dump_u64_arr("        .userSecureId = { ", " },", al->userSecureId);
+
+    if (al->__noAuthRequired_present)
+        s_log_info("        .noAuthRequired = %d,", al->noAuthRequired);
+
+    if (al->__userAuthType_present)
+        s_log_info("        .userAuthType = 0x%016llx", al->userAuthType);
+
+    if (al->__authTimeout_present)
+        s_log_info("        .authTimeout = %llu /* seconds */,",
+                al->authTimeout);
+
+    if (al->__allowWhileOnBody_present)
+        s_log_info("        .allowWhileOnBody = %d,", al->allowWhileOnBody);
+
+    if (al->__trustedUserPresenceReq_present)
+        s_log_info("        .trustedUserPresenceReq = %d,",
+                al->trustedUserPresenceReq);
+
+    if (al->__trustedConfirmationReq_present)
+        s_log_info("        .trustedConfirmationReq = %d,",
+                al->trustedConfirmationReq);
+
+    if (al->__unlockedDeviceReq_present)
+        s_log_info("        .unlockedDeviceReq = %d,", al->unlockedDeviceReq);
+
+    if (al->__creationDateTime_present) {
+        datetime_to_str(date_time_buf, sizeof(date_time_buf),
+                al->creationDateTime);
+        s_log_info("        .creationDateTime = %llu, // %s",
+                al->creationDateTime, date_time_buf);
+    }
+
+    if (al->__keyOrigin_present)
+        s_log_info("        .origin = 0x%08x, // %s",
+                al->keyOrigin, get_keyorigin_str(al->keyOrigin));
+
+    if (al->__rootOfTrust_present) {
+        s_log_info("        .rootOfTrust = {");
+        dump_hex("            .verifiedBootKey = {", "},",
+                al->rootOfTrust.verifiedBootKey, INDENT_4);
+        s_log_info("            .deviceLocked = %d,",
+                al->rootOfTrust.deviceLocked);
+        s_log_info("            .verifiedBootState = %d, // %s,",
+                al->rootOfTrust.verifiedBootState,
+                get_vbstate_str(al->rootOfTrust.verifiedBootState)
+        );
+        dump_hex("            .verifiedBootHash = {", "},",
+                al->rootOfTrust.verifiedBootHash, INDENT_4);
+        s_log_info("        },");
+    }
+
+
+    if (al->__osVersion_present)
+        s_log_info("        .osVersion = %llu,", al->osVersion);
+
+    if (al->__osPatchLevel_present)
+        s_log_info("        .osPatchLevel = %llu,", al->osPatchLevel);
+
+    if (al->__attestationApplicationId_present)
+        dump_hex("        .attestationApplicationId = {", "},",
+                al->attestationApplicationId, INDENT_3);
+
+    if (al->__attestationIdBrand_present)
+        dump_hex("        .attestationIdBrand = {", "},",
+                al->attestationIdBrand, INDENT_3);
+
+    if (al->__attestationIdDevice_present)
+        dump_hex("        .attestationIdDevice = {", "},",
+                al->attestationIdDevice, INDENT_3);
+
+    if (al->__attestationIdProduct_present)
+        dump_hex("        .attestationIdProduct = {", "},",
+                al->attestationIdProduct, INDENT_3);
+
+    if (al->__attestationIdSerial_present)
+        dump_hex("        .attestationIdSerial = {", "},",
+                al->attestationIdSerial, INDENT_3);
+
+    if (al->__attestationIdImei_present)
+        dump_hex("        .attestationIdImei = {", "},",
+                al->attestationIdImei, INDENT_3);
+
+    if (al->__attestationIdMeid_present)
+        dump_hex("        .attestationIdMeid = {", "},",
+                al->attestationIdMeid, INDENT_3);
+
+    if (al->__attestationIdManufacturer_present)
+        dump_hex("        .attestationIdManufacturer = {", "},",
+                al->attestationIdManufacturer, INDENT_3);
+
+    if (al->__attestationIdModel_present)
+        dump_hex("        .attestationIdModel = {", "},",
+                al->attestationIdModel, INDENT_3);
+
+    if (al->__vendorPatchLevel_present)
+        s_log_info("        .vendorPatchLevel = %llu,",
+                al->vendorPatchLevel);
+
+    if (al->__bootPatchLevel_present)
+        s_log_info("        .bootPatchLevel = %llu", al->bootPatchLevel);
+}
+
+static const char * get_security_level_str(enum KM_SecurityLevel sl)
+{
+    static const char *const security_level_strings[] = {
+        [KM_SECURITY_LEVEL_SOFTWARE] = "KM_SECURITY_LEVEL_SOFTWARE",
+        [KM_SECURITY_LEVEL_TRUSTED_ENVIRONMENT] =
+            "KM_SECURITY_LEVEL_TRUSTED_ENVIRONMENT",
+        [KM_SECURITY_LEVEL_STRONGBOX] = "KM_SECURITY_LEVEL_STRONGBOX",
+    };
+    if (sl < 0 || sl > u_arr_size(security_level_strings))
+        return "(unknown)";
+
+    return security_level_strings[sl];
+}
+
+static const char * get_vbstate_str(enum KM_VerifiedBootState vb)
+{
+    static const char *const vbstate_strings[] = {
+        [KM_VERIFIED_BOOT_VERIFIED] = "KM_VERIFIED_BOOT_VERIFIED",
+        [KM_VERIFIED_BOOT_SELF_SIGNED] = "KM_VERIFIED_BOOT_SELF_SIGNED",
+        [KM_VERIFIED_BOOT_UNVERIFIED] = "KM_VERIFIED_BOOT_UNVERIFIED",
+        [KM_VERIFIED_BOOT_FAILED] = "KM_VERIFIED_BOOT_FAILED"
+    };
+    if (vb < 0 || vb > u_arr_size(vbstate_strings))
+        return "(unknown)";
+
+    return vbstate_strings[vb];
+}
+
+static const char * get_keypurpose_str(enum KM_KeyPurpose kp)
+{
+    switch (kp) {
+    case KM_PURPOSE_ENCRYPT: return "KM_PURPOSE_ENCRYPT";
+    case KM_PURPOSE_DECRYPT: return "KM_PURPOSE_DECRYPT";
+    case KM_PURPOSE_SIGN: return "KM_PURPOSE_SIGN";
+    case KM_PURPOSE_VERIFY: return "KM_PURPOSE_VERIFY";
+    case KM_PURPOSE_WRAP_KEY: return "KM_PURPOSE_WRAP_KEY";
+    default: return "(unknown)";
+    }
+}
+
+static const char * get_algorithm_str(enum KM_Algorithm alg)
+{
+    switch (alg) {
+    case KM_ALG_RSA: return "KM_ALG_RSA";
+    case KM_ALG_EC: return "KM_ALG_EC";
+    case KM_ALG_AES: return "KM_ALG_AES";
+    case KM_ALG_TRIPLE_DES: return "KM_ALG_TRIPLE_DES";
+    case KM_ALG_HMAC: return "KM_ALG_HMAC";
+    default: return "(unknown)";
+    }
+}
+
+static const char * get_blockmode_str(enum KM_BlockMode bm)
+{
+    switch (bm) {
+    case KM_BLOCK_MODE_ECB: return "KM_BLOCK_MODE_ECB";
+    case KM_BLOCK_MODE_CBC: return "KM_BLOCK_MODE_CBC";
+    case KM_BLOCK_MODE_CTR: return "KM_BLOCK_MODE_CTR";
+    case KM_BLOCK_MODE_GCM: return "KM_BLOCK_MODE_GCM";
+    default: return "(unknown)";
+    }
+}
+
+static const char * get_digest_str(enum KM_Digest dig)
+{
+    switch (dig) {
+    case KM_DIGEST_NONE: return "KM_DIGEST_NONE";
+    case KM_DIGEST_MD5: return "KM_DIGEST_MD5";
+    case KM_DIGEST_SHA1: return "KM_DIGEST_SHA1";
+    case KM_DIGEST_SHA_2_224: return "KM_DIGEST_SHA_2_224";
+    case KM_DIGEST_SHA_2_256: return "KM_DIGEST_SHA_2_256";
+    case KM_DIGEST_SHA_2_384: return "KM_DIGEST_SHA_2_384";
+    case KM_DIGEST_SHA_2_512: return "KM_DIGEST_SHA_2_512";
+    default: return "(unknown)";
+    }
+}
+
+static const char * get_paddingmode_str(enum KM_PaddingMode pm)
+{
+    switch (pm) {
+    case KM_PADDING_NONE: return "KM_PADDING_NONE";
+    case KM_PADDING_RSA_OAEP: return "KM_PADDING_RSA_OAEP";
+    case KM_PADDING_RSA_PSS: return "KM_PADDING_RSA_PSS";
+    case KM_PADDING_RSA_PKCS1_1_5_ENCRYPT:
+        return "KM_PADDING_RSA_PKCS1_1_5_ENCRYPT";
+    case KM_PADDING_RSA_PKCS1_1_5_SIGN: return "KM_PADDING_RSA_PKCS1_1_5_SIGN";
+    case KM_PADDING_PKCS7: return "KM_PADDING_PKCS7";
+    default: return "(unknown)";
+    }
+}
+
+static const char * get_eccurve_str(enum KM_EcCurve ec)
+{
+    switch (ec) {
+    case KM_EC_CURVE_P_224: return "KM_EC_CURVE_P_224";
+    case KM_EC_CURVE_P_256: return "KM_EC_CURVE_P_256";
+    case KM_EC_CURVE_P_384: return "KM_EC_CURVE_P_384";
+    case KM_EC_CURVE_P_521: return "KM_EC_CURVE_P_521";
+    default: return "(unknown)";
+    }
+}
+
+static const char * get_keyorigin_str(enum KM_KeyOrigin ko)
+{
+    switch (ko) {
+    case KM_ORIGIN_GENERATED: return "KM_ORIGIN_GENERATED";
+    case KM_ORIGIN_DERIVED: return "KM_ORIGIN_DERIVED";
+    case KM_ORIGIN_IMPORTED: return "KM_ORIGIN_IMPORTED";
+    case KM_ORIGIN_UNKNOWN: return "KM_ORIGIN_UNKNOWN";
+    case KM_ORIGIN_SECURELY_IMPORTED: return "KM_ORIGIN_SECURELY_IMPORTED";
+    default: return "(unknown)";
+    }
+}
+
+static void dump_hex_line(char *buf, u32 buf_size,
+        const u8 *data, u32 data_size, bool end_without_comma)
+{
+    for (u32 i = 0; i < u_min(buf_size, data_size); i++) {
+        char byte_buf[8] = { 0 };
+        int n = 0;
+        if (end_without_comma && i == u_min(buf_size, data_size) - 1)
+            n = snprintf(byte_buf, 8, "0x%02x", data[i]);
+        else
+            n = snprintf(byte_buf, 8, "0x%02x, ", data[i]);
+
+        if (n <= 0 || n >= 8)
+            continue;
+
+        byte_buf[7] = '\0';
+        (void) strncat(buf, byte_buf, u_min((u32)n, buf_size - i - 1));
+    }
+}
+
+static void dump_hex(const char *prefix, const char *postfix,
+        const VECTOR(u8) data, enum dump_hex_indendation indentation_lvl)
+{
+    if (data == NULL || vector_size(data) == 0) {
+        s_log_info("%s/* (empty) */%s", prefix, postfix);
+        return;
+    }
+
+    const u32 total_sz = vector_size(data);
+
+#define LINE_LEN 8
+
+    u32 n_lines = total_sz / LINE_LEN;
+    u32 remainder = total_sz % LINE_LEN;
+    if (remainder == 0) {
+        n_lines--;
+        remainder = LINE_LEN;
+    }
+
+#define LINE_BUF_SIZE (LINE_LEN * 16)
+    char line_buf[LINE_BUF_SIZE] = { 0 };
+
+    if (n_lines == 0) {
+        dump_hex_line(line_buf, LINE_BUF_SIZE, data, remainder, true);
+        line_buf[LINE_BUF_SIZE - 1] = '\0';
+        s_log_info("%s%s%s", prefix, line_buf, postfix);
+        return;
+    }
+
+    const char *const indentation = get_indentation_str(indentation_lvl);
+
+    dump_hex_line(line_buf, LINE_BUF_SIZE, data, LINE_LEN, false);
+    line_buf[LINE_BUF_SIZE - 1] = '\0';
+    s_log_info("%s", prefix);
+    s_log_info("%s    %s", indentation, line_buf);
+
+    for (u32 i = 1; i < n_lines; i++) {
+        memset(line_buf, 0, LINE_BUF_SIZE);
+        dump_hex_line(line_buf, LINE_BUF_SIZE,
+                data + (i * LINE_LEN),
+                LINE_LEN, false
+        );
+        line_buf[LINE_BUF_SIZE - 1] = '\0';
+        s_log_info("%s    %s", indentation, line_buf);
+    }
+
+    memset(line_buf, 0, LINE_BUF_SIZE);
+    dump_hex_line(line_buf, LINE_BUF_SIZE,
+            data + (n_lines * LINE_LEN),
+            remainder, true
+    );
+    line_buf[LINE_BUF_SIZE - 1] = '\0';
+    s_log_info("%s    %s", indentation, line_buf);
+    s_log_info("%s%s", indentation, postfix);
+
+#undef LINE_LEN
+}
+
+static void dump_u64_arr(const char *prefix, const char *postfix,
+        const VECTOR(u64) arr)
+{
+    char tmp_buf[256] = { 0 };
+    u32 write_index = 0;
+
+    if (arr == NULL || vector_size(arr) == 0) {
+        s_log_info("%s/* (empty) */%s", prefix, postfix);
+        return;
+    }
+
+    i32 r = 0;
+
+    for (u32 i = 0; i < vector_size(arr) - 1; i++) {
+        r = snprintf(tmp_buf + write_index, 256 - write_index - 1,
+                "0x%016lx, ", arr[i]
+        );
+        if (r <= 0 || r >= 256)
+            continue;
+
+        write_index += r;
+    }
+    (void) snprintf(tmp_buf + write_index, 256 - write_index - 1,
+            "0x%016lx", arr[vector_size(arr) - 1]);
+
+    s_log_info("%s%s%s", prefix, tmp_buf, postfix);
+}
+
+static void dump_enum_arr(const char *prefix, const char *postfix,
+        const VECTOR(i32) arr, get_enum_str_proc_t get_str_proc)
+{
+    if (arr == NULL || vector_size(arr) == 0) {
+        s_log_info("%s/* (empty) */%s", prefix, postfix);
+        return;
+    }
+
+    s_log_info("%s", prefix);
+
+    const char *const i2str = get_indentation_str(INDENT_3);
+    for (u32 i = 0; i < vector_size(arr) - 1; i++) {
+        s_log_info("%s    0x%08x, // %s",
+                i2str, arr[i],
+                get_str_proc ? get_str_proc(arr[i]) : "N/A"
+        );
+    }
+    const u32 last_idx = vector_size(arr) - 1;
+    s_log_info("%s    0x%08x // %s",
+            i2str, arr[last_idx],
+            get_str_proc ? get_str_proc(arr[last_idx]) : "N/A"
+    );
+
+    s_log_info("%s%s", i2str, postfix);
+}
+
+static void datetime_to_str(char *buf, u32 buf_size, KM_DateTime_t dt)
+{
+    struct tm t = { 0 };
+
+    const time_t s = dt / 1000;
+
+    i32 ms = (i32)(dt % 1000);
+    if (ms < 1000) ms += 1000;
+
+    if (localtime_r(&s, &t) == NULL) {
+        (void) snprintf(buf, buf_size, "N/A");
+        return;
+    }
+
+    const u64 fmt1_len = strftime(buf, buf_size, "%Y-%m-%d %H:%M:%S", &t);
+    if (fmt1_len == 0) {
+        (void) snprintf(buf, buf_size, "N/A");
+        return;
+    }
+
+    i32 r = snprintf(buf + fmt1_len, buf_size - fmt1_len, ".%03d", ms);
+    if (r <= 0 || (u32)r >= buf_size - fmt1_len) {
+        buf[fmt1_len] = '\0';
+        return;
+    }
+
+    const u64 fmt2_len = strftime(
+            buf + fmt1_len + (u32)r,
+            buf_size - fmt1_len - (u32)r,
+            " %Z", &t
+    );
+    if (fmt2_len == 0) {
+        buf[fmt1_len + r] = '\0';
+        return;
+    }
+}
+
+static const char *get_indentation_str(enum dump_hex_indendation i)
+{
+    switch (i) {
+    default:
+    case INDENT_0:
+    case INDENT_1:
+        return "";
+
+    case INDENT_2:
+        return "    ";
+    case INDENT_3:
+        return "        ";
+    case INDENT_4:
+        return "            ";
+    }
+}

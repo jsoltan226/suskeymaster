@@ -1,0 +1,27 @@
+cc_prebuilt_library_static {
+    name: "libcrypto_sus_prebuilt",
+
+    srcs: [
+        "prefix/lib/libcrypto.a"
+    ],
+    export_include_dirs: [ "prefix/include" ],
+
+    visibility: [ "//visibility:public" ],
+
+    stl: "none",
+
+    target: {
+        android_arm64: {
+            enabled: true,
+        },
+        android_arm: {
+            enabled: false,
+        },
+        android_x86_64: {
+            enabled: false,
+        },
+        android_x86: {
+            enabled: false,
+        },
+    },
+}

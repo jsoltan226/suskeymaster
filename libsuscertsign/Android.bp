@@ -1,0 +1,52 @@
+cc_defaults {
+    name: "suscertsign_defaults",
+    cflags: ["-Wall", "-Wextra", "-pipe", "-fPIC"],
+    include_dirs: [
+        ".",
+    ],
+    local_include_dirs: [ "." ],
+}
+
+cc_library_static {
+    name: "libsuscertsign",
+    defaults: ["suscertsign_defaults"],
+
+    srcs: [
+        "./*.cpp",
+    ],
+
+    cflags: [
+        "-g", "-O0",
+        "-DCGD_LOG_BUILD_TAG=\"certmod\""
+    ],
+    cppflags: [
+        "-g", "-O0",
+        "-DCGD_LOG_BUILD_TAG=\"certmod\""
+    ],
+    export_include_dirs: [ "." ],
+
+    static_libs: [
+    ],
+
+    shared_libs: [
+        "liblog",
+        "android.hardware.keymaster@4.0",
+    ],
+
+    visibility: [ "//visibility:public" ],
+
+    target: {
+        android_arm64: {
+            enabled: true,
+        },
+        android_arm: {
+            enabled: false,
+        },
+        android_x86_64: {
+            enabled: true,
+        },
+        android_x86: {
+            enabled: false,
+        },
+    },
+}

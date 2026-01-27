@@ -1,0 +1,1 @@
+./Configure --prefix=../prefix -fPIC -fvisibility=hidden -g -O0 no-asm no-shared no-dso no-engine no-async no-tests android-arm64
