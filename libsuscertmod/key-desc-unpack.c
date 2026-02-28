@@ -80,12 +80,8 @@ struct KM_KeyDescription_v3 * key_desc_unpack(const ASN1_OCTET_STRING *desc)
         goto_error("Missing attestation challenge in key description");
 
     /* Samsung TEEs don't populate `uniqueId` for some reason */
-    if (!parse_octet_string(&p, seq_end - p, &ret->uniqueId)) {
-        s_log_warn("Missing uniqueId field in key description");
-
-        /* set to an empty vector to avoid null pointer dereferences */
-        ret->uniqueId = vector_new(u8);
-    }
+    if (!parse_octet_string(&p, seq_end - p, &ret->uniqueId))
+        goto_error("Missing uniqueId field in key description");
 
 
     if (!parse_auth_list(&ret->softwareEnforced, &p, seq_end - p))
@@ -464,7 +460,7 @@ static bool parse_octet_string(const unsigned char **p, long len,
         return false;
 
     i32 size = ASN1_STRING_length(s);
-    if (size <= 0) {
+    if (size < 0) {
         s_log_error("Invalid octet string size: %d", size);
         ASN1_OCTET_STRING_free(s);
         return false;

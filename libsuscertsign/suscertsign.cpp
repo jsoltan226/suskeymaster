@@ -1,23 +1,37 @@
 #include "suscertsign.h"
 #include "keys.h"
-#include <ctime>
-#include <cerrno>
-#include <atomic>
-#include <cstdint>
-#include <cstdlib>
-#include <cstring>
-#include <semaphore.h>
+#include "certs.h"
+#include <core/vector.h>
+#include <libgenericutil/util.h>
+#include <libgenericutil/cert-types.h>
 #include <android/log.h>
 #include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
 #include <utils/StrongPointer.h>
+#include <ctime>
+#include <mutex>
+#include <cstring>
+#include <cstdint>
+#include <cstdlib>
+#include <cstdarg>
+#include <semaphore.h>
+#include <stdatomic.h>
 
 using ::android::hardware::hidl_vec;
 using namespace ::android::hardware::keymaster::V4_0;
+using namespace suskeymaster;
+
+static void pr_err(const char *fmt, ...)
+{
+    va_list vlist;
+    va_start(vlist, fmt);
+    __android_log_vprint(ANDROID_LOG_ERROR, "certsign", fmt, vlist);
+    va_end(vlist);
+}
 
 static std::mutex g_mutex;
 
 static sem_t g_sem = {};
-static std::atomic<bool> g_sem_inited = false;
+static _Atomic int g_sem_inited = false;
 
 static ErrorCode g_begin_error = ErrorCode::UNKNOWN_ERROR;
 static uint64_t g_operation_handle = 0;
@@ -36,22 +50,18 @@ static void finish_cb(
         const hidl_vec<uint8_t>& output
 );
 
-static int prepare_timeout(struct timespec *ts, int offset_seconds);
-static int wait_on_sem(sem_t *sem, const char *name, const struct timespec *ts);
-static void try_post_g_sem(void);
-
 extern "C" int sus_cert_sign(unsigned char *tbs_der, unsigned long tbs_der_len,
-        unsigned char **out_sig, unsigned long *out_sig_len, int ec_or_rsa)
+        unsigned char **out_sig, unsigned long *out_sig_len,
+        enum sus_key_variant variant)
 {
     if (tbs_der == NULL || out_sig == NULL) {
-        __android_log_print(ANDROID_LOG_ERROR, "certsign", "Invalid parameters!");
+        pr_err("Invalid parameters!");
         return -1;
     }
 
     ::android::sp<IKeymasterDevice> hal = IKeymasterDevice::tryGetService("default");
     if (hal == nullptr || !hal->ping().isOk()) {
-        __android_log_print(ANDROID_LOG_ERROR, "certsign",
-                "Couldn't get a handle to the running KeyMaster HAL");
+        pr_err("Couldn't get a handle to the running KeyMaster HAL");
         return -1;
     }
 
@@ -59,7 +69,7 @@ extern "C" int sus_cert_sign(unsigned char *tbs_der, unsigned long tbs_der_len,
     tbs_hidl.setToExternal(tbs_der, tbs_der_len, false);
 
     hidl_vec<uint8_t> keyblob_hidl;
-    if (ec_or_rsa == SUS_CERT_SIGN_RSA) {
+    if (variant == SUS_KEY_RSA) {
         keyblob_hidl.resize(sus_sign_rsa_wrapped_blob_bin_len);
         std::memcpy(keyblob_hidl.data(), sus_sign_rsa_wrapped_blob_bin,
                 sus_sign_rsa_wrapped_blob_bin_len);
@@ -99,34 +109,29 @@ extern "C" int sus_cert_sign(unsigned char *tbs_der, unsigned long tbs_der_len,
         g_finish_error = ErrorCode::UNKNOWN_ERROR;
         g_out_sig = NULL;
         g_out_sig_len = 0;
-        struct timespec ts = { };
-        std::atomic_store(&g_sem_inited, false);
+        struct ::timespec ts = { };
+        ::atomic_store(&g_sem_inited, false);
 
-        if (sem_init(&g_sem, false, 0)) {
-            __android_log_print(ANDROID_LOG_ERROR, "certsign",
-                    "Failed to initialize the global semaphore: %d (%s)",
-                    errno, std::strerror(errno));
+        if (util::try_init_g_sem(&g_sem, &g_sem_inited, pr_err))
             goto out;
-        }
-        std::atomic_store(&g_sem_inited, true);
 
-        if (prepare_timeout(&ts, 1)) goto out;
+        if (util::prepare_timeout(&ts, 1, pr_err)) goto out;
         hal->begin(KeyPurpose::SIGN, keyblob_hidl, params_hidl, {}, begin_cb);
-        if (wait_on_sem(&g_sem, "BEGIN operation", &ts)) goto out;
+        if (util::wait_on_sem(&g_sem, "BEGIN operation", &ts, pr_err)) goto out;
 
         if (g_begin_error != ErrorCode::OK) {
-            __android_log_print(ANDROID_LOG_ERROR, "certsign",
-                    "BEGIN operation failed: %d", static_cast<int>(g_begin_error));
+            pr_err("BEGIN operation failed: %d (%s)",
+                    static_cast<int>(g_begin_error), toString(g_begin_error).c_str());
             goto out;
         }
 
-        if (prepare_timeout(&ts, 2)) goto out;
+        if (util::prepare_timeout(&ts, 2, pr_err)) goto out;
         hal->finish(g_operation_handle, {}, tbs_hidl, {}, {}, {}, finish_cb);
-        if (wait_on_sem(&g_sem, "FINISH operation", &ts)) goto out;
+        if (util::wait_on_sem(&g_sem, "FINISH operation", &ts, pr_err)) goto out;
 
         if (g_finish_error != ErrorCode::OK) {
-            __android_log_print(ANDROID_LOG_ERROR, "certsign",
-                    "FINISH operation failed: %d", static_cast<int>(g_finish_error));
+            pr_err("FINISH operation failed: %d (%s)",
+                    static_cast<int>(g_begin_error), toString(g_begin_error).c_str());
             goto out;
         }
 
@@ -135,18 +140,11 @@ extern "C" int sus_cert_sign(unsigned char *tbs_der, unsigned long tbs_der_len,
         ok = true;
 
 out:
-        if (std::atomic_exchange(&g_sem_inited, false)) {
-            if (sem_destroy(&g_sem)) {
-                __android_log_print(ANDROID_LOG_ERROR, "certsign",
-                        "Failed to destroy the global semaphore: %d (%s)",
-                        errno, std::strerror(errno));
-            }
-        }
+        util::destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
     }
     g_mutex.unlock();
     if (!ok) {
-        __android_log_print(ANDROID_LOG_ERROR, "certsign",
-                "KeyMaster SIGN operation failed");
+        pr_err("KeyMaster SIGN operation failed");
         return 1;
     }
 
@@ -155,8 +153,45 @@ out:
 
     __android_log_print(ANDROID_LOG_INFO, "certsign",
             "Successfully signed %s cert",
-            ec_or_rsa == SUS_CERT_SIGN_EC ? "ECDSA" : "RSA");
+            variant == SUS_KEY_EC ? "ECDSA" : "RSA");
     return 0;
+}
+
+extern "C" VECTOR(VECTOR(u8 const) const) sus_cert_sign_retrieve_chain(enum sus_key_variant variant)
+{
+    switch (variant) {
+    case SUS_KEY_EC:
+        return cert_chain_ec;
+    case SUS_KEY_RSA:
+        return cert_chain_rsa;
+    default:
+        __android_log_print(ANDROID_LOG_ERROR, "certsign",
+                "Invalid key variant: %d", variant);
+        return NULL;
+    }
+}
+
+extern "C" int sus_cert_sign_retrieve_chain_data(enum sus_key_variant variant,
+    const char **out_top_issuer_serial, i64 *out_not_after)
+{
+    switch (variant) {
+    case SUS_KEY_EC:
+        if (out_top_issuer_serial != NULL)
+            *out_top_issuer_serial = cert_chain_ec_top_issuer_serial;
+        if (out_not_after != NULL)
+            *out_not_after = cert_chain_ec_not_after;
+        return 0;
+    case SUS_KEY_RSA:
+        if (out_top_issuer_serial != NULL)
+            *out_top_issuer_serial = cert_chain_rsa_top_issuer_serial;
+        if (out_not_after != NULL)
+            *out_not_after = cert_chain_rsa_not_after;
+        return 0;
+    default:
+        __android_log_print(ANDROID_LOG_ERROR, "certsign",
+                "Invalid key variant: %d", variant);
+        return 1;
+    }
 }
 
 static void begin_cb(
@@ -171,7 +206,7 @@ static void begin_cb(
     if (error == ErrorCode::OK)
         g_operation_handle = operation_handle;
 
-    try_post_g_sem();
+    util::try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
 }
 
 static void finish_cb(
@@ -187,17 +222,14 @@ static void finish_cb(
         goto err;
 
     if (output.size() == 0) {
-        __android_log_print(ANDROID_LOG_ERROR, "certsign",
-                "%s: output size is 0!", __func__);
+        pr_err("%s: output size is 0!", __func__);
         g_finish_error = ErrorCode::INVALID_ARGUMENT;
         goto err;
     }
 
     g_out_sig = (unsigned char *)malloc(output.size());
     if (g_out_sig == NULL) {
-        __android_log_print(ANDROID_LOG_ERROR, "certsign",
-                "%s: malloc(%lu) failed!",
-                __func__, output.size());
+        pr_err("%s: malloc(%lu) for g_out_sig failed!", __func__, output.size());
         g_finish_error = ErrorCode::MEMORY_ALLOCATION_FAILED;
         goto err;
     }
@@ -207,58 +239,5 @@ static void finish_cb(
 
 err:
 
-    try_post_g_sem();
-}
-
-static int prepare_timeout(struct timespec *ts, int offset_seconds)
-{
-    memset(ts, 0, sizeof(struct timespec));
-
-    if (clock_gettime(CLOCK_REALTIME, ts)) {
-        __android_log_print(ANDROID_LOG_ERROR, "certsign",
-                "Couldn't get the current time: %d (%s)",
-                errno, std::strerror(errno));
-        return 1;
-    }
-
-    ts->tv_sec += offset_seconds;
-
-    return 0;
-}
-
-static int wait_on_sem(sem_t *sem, const char *name, const struct timespec *ts)
-{
-    int rc = 0;
-    do {
-        rc = sem_timedwait(sem, ts);
-    } while (rc != 0 && errno == EINTR);
-
-    if (rc != 0 && errno == ETIMEDOUT) {
-        __android_log_print(ANDROID_LOG_ERROR, "certsign",
-                "Timed out while waiting for %s!", name);
-        return 1;
-    } else if (rc != 0) {
-        __android_log_print(ANDROID_LOG_ERROR, "certsign",
-                "Failed to wait on the %s semaphore: %d (%s)",
-                name, errno, std::strerror(errno));
-        return 1;
-    }
-
-    return 0;
-}
-
-static void try_post_g_sem(void)
-{
-    if (!atomic_load(&g_sem_inited)) {
-        __android_log_print(ANDROID_LOG_ERROR, "certsign",
-                "Attempt to post the global semaphore while not initialized!");
-        return;
-    }
-
-    if (sem_post(&g_sem)) {
-        __android_log_print(ANDROID_LOG_ERROR, "certsign",
-                "Failed to post the global semaphore: %d (%s)",
-                errno, std::strerror(errno));
-        return;
-    }
+    util::try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
 }

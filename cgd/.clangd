@@ -1,8 +1,0 @@
-CompileFlags:
-  Add:
-    - "-I/home/user/.local/src/android-14/system/kmtest/include-base"
-    - "-I/home/user/.local/src/android-14/system/kmtest/include-keymaster"
-    - "-I/home/user/.local/src/android-14/system/kmtest/"
-    - "-I/home/user/.local/src/android-14/system/kmtest/cgd"
-    - "-xc"
-    - "-std=c11"

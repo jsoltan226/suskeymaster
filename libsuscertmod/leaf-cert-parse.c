@@ -1,11 +1,11 @@
 #include "leaf-cert.h"
-#include "certmod.h"
 #include "key-desc.h"
 #include "keymaster-types.h"
 #include <core/int.h>
 #include <core/log.h>
 #include <core/util.h>
 #include <core/math.h>
+#include <libgenericutil/cert-types.h>
 #include <stdbool.h>
 #include <openssl/rsa.h>
 #include <openssl/evp.h>
@@ -25,7 +25,7 @@ static i32 rsa_pubkey_sanity(const EVP_PKEY *key);
 static i32 ec_pubkey_sanity(const EVP_PKEY *key);
 
 i32 leaf_cert_parse(const VECTOR(u8) cert,
-        enum sus_cert_chain_variant *out_variant,
+        enum sus_key_variant *out_variant,
         EVP_PKEY **out_subj_pubkey,
         struct KM_KeyDescription_v3 **out_km_desc
 )
@@ -37,7 +37,7 @@ i32 leaf_cert_parse(const VECTOR(u8) cert,
         return -1;
     }
 
-    if (out_variant != NULL) *out_variant = SUS_CERT_CHAIN_INVALID_;
+    if (out_variant != NULL) *out_variant = SUS_KEY_INVALID_;
     if (out_subj_pubkey != NULL) *out_subj_pubkey = NULL;
     if (out_km_desc != NULL) *out_km_desc = NULL;
 
@@ -53,7 +53,7 @@ i32 leaf_cert_parse(const VECTOR(u8) cert,
     i64 x509_serial_val = 0;
 
     i32 sig_nid = 0;
-    enum sus_cert_chain_variant key_variant = SUS_CERT_CHAIN_INVALID_;
+    enum sus_key_variant key_variant = SUS_KEY_INVALID_;
     const char *sig_variant_str = "N/A";
 
     const X509_PUBKEY *subj_pubkey_x509 = NULL;
@@ -144,9 +144,9 @@ i32 leaf_cert_parse(const VECTOR(u8) cert,
                 "(sig: %d, spk_type: %d)!", sig_nid, subj_pubkey_type);
 
     if (subj_pubkey_type == EVP_PKEY_EC)
-        key_variant = SUS_CERT_CHAIN_EC;
+        key_variant = SUS_KEY_EC;
     else if (subj_pubkey_type == EVP_PKEY_RSA)
-        key_variant = SUS_CERT_CHAIN_RSA;
+        key_variant = SUS_KEY_RSA;
     else
         s_log_fatal("Impossible outcome!");
 
@@ -231,9 +231,21 @@ i32 leaf_cert_parse(const VECTOR(u8) cert,
 
     s_log_info("Leaf cert signature algorithm is >%s<", sig_variant_str);
     ok = true;
-    *out_variant = key_variant;
-    *out_subj_pubkey = subj_pubkey;
-    *out_km_desc = km_desc;
+
+    if (out_variant != NULL)
+        *out_variant = key_variant;
+
+    if (out_subj_pubkey != NULL) {
+        *out_subj_pubkey = subj_pubkey;
+    } else {
+        EVP_PKEY_free(subj_pubkey);
+        subj_pubkey = NULL;
+    }
+
+    if (out_km_desc != NULL)
+        *out_km_desc = km_desc;
+    else
+        key_desc_destroy(&km_desc);
 
 err:
 

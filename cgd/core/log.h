@@ -1,16 +1,17 @@
 #ifndef S_LOG_H_
 #define S_LOG_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
 #include "ringbuffer.h"
 #include "static-tests.h"
 
-#include <stdbool.h>
 #include <stdio.h>
+#include <stdarg.h>
+#include <stdbool.h>
 #include "int.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
 
 #ifndef CGD_LOG_BUILD_TAG
 #define CGD_LOG_BUILD_TAG "cgdlog"
@@ -144,6 +145,10 @@ enum s_log_level {
  * Use the below log level-specific macros instead. */
 void s_log(enum s_log_level level, const char *module_name,
     const char *fmt, ...);
+
+/* The same as `s_log` but accepts a `va_list` instead of the varargs */
+void s_logv(enum s_log_level level, const char *module_name,
+    const char *fmt, va_list vlist);
 
 #ifndef CGD_BUILDTYPE_RELEASE
 

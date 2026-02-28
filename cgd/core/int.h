@@ -1,14 +1,14 @@
 #ifndef U_INT_H_
 #define U_INT_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
 #include "static-tests.h"
 
 #include <stdint.h>
 #include <assert.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
 
 typedef uint8_t u8;
 typedef uint16_t u16;

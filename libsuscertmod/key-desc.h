@@ -4,6 +4,11 @@
 #include "keymaster-types.h"
 #include <openssl/asn1.h>
 
+#ifdef __cplusplus
+extern "C" {
+namespace suskeymaster {
+#endif /* __cplusplus */
+
 /* Various utilities for working with Android Attestation Extension objects,
  * represented by the KeyDescription struct (see `keymaster-types.h`).
  *
@@ -47,8 +52,17 @@ void key_desc_destroy(struct KM_KeyDescription_v3 **desc_p);
 
 /** Implemented in `key-desc-dump.c` **/
 
-/* Prints the contents of the key description `desc` to the CGD log.
+/* A function that prints the printf-style `fmt` & varargs to some log output */
+typedef void (*key_desc_log_proc_t)(const char *fmt, ...);
+
+/* Prints the contents of the key description `desc` using `log_proc`.
  * This is a debugging routine. Use with caution. */
-void key_desc_dump(const struct KM_KeyDescription_v3 *desc);
+void key_desc_dump(const struct KM_KeyDescription_v3 *desc,
+        key_desc_log_proc_t log_proc);
+
+#ifdef __cplusplus
+} /* namespace suskeymaster */
+} /* extern "C" */
+#endif /* __cplusplus */
 
 #endif /* SUS_CERT_MOD_REPACK_KEY_DESC_H_ */

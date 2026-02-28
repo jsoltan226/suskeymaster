@@ -1,16 +1,16 @@
 #ifndef CORE_MATH_H_
 #define CORE_MATH_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
 #include "static-tests.h"
 
 #include "int.h"
 #include "pixel.h"
 #include "shapes.h"
 #include <stdbool.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
 
 #define u_min(a, b) (a < b ? a : b)
 #define u_max(a, b) (a > b ? a : b)

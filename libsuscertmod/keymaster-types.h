@@ -7,6 +7,11 @@
 #include <openssl/asn1t.h>
 #include <core/vector.h>
 
+#ifdef __cplusplus
+extern "C" {
+namespace suskeymaster {
+#endif /* __cplusplus */
+
 /**
  * Time in milliseconds since some arbitrary point in time.  Time must be monotonically increasing,
  * and a secure environment's notion of "current time" must not repeat until the Android device
@@ -1287,5 +1292,236 @@ struct KM_KeyDescription_v3 {
     struct KM_AuthorizationList_v3 hardwareEnforced;
 };
 
+__attribute__((unused)) static inline const char * KM_ErrorCodeToString(enum KM_ErrorCode o) {
+    if (o == KM_OK) {
+        return "OK";
+    }
+    if (o == KM_ERR_ROOT_OF_TRUST_ALREADY_SET) {
+        return "ROOT_OF_TRUST_ALREADY_SET";
+    }
+    if (o == KM_ERR_UNSUPPORTED_PURPOSE) {
+        return "UNSUPPORTED_PURPOSE";
+    }
+    if (o == KM_ERR_INCOMPATIBLE_PURPOSE) {
+        return "INCOMPATIBLE_PURPOSE";
+    }
+    if (o == KM_ERR_UNSUPPORTED_ALGORITHM) {
+        return "UNSUPPORTED_ALGORITHM";
+    }
+    if (o == KM_ERR_INCOMPATIBLE_ALGORITHM) {
+        return "INCOMPATIBLE_ALGORITHM";
+    }
+    if (o == KM_ERR_UNSUPPORTED_KEY_SIZE) {
+        return "UNSUPPORTED_KEY_SIZE";
+    }
+    if (o == KM_ERR_UNSUPPORTED_BLOCK_MODE) {
+        return "UNSUPPORTED_BLOCK_MODE";
+    }
+    if (o == KM_ERR_INCOMPATIBLE_BLOCK_MODE) {
+        return "INCOMPATIBLE_BLOCK_MODE";
+    }
+    if (o == KM_ERR_UNSUPPORTED_MAC_LENGTH) {
+        return "UNSUPPORTED_MAC_LENGTH";
+    }
+    if (o == KM_ERR_UNSUPPORTED_PADDING_MODE) {
+        return "UNSUPPORTED_PADDING_MODE";
+    }
+    if (o == KM_ERR_INCOMPATIBLE_PADDING_MODE) {
+        return "INCOMPATIBLE_PADDING_MODE";
+    }
+    if (o == KM_ERR_UNSUPPORTED_DIGEST) {
+        return "UNSUPPORTED_DIGEST";
+    }
+    if (o == KM_ERR_INCOMPATIBLE_DIGEST) {
+        return "INCOMPATIBLE_DIGEST";
+    }
+    if (o == KM_ERR_INVALID_EXPIRATION_TIME) {
+        return "INVALID_EXPIRATION_TIME";
+    }
+    if (o == KM_ERR_INVALID_USER_ID) {
+        return "INVALID_USER_ID";
+    }
+    if (o == KM_ERR_INVALID_AUTHORIZATION_TIMEOUT) {
+        return "INVALID_AUTHORIZATION_TIMEOUT";
+    }
+    if (o == KM_ERR_UNSUPPORTED_KEY_FORMAT) {
+        return "UNSUPPORTED_KEY_FORMAT";
+    }
+    if (o == KM_ERR_INCOMPATIBLE_KEY_FORMAT) {
+        return "INCOMPATIBLE_KEY_FORMAT";
+    }
+    if (o == KM_ERR_UNSUPPORTED_KEY_ENCRYPTION_ALGORITHM) {
+        return "UNSUPPORTED_KEY_ENCRYPTION_ALGORITHM";
+    }
+    if (o == KM_ERR_UNSUPPORTED_KEY_VERIFICATION_ALGORITHM) {
+        return "UNSUPPORTED_KEY_VERIFICATION_ALGORITHM";
+    }
+    if (o == KM_ERR_INVALID_INPUT_LENGTH) {
+        return "INVALID_INPUT_LENGTH";
+    }
+    if (o == KM_ERR_KEY_EXPORT_OPTIONS_INVALID) {
+        return "KEY_EXPORT_OPTIONS_INVALID";
+    }
+    if (o == KM_ERR_DELEGATION_NOT_ALLOWED) {
+        return "DELEGATION_NOT_ALLOWED";
+    }
+    if (o == KM_ERR_KEY_NOT_YET_VALID) {
+        return "KEY_NOT_YET_VALID";
+    }
+    if (o == KM_ERR_KEY_EXPIRED) {
+        return "KEY_EXPIRED";
+    }
+    if (o == KM_ERR_KEY_USER_NOT_AUTHENTICATED) {
+        return "KEY_USER_NOT_AUTHENTICATED";
+    }
+    if (o == KM_ERR_OUTPUT_PARAMETER_NULL) {
+        return "OUTPUT_PARAMETER_NULL";
+    }
+    if (o == KM_ERR_INVALID_OPERATION_HANDLE) {
+        return "INVALID_OPERATION_HANDLE";
+    }
+    if (o == KM_ERR_INSUFFICIENT_BUFFER_SPACE) {
+        return "INSUFFICIENT_BUFFER_SPACE";
+    }
+    if (o == KM_ERR_VERIFICATION_FAILED) {
+        return "VERIFICATION_FAILED";
+    }
+    if (o == KM_ERR_TOO_MANY_OPERATIONS) {
+        return "TOO_MANY_OPERATIONS";
+    }
+    if (o == KM_ERR_UNEXPECTED_NULL_POINTER) {
+        return "UNEXPECTED_NULL_POINTER";
+    }
+    if (o == KM_ERR_INVALID_KEY_BLOB) {
+        return "INVALID_KEY_BLOB";
+    }
+    if (o == KM_ERR_IMPORTED_KEY_NOT_ENCRYPTED) {
+        return "IMPORTED_KEY_NOT_ENCRYPTED";
+    }
+    if (o == KM_ERR_IMPORTED_KEY_DECRYPTION_FAILED) {
+        return "IMPORTED_KEY_DECRYPTION_FAILED";
+    }
+    if (o == KM_ERR_IMPORTED_KEY_NOT_SIGNED) {
+        return "IMPORTED_KEY_NOT_SIGNED";
+    }
+    if (o == KM_ERR_IMPORTED_KEY_VERIFICATION_FAILED) {
+        return "IMPORTED_KEY_VERIFICATION_FAILED";
+    }
+    if (o == KM_ERR_INVALID_ARGUMENT) {
+        return "INVALID_ARGUMENT";
+    }
+    if (o == KM_ERR_UNSUPPORTED_TAG) {
+        return "UNSUPPORTED_TAG";
+    }
+    if (o == KM_ERR_INVALID_TAG) {
+        return "INVALID_TAG";
+    }
+    if (o == KM_ERR_MEMORY_ALLOCATION_FAILED) {
+        return "MEMORY_ALLOCATION_FAILED";
+    }
+    if (o == KM_ERR_IMPORT_PARAMETER_MISMATCH) {
+        return "IMPORT_PARAMETER_MISMATCH";
+    }
+    if (o == KM_ERR_SECURE_HW_ACCESS_DENIED) {
+        return "SECURE_HW_ACCESS_DENIED";
+    }
+    if (o == KM_ERR_OPERATION_CANCELLED) {
+        return "OPERATION_CANCELLED";
+    }
+    if (o == KM_ERR_CONCURRENT_ACCESS_CONFLICT) {
+        return "CONCURRENT_ACCESS_CONFLICT";
+    }
+    if (o == KM_ERR_SECURE_HW_BUSY) {
+        return "SECURE_HW_BUSY";
+    }
+    if (o == KM_ERR_SECURE_HW_COMMUNICATION_FAILED) {
+        return "SECURE_HW_COMMUNICATION_FAILED";
+    }
+    if (o == KM_ERR_UNSUPPORTED_EC_FIELD) {
+        return "UNSUPPORTED_EC_FIELD";
+    }
+    if (o == KM_ERR_MISSING_NONCE) {
+        return "MISSING_NONCE";
+    }
+    if (o == KM_ERR_INVALID_NONCE) {
+        return "INVALID_NONCE";
+    }
+    if (o == KM_ERR_MISSING_MAC_LENGTH) {
+        return "MISSING_MAC_LENGTH";
+    }
+    if (o == KM_ERR_KEY_RATE_LIMIT_EXCEEDED) {
+        return "KEY_RATE_LIMIT_EXCEEDED";
+    }
+    if (o == KM_ERR_CALLER_NONCE_PROHIBITED) {
+        return "CALLER_NONCE_PROHIBITED";
+    }
+    if (o == KM_ERR_KEY_MAX_OPS_EXCEEDED) {
+        return "KEY_MAX_OPS_EXCEEDED";
+    }
+    if (o == KM_ERR_INVALID_MAC_LENGTH) {
+        return "INVALID_MAC_LENGTH";
+    }
+    if (o == KM_ERR_MISSING_MIN_MAC_LENGTH) {
+        return "MISSING_MIN_MAC_LENGTH";
+    }
+    if (o == KM_ERR_UNSUPPORTED_MIN_MAC_LENGTH) {
+        return "UNSUPPORTED_MIN_MAC_LENGTH";
+    }
+    if (o == KM_ERR_UNSUPPORTED_KDF) {
+        return "UNSUPPORTED_KDF";
+    }
+    if (o == KM_ERR_UNSUPPORTED_EC_CURVE) {
+        return "UNSUPPORTED_EC_CURVE";
+    }
+    if (o == KM_ERR_KEY_REQUIRES_UPGRADE) {
+        return "KEY_REQUIRES_UPGRADE";
+    }
+    if (o == KM_ERR_ATTESTATION_CHALLENGE_MISSING) {
+        return "ATTESTATION_CHALLENGE_MISSING";
+    }
+    if (o == KM_ERR_KEYMASTER_NOT_CONFIGURED) {
+        return "KEYMASTER_NOT_CONFIGURED";
+    }
+    if (o == KM_ERR_ATTESTATION_APPLICATION_ID_MISSING) {
+        return "ATTESTATION_APPLICATION_ID_MISSING";
+    }
+    if (o == KM_ERR_CANNOT_ATTEST_IDS) {
+        return "CANNOT_ATTEST_IDS";
+    }
+    if (o == KM_ERR_ROLLBACK_RESISTANCE_UNAVAILABLE) {
+        return "ROLLBACK_RESISTANCE_UNAVAILABLE";
+    }
+    if (o == KM_ERR_HARDWARE_TYPE_UNAVAILABLE) {
+        return "HARDWARE_TYPE_UNAVAILABLE";
+    }
+    if (o == KM_ERR_PROOF_OF_PRESENCE_REQUIRED) {
+        return "PROOF_OF_PRESENCE_REQUIRED";
+    }
+    if (o == KM_ERR_CONCURRENT_PROOF_OF_PRESENCE_REQUESTED) {
+        return "CONCURRENT_PROOF_OF_PRESENCE_REQUESTED";
+    }
+    if (o == KM_ERR_NO_USER_CONFIRMATION) {
+        return "NO_USER_CONFIRMATION";
+    }
+    if (o == KM_ERR_DEVICE_LOCKED) {
+        return "DEVICE_LOCKED";
+    }
+    if (o == KM_ERR_UNIMPLEMENTED) {
+        return "UNIMPLEMENTED";
+    }
+    if (o == KM_ERR_VERSION_MISMATCH) {
+        return "VERSION_MISMATCH";
+    }
+    if (o == KM_ERR_UNKNOWN_ERROR) {
+        return "UNKNOWN_ERROR";
+    }
+
+    return "<unknown>";
+}
+
+#ifdef __cplusplus
+} /* namespace suskeymaster */
+} /* extern "C" */
+#endif /* __cplusplus */
 
 #endif /* KEYMASTER_TYPES_H_ */

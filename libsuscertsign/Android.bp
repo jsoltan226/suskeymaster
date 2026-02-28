@@ -13,19 +13,23 @@ cc_library_static {
 
     srcs: [
         "./*.cpp",
+        "./*.c",
+        "./certs/*.c",
     ],
 
     cflags: [
-        "-g", "-O0",
+        "-g", "-O0", "-std=c11",
         "-DCGD_LOG_BUILD_TAG=\"certmod\""
     ],
     cppflags: [
-        "-g", "-O0",
+        "-g", "-O0", "-std=c++20",
         "-DCGD_LOG_BUILD_TAG=\"certmod\""
     ],
-    export_include_dirs: [ "." ],
+    export_include_dirs: [ "./include" ],
 
     static_libs: [
+        "libcgdcore",
+        "libgenericutil"
     ],
 
     shared_libs: [

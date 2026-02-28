@@ -3,15 +3,16 @@
 #include "key-desc.h"
 #include "leaf-cert.h"
 #include "mod-params.h"
-#include "certs/certs.h"
 #include "keymaster-types.h"
 #include <core/int.h>
 #include <core/log.h>
 #include <core/util.h>
 #include <core/math.h>
 #include <core/vector.h>
+#include <libgenericutil/cert-types.h>
 #include <time.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <pthread.h>
 #include <openssl/crypto.h>
@@ -34,22 +35,16 @@ static void mod_patch_levels(struct KM_AuthorizationList_v3 *al,
 
 static void mod_key_desc(struct KM_KeyDescription_v3 *desc);
 
-VECTOR(VECTOR(u8 const) const)
-sus_cert_retrieve_chain(enum sus_cert_chain_variant variant)
+static void key_desc_dump_log_proc(const char *fmt, ...)
 {
-    switch (variant) {
-        case SUS_CERT_CHAIN_EC:
-            return cert_chain_ec;
-        case SUS_CERT_CHAIN_RSA:
-            return cert_chain_rsa;
-        default:
-            s_log_error("Invalid cert chain variant: %d", variant);
-            return NULL;
-    }
+    va_list vlist;
+    va_start(vlist, fmt);
+    s_logv(S_LOG_INFO, "key-desc", fmt, vlist);
+    va_end(vlist);
 }
 
 i32 sus_cert_generate_leaf(const VECTOR(u8) old_leaf,
-        enum sus_cert_chain_variant *out_variant, VECTOR(u8) *out_new_leaf)
+        enum sus_key_variant *out_variant, VECTOR(u8) *out_new_leaf)
 {
     if (old_leaf == NULL || out_new_leaf == NULL) {
         s_log_error("Invalid parameters");
@@ -59,12 +54,12 @@ i32 sus_cert_generate_leaf(const VECTOR(u8) old_leaf,
     bool ok = false;
 
     if (out_variant != NULL)
-        *out_variant = SUS_CERT_CHAIN_INVALID_;
+        *out_variant = SUS_KEY_INVALID_;
     *out_new_leaf = NULL;
 
     EVP_PKEY *attested_pubkey = NULL;
     struct KM_KeyDescription_v3 *km_desc = NULL;
-    enum sus_cert_chain_variant variant = SUS_CERT_CHAIN_INVALID_;
+    enum sus_key_variant variant = SUS_KEY_INVALID_;
     unsigned char *tmp_out_buf = NULL;
     VECTOR(u8) out = NULL;
 
@@ -72,9 +67,9 @@ i32 sus_cert_generate_leaf(const VECTOR(u8) old_leaf,
         goto_error("Failed to parse the provided leaf certificate!");
     s_log_info("Successfully parsed leaf cert");
 
-    key_desc_dump(km_desc);
+    key_desc_dump(km_desc, key_desc_dump_log_proc);
     mod_key_desc(km_desc);
-    key_desc_dump(km_desc);
+    key_desc_dump(km_desc, key_desc_dump_log_proc);
 
     if (leaf_cert_gen(&out, variant, attested_pubkey, km_desc))
         goto_error("Failed to generate a new leaf certificate!");
@@ -127,16 +122,20 @@ static void mod_key_desc(struct KM_KeyDescription_v3 *desc)
     /** Top-level Key Description modifications */
 
     /* Set security levels */
+#ifdef MOD_KEYDESC_ATTESTATION_SEC_LVL
     if (desc->attestationSecurityLevel != MOD_KEYDESC_ATTESTATION_SEC_LVL) {
         s_log_info("attestationSecurityLevel: %d -> %d",
             desc->attestationSecurityLevel, MOD_KEYDESC_ATTESTATION_SEC_LVL);
         desc->attestationSecurityLevel = MOD_KEYDESC_ATTESTATION_SEC_LVL;
     }
+#endif /* MOD_KEYDESC_ATTESTATION_SEC_LVL */
+#ifdef MOD_KEYDESC_KEYMASTER_SEC_LVL
     if (desc->keymasterSecurityLevel != MOD_KEYDESC_KEYMASTER_SEC_LVL) {
         s_log_info("keymasterSecurityLevel: %d -> %d",
                 desc->keymasterSecurityLevel, MOD_KEYDESC_KEYMASTER_SEC_LVL);
         desc->keymasterSecurityLevel = MOD_KEYDESC_KEYMASTER_SEC_LVL;
     }
+#endif /* MOD_KEYDESC_KEYMASTER_SEC_LVL */
 
     /** Authorization list modifications **/
 
@@ -158,42 +157,53 @@ static void mod_key_desc(struct KM_KeyDescription_v3 *desc)
 static void mod_root_of_trust(struct KM_RootOfTrust_v3 *rot)
 {
     /* Set the verified boot key */
+#ifdef MOD_AUTHLIST_ROT_VERIFIED_BOOT_KEY
     s_log_info("%s: set verified boot key", __func__);
     vector_resize(&rot->verifiedBootKey,
             sizeof(MOD_AUTHLIST_ROT_VERIFIED_BOOT_KEY));
     memcpy(rot->verifiedBootKey, &MOD_AUTHLIST_ROT_VERIFIED_BOOT_KEY,
             sizeof(MOD_AUTHLIST_ROT_VERIFIED_BOOT_KEY));
+#endif /* MOD_AUTHLIST_ROT_VERIFIED_BOOT_KEY */
 
     /* Set `deviceLocked` */
+#ifdef MOD_AUTHLIST_ROT_DEVICE_LOCKED
     if (rot->deviceLocked != MOD_AUTHLIST_ROT_DEVICE_LOCKED) {
         s_log_info("%s: deviceLocked: %d -> %d", __func__,
                 rot->deviceLocked, MOD_AUTHLIST_ROT_DEVICE_LOCKED);
         rot->deviceLocked = MOD_AUTHLIST_ROT_DEVICE_LOCKED;
     }
+#endif /* MOD_AUTHLIST_ROT_VB_STATE */
 
     /* Set verified boot state */
+#ifdef MOD_AUTHLIST_ROT_VB_STATE
     if (rot->verifiedBootState != MOD_AUTHLIST_ROT_VB_STATE) {
         s_log_info("%s: verifiedBootState: %d -> %d", __func__,
                 rot->verifiedBootState, MOD_AUTHLIST_ROT_VB_STATE);
         rot->verifiedBootState = MOD_AUTHLIST_ROT_VB_STATE;
     }
+#endif /* MOD_AUTHLIST_ROT_VB_STATE */
 
+#ifdef MOD_AUTHLIST_ROT_VERIFIED_BOOT_HASH
     s_log_info("%s: set verified boot hash", __func__);
     vector_resize(&rot->verifiedBootHash,
             sizeof(MOD_AUTHLIST_ROT_VERIFIED_BOOT_HASH));
     memcpy(rot->verifiedBootHash, &MOD_AUTHLIST_ROT_VERIFIED_BOOT_HASH,
             sizeof(MOD_AUTHLIST_ROT_VERIFIED_BOOT_HASH));
+#endif /* MOD_AUTHLIST_ROT_VERIFIED_BOOT_HASH */
 }
 
 static void mod_patch_levels(struct KM_AuthorizationList_v3 *al,
         const char *al_name)
 {
+#ifdef MOD_AUTHLIST_OS_VERSION
     if (al->__osVersion_present && al->osVersion != MOD_AUTHLIST_OS_VERSION) {
         s_log_info("%s.osVersion: %llu -> %llu", al_name,
                 al->osVersion, MOD_AUTHLIST_OS_VERSION);
         al->osVersion = MOD_AUTHLIST_OS_VERSION;
     }
+#endif /* MOD_AUTHLIST_OS_VERSION */
 
+#ifdef MOD_AUTHLIST_OS_PATCH_LEVEL
     if (al->__osPatchLevel_present &&
                 al->osPatchLevel != MOD_AUTHLIST_OS_PATCH_LEVEL)
     {
@@ -201,7 +211,9 @@ static void mod_patch_levels(struct KM_AuthorizationList_v3 *al,
                 al->osPatchLevel, MOD_AUTHLIST_OS_PATCH_LEVEL);
         al->osPatchLevel = MOD_AUTHLIST_OS_PATCH_LEVEL;
     }
+#endif /* MOD_AUTHLIST_OS_PATCH_LEVEL */
 
+#ifdef MOD_AUTHLIST_VENDOR_PATCH_LEVEL
     if (al->__vendorPatchLevel_present &&
             al->vendorPatchLevel != MOD_AUTHLIST_VENDOR_PATCH_LEVEL)
     {
@@ -209,7 +221,9 @@ static void mod_patch_levels(struct KM_AuthorizationList_v3 *al,
                 al->vendorPatchLevel, MOD_AUTHLIST_VENDOR_PATCH_LEVEL);
         al->vendorPatchLevel = MOD_AUTHLIST_VENDOR_PATCH_LEVEL;
     }
+#endif /* MOD_AUTHLIST_VENDOR_PATCH_LEVEL */
 
+#ifdef MOD_AUTHLIST_BOOT_PATCH_LEVEL
     if (al->__bootPatchLevel_present &&
             al->bootPatchLevel != MOD_AUTHLIST_BOOT_PATCH_LEVEL)
     {
@@ -217,4 +231,5 @@ static void mod_patch_levels(struct KM_AuthorizationList_v3 *al,
                 al->bootPatchLevel, MOD_AUTHLIST_BOOT_PATCH_LEVEL);
         al->bootPatchLevel = MOD_AUTHLIST_BOOT_PATCH_LEVEL;
     }
+#endif /* MOD_AUTHLIST_BOOT_PATCH_LEVEL */
 }

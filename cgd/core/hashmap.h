@@ -1,14 +1,14 @@
 #ifndef U_HASHMAP_H_
 #define U_HASHMAP_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
 #include "static-tests.h"
 
 #include "int.h"
 #include "linked-list.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
 
 #define HM_TABLE_SIZE  10
 

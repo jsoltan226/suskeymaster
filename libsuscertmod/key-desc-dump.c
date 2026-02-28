@@ -1,7 +1,6 @@
 #define _GNU_SOURCE
 #include "key-desc.h"
 #include "keymaster-types.h"
-#include <core/log.h>
 #include <core/int.h>
 #include <core/util.h>
 #include <core/math.h>
@@ -10,9 +9,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#define MODULE_NAME "key-desc"
-
-static void dump_auth_list(const struct KM_AuthorizationList_v3 *al);
+static void dump_auth_list(const struct KM_AuthorizationList_v3 *al,
+        key_desc_log_proc_t log_proc);
 
 static const char * get_security_level_str(enum KM_SecurityLevel sl);
 static const char * get_vbstate_str(enum KM_VerifiedBootState vb);
@@ -35,222 +33,232 @@ enum dump_hex_indendation {
 static void dump_hex_line(char *buf, u32 buf_size,
         const u8 *data, u32 data_size, bool end_without_comma);
 static void dump_hex(const char *prefix, const char *postfix,
-        const VECTOR(u8) data, enum dump_hex_indendation indentation_lvl);
+        const VECTOR(u8) data, enum dump_hex_indendation indentation_lvl,
+        key_desc_log_proc_t log_proc);
 
 static void dump_u64_arr(const char *prefix, const char *postfix,
-        const VECTOR(u64) arr);
+        const VECTOR(u64) arr, key_desc_log_proc_t log_proc);
 
 typedef const char * (*get_enum_str_proc_t)(int);
 static void dump_enum_arr(const char *prefix, const char *postfix,
-        const VECTOR(i32) arr, get_enum_str_proc_t get_str_proc);
+        const VECTOR(i32) arr, get_enum_str_proc_t get_str_proc,
+        key_desc_log_proc_t log_proc);
 
 static void datetime_to_str(char *buf, u32 buf_size, KM_DateTime_t dt);
 
 static const char *get_indentation_str(enum dump_hex_indendation i);
 
-void key_desc_dump(const struct KM_KeyDescription_v3 *desc)
+void key_desc_dump(const struct KM_KeyDescription_v3 *desc,
+        key_desc_log_proc_t log_proc)
 {
-    s_log_info("===== BEGIN KEY DESCRIPTION DUMP =====");
-    s_log_info("struct KM_KeyDescription_v3 desc = {");
-    s_log_info("    .attestationVersion = %d,", desc->attestationVersion);
-    s_log_info("    .attestationSecurityLevel = %d, // %s",
+    log_proc("===== BEGIN KEY DESCRIPTION DUMP =====");
+    log_proc("struct KM_KeyDescription_v3 desc = {");
+    log_proc("    .attestationVersion = %d,", desc->attestationVersion);
+    log_proc("    .attestationSecurityLevel = %d, // %s",
             desc->attestationSecurityLevel,
             get_security_level_str(desc->attestationSecurityLevel)
     );
-    s_log_info("    .keymasterVersion = %d,", desc->keymasterVersion);
-    s_log_info("    .keymasterSecurityLevel = %d, // %s",
+    log_proc("    .keymasterVersion = %d,", desc->keymasterVersion);
+    log_proc("    .keymasterSecurityLevel = %d, // %s",
             desc->attestationSecurityLevel,
             get_security_level_str(desc->attestationSecurityLevel)
     );
     dump_hex("    .attestationChallenge = { ", " },",
-            desc->attestationChallenge, INDENT_2);
-    dump_hex("    .uniqueId = { ", " },", desc->uniqueId, INDENT_2);
-    s_log_info("    .softwareEnforced = {");
-    dump_auth_list(&desc->softwareEnforced);
-    s_log_info("    },");
-    s_log_info("    .hardwareEnforced = {");
-    dump_auth_list(&desc->hardwareEnforced);
-    s_log_info("    }");
-    s_log_info("};");
-    s_log_info("====== END KEY DESCRIPTION DUMP ======");
+            desc->attestationChallenge, INDENT_2, log_proc);
+    dump_hex("    .uniqueId = { ", " },", desc->uniqueId, INDENT_2, log_proc);
+    log_proc("    .softwareEnforced = {");
+    dump_auth_list(&desc->softwareEnforced, log_proc);
+    log_proc("    },");
+    log_proc("    .hardwareEnforced = {");
+    dump_auth_list(&desc->hardwareEnforced, log_proc);
+    log_proc("    }");
+    log_proc("};");
+    log_proc("====== END KEY DESCRIPTION DUMP ======");
 }
 
-static void dump_auth_list(const struct KM_AuthorizationList_v3 *al)
+static void dump_auth_list(const struct KM_AuthorizationList_v3 *al,
+        key_desc_log_proc_t log_proc)
 {
     char date_time_buf[32] = { 0 };
 
     if (al->__purpose_present) {
         dump_enum_arr("        .purpose = { ", " },",
                 (VECTOR(i32)) al->purpose,
-                (get_enum_str_proc_t) get_keypurpose_str
+                (get_enum_str_proc_t) get_keypurpose_str,
+                log_proc
         );
     }
 
     if (al->__algorithm_present)
-        s_log_info("        .algorithm = 0x%08x, // %s",
+        log_proc("        .algorithm = 0x%08x, // %s",
                 al->algorithm, get_algorithm_str(al->algorithm));
 
     if (al->__keySize_present)
-        s_log_info("        .keySize = 0x%016llx,", al->keySize);
+        log_proc("        .keySize = 0x%016llx,", al->keySize);
 
     if (al->__blockMode_present) {
         dump_enum_arr("        .blockMode = { ", " },",
                 (VECTOR(i32))al->blockMode,
-                (get_enum_str_proc_t)get_blockmode_str
+                (get_enum_str_proc_t)get_blockmode_str,
+                log_proc
         );
     }
 
-    if (al->__digest_present)
-        dump_enum_arr("        .digest = { ", " },",
-                (VECTOR(i32))al->digest, (get_enum_str_proc_t)get_digest_str);
+    if (al->__digest_present) {
+        dump_enum_arr("        .digest = { ", " },", (VECTOR(i32))al->digest,
+                (get_enum_str_proc_t)get_digest_str, log_proc);
+    }
 
     if (al->__padding_present) {
         dump_enum_arr("        .padding = { ", " },",
                 (VECTOR(i32))al->padding,
-                (get_enum_str_proc_t)get_paddingmode_str
+                (get_enum_str_proc_t)get_paddingmode_str,
+                log_proc
         );
     }
 
     if (al->__callerNonce_present)
-        s_log_info("        .callerNonce = %d,", al->callerNonce);
+        log_proc("        .callerNonce = %d,", al->callerNonce);
 
     if (al->__minMacLength_present)
-        s_log_info("        .minMacLength = 0x%016llx,", al->minMacLength);
+        log_proc("        .minMacLength = 0x%016llx,", al->minMacLength);
 
     if (al->__ecCurve_present)
-        s_log_info("        .ecCurve = 0x%08x, // %s",
+        log_proc("        .ecCurve = 0x%08x, // %s",
                 al->ecCurve, get_eccurve_str(al->ecCurve));
 
     if (al->__rsaPublicExponent_present)
-        s_log_info("        .rsaPublicExponent = 0x%08x,",
+        log_proc("        .rsaPublicExponent = 0x%08x,",
                 al->rsaPublicExponent);
 
     if (al->__rollbackResistance_present)
-        s_log_info("        .rollbackResistance = %d,", al->rollbackResistance);
+        log_proc("        .rollbackResistance = %d,", al->rollbackResistance);
 
     if (al->__activeDateTime_present) {
         datetime_to_str(date_time_buf, sizeof(date_time_buf),
                 al->activeDateTime);
-        s_log_info("        .activeDateTime = %llu, // %s",
+        log_proc("        .activeDateTime = %llu, // %s",
                 al->activeDateTime, date_time_buf);
     }
 
     if (al->__originationExpireDateTime_present) {
         datetime_to_str(date_time_buf, sizeof(date_time_buf),
                 al->originationExpireDateTime);
-        s_log_info("        .originationExpireDateTime = %llu, // %s",
+        log_proc("        .originationExpireDateTime = %llu, // %s",
                 al->originationExpireDateTime, date_time_buf);
     }
 
     if (al->__usageExpireDateTime_present) {
         datetime_to_str(date_time_buf, sizeof(date_time_buf),
                 al->usageExpireDateTime);
-        s_log_info("        .usageExpireDateTime = %llu, // %s",
+        log_proc("        .usageExpireDateTime = %llu, // %s",
                 al->usageExpireDateTime, date_time_buf);
     }
 
-    if (al->__userSecureId_present)
-        dump_u64_arr("        .userSecureId = { ", " },", al->userSecureId);
+    if (al->__userSecureId_present) {
+        dump_u64_arr("        .userSecureId = { ", " },",
+                al->userSecureId, log_proc);
+    }
 
     if (al->__noAuthRequired_present)
-        s_log_info("        .noAuthRequired = %d,", al->noAuthRequired);
+        log_proc("        .noAuthRequired = %d,", al->noAuthRequired);
 
     if (al->__userAuthType_present)
-        s_log_info("        .userAuthType = 0x%016llx", al->userAuthType);
+        log_proc("        .userAuthType = 0x%016llx", al->userAuthType);
 
     if (al->__authTimeout_present)
-        s_log_info("        .authTimeout = %llu /* seconds */,",
+        log_proc("        .authTimeout = %llu /* seconds */,",
                 al->authTimeout);
 
     if (al->__allowWhileOnBody_present)
-        s_log_info("        .allowWhileOnBody = %d,", al->allowWhileOnBody);
+        log_proc("        .allowWhileOnBody = %d,", al->allowWhileOnBody);
 
     if (al->__trustedUserPresenceReq_present)
-        s_log_info("        .trustedUserPresenceReq = %d,",
+        log_proc("        .trustedUserPresenceReq = %d,",
                 al->trustedUserPresenceReq);
 
     if (al->__trustedConfirmationReq_present)
-        s_log_info("        .trustedConfirmationReq = %d,",
+        log_proc("        .trustedConfirmationReq = %d,",
                 al->trustedConfirmationReq);
 
     if (al->__unlockedDeviceReq_present)
-        s_log_info("        .unlockedDeviceReq = %d,", al->unlockedDeviceReq);
+        log_proc("        .unlockedDeviceReq = %d,", al->unlockedDeviceReq);
 
     if (al->__creationDateTime_present) {
         datetime_to_str(date_time_buf, sizeof(date_time_buf),
                 al->creationDateTime);
-        s_log_info("        .creationDateTime = %llu, // %s",
+        log_proc("        .creationDateTime = %llu, // %s",
                 al->creationDateTime, date_time_buf);
     }
 
     if (al->__keyOrigin_present)
-        s_log_info("        .origin = 0x%08x, // %s",
+        log_proc("        .origin = 0x%08x, // %s",
                 al->keyOrigin, get_keyorigin_str(al->keyOrigin));
 
     if (al->__rootOfTrust_present) {
-        s_log_info("        .rootOfTrust = {");
+        log_proc("        .rootOfTrust = {");
         dump_hex("            .verifiedBootKey = {", "},",
-                al->rootOfTrust.verifiedBootKey, INDENT_4);
-        s_log_info("            .deviceLocked = %d,",
+                al->rootOfTrust.verifiedBootKey, INDENT_4, log_proc);
+        log_proc("            .deviceLocked = %d,",
                 al->rootOfTrust.deviceLocked);
-        s_log_info("            .verifiedBootState = %d, // %s,",
+        log_proc("            .verifiedBootState = %d, // %s,",
                 al->rootOfTrust.verifiedBootState,
                 get_vbstate_str(al->rootOfTrust.verifiedBootState)
         );
         dump_hex("            .verifiedBootHash = {", "},",
-                al->rootOfTrust.verifiedBootHash, INDENT_4);
-        s_log_info("        },");
+                al->rootOfTrust.verifiedBootHash, INDENT_4, log_proc);
+        log_proc("        },");
     }
 
 
     if (al->__osVersion_present)
-        s_log_info("        .osVersion = %llu,", al->osVersion);
+        log_proc("        .osVersion = %llu,", al->osVersion);
 
     if (al->__osPatchLevel_present)
-        s_log_info("        .osPatchLevel = %llu,", al->osPatchLevel);
+        log_proc("        .osPatchLevel = %llu,", al->osPatchLevel);
 
     if (al->__attestationApplicationId_present)
         dump_hex("        .attestationApplicationId = {", "},",
-                al->attestationApplicationId, INDENT_3);
+                al->attestationApplicationId, INDENT_3, log_proc);
 
     if (al->__attestationIdBrand_present)
         dump_hex("        .attestationIdBrand = {", "},",
-                al->attestationIdBrand, INDENT_3);
+                al->attestationIdBrand, INDENT_3, log_proc);
 
     if (al->__attestationIdDevice_present)
         dump_hex("        .attestationIdDevice = {", "},",
-                al->attestationIdDevice, INDENT_3);
+                al->attestationIdDevice, INDENT_3, log_proc);
 
     if (al->__attestationIdProduct_present)
         dump_hex("        .attestationIdProduct = {", "},",
-                al->attestationIdProduct, INDENT_3);
+                al->attestationIdProduct, INDENT_3, log_proc);
 
     if (al->__attestationIdSerial_present)
         dump_hex("        .attestationIdSerial = {", "},",
-                al->attestationIdSerial, INDENT_3);
+                al->attestationIdSerial, INDENT_3, log_proc);
 
     if (al->__attestationIdImei_present)
         dump_hex("        .attestationIdImei = {", "},",
-                al->attestationIdImei, INDENT_3);
+                al->attestationIdImei, INDENT_3, log_proc);
 
     if (al->__attestationIdMeid_present)
         dump_hex("        .attestationIdMeid = {", "},",
-                al->attestationIdMeid, INDENT_3);
+                al->attestationIdMeid, INDENT_3, log_proc);
 
     if (al->__attestationIdManufacturer_present)
         dump_hex("        .attestationIdManufacturer = {", "},",
-                al->attestationIdManufacturer, INDENT_3);
+                al->attestationIdManufacturer, INDENT_3, log_proc);
 
     if (al->__attestationIdModel_present)
         dump_hex("        .attestationIdModel = {", "},",
-                al->attestationIdModel, INDENT_3);
+                al->attestationIdModel, INDENT_3, log_proc);
 
     if (al->__vendorPatchLevel_present)
-        s_log_info("        .vendorPatchLevel = %llu,",
+        log_proc("        .vendorPatchLevel = %llu,",
                 al->vendorPatchLevel);
 
     if (al->__bootPatchLevel_present)
-        s_log_info("        .bootPatchLevel = %llu", al->bootPatchLevel);
+        log_proc("        .bootPatchLevel = %llu", al->bootPatchLevel);
 }
 
 static const char * get_security_level_str(enum KM_SecurityLevel sl)
@@ -387,10 +395,11 @@ static void dump_hex_line(char *buf, u32 buf_size,
 }
 
 static void dump_hex(const char *prefix, const char *postfix,
-        const VECTOR(u8) data, enum dump_hex_indendation indentation_lvl)
+        const VECTOR(u8) data, enum dump_hex_indendation indentation_lvl,
+        key_desc_log_proc_t log_proc)
 {
     if (data == NULL || vector_size(data) == 0) {
-        s_log_info("%s/* (empty) */%s", prefix, postfix);
+        log_proc("%s/* (empty) */%s", prefix, postfix);
         return;
     }
 
@@ -411,7 +420,7 @@ static void dump_hex(const char *prefix, const char *postfix,
     if (n_lines == 0) {
         dump_hex_line(line_buf, LINE_BUF_SIZE, data, remainder, true);
         line_buf[LINE_BUF_SIZE - 1] = '\0';
-        s_log_info("%s%s%s", prefix, line_buf, postfix);
+        log_proc("%s%s%s", prefix, line_buf, postfix);
         return;
     }
 
@@ -419,8 +428,8 @@ static void dump_hex(const char *prefix, const char *postfix,
 
     dump_hex_line(line_buf, LINE_BUF_SIZE, data, LINE_LEN, false);
     line_buf[LINE_BUF_SIZE - 1] = '\0';
-    s_log_info("%s", prefix);
-    s_log_info("%s    %s", indentation, line_buf);
+    log_proc("%s", prefix);
+    log_proc("%s    %s", indentation, line_buf);
 
     for (u32 i = 1; i < n_lines; i++) {
         memset(line_buf, 0, LINE_BUF_SIZE);
@@ -429,7 +438,7 @@ static void dump_hex(const char *prefix, const char *postfix,
                 LINE_LEN, false
         );
         line_buf[LINE_BUF_SIZE - 1] = '\0';
-        s_log_info("%s    %s", indentation, line_buf);
+        log_proc("%s    %s", indentation, line_buf);
     }
 
     memset(line_buf, 0, LINE_BUF_SIZE);
@@ -438,20 +447,20 @@ static void dump_hex(const char *prefix, const char *postfix,
             remainder, true
     );
     line_buf[LINE_BUF_SIZE - 1] = '\0';
-    s_log_info("%s    %s", indentation, line_buf);
-    s_log_info("%s%s", indentation, postfix);
+    log_proc("%s    %s", indentation, line_buf);
+    log_proc("%s%s", indentation, postfix);
 
 #undef LINE_LEN
 }
 
 static void dump_u64_arr(const char *prefix, const char *postfix,
-        const VECTOR(u64) arr)
+        const VECTOR(u64) arr, key_desc_log_proc_t log_proc)
 {
     char tmp_buf[256] = { 0 };
     u32 write_index = 0;
 
     if (arr == NULL || vector_size(arr) == 0) {
-        s_log_info("%s/* (empty) */%s", prefix, postfix);
+        log_proc("%s/* (empty) */%s", prefix, postfix);
         return;
     }
 
@@ -469,33 +478,34 @@ static void dump_u64_arr(const char *prefix, const char *postfix,
     (void) snprintf(tmp_buf + write_index, 256 - write_index - 1,
             "0x%016lx", arr[vector_size(arr) - 1]);
 
-    s_log_info("%s%s%s", prefix, tmp_buf, postfix);
+    log_proc("%s%s%s", prefix, tmp_buf, postfix);
 }
 
 static void dump_enum_arr(const char *prefix, const char *postfix,
-        const VECTOR(i32) arr, get_enum_str_proc_t get_str_proc)
+        const VECTOR(i32) arr, get_enum_str_proc_t get_str_proc,
+        key_desc_log_proc_t log_proc)
 {
     if (arr == NULL || vector_size(arr) == 0) {
-        s_log_info("%s/* (empty) */%s", prefix, postfix);
+        log_proc("%s/* (empty) */%s", prefix, postfix);
         return;
     }
 
-    s_log_info("%s", prefix);
+    log_proc("%s", prefix);
 
     const char *const i2str = get_indentation_str(INDENT_3);
     for (u32 i = 0; i < vector_size(arr) - 1; i++) {
-        s_log_info("%s    0x%08x, // %s",
+        log_proc("%s    0x%08x, // %s",
                 i2str, arr[i],
                 get_str_proc ? get_str_proc(arr[i]) : "N/A"
         );
     }
     const u32 last_idx = vector_size(arr) - 1;
-    s_log_info("%s    0x%08x // %s",
+    log_proc("%s    0x%08x // %s",
             i2str, arr[last_idx],
             get_str_proc ? get_str_proc(arr[last_idx]) : "N/A"
     );
 
-    s_log_info("%s%s", i2str, postfix);
+    log_proc("%s%s", i2str, postfix);
 }
 
 static void datetime_to_str(char *buf, u32 buf_size, KM_DateTime_t dt)

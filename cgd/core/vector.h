@@ -1,10 +1,6 @@
 #ifndef VECTOR_H_
 #define VECTOR_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
 #include "static-tests.h"
 
 #include "int.h"
@@ -12,6 +8,10 @@ extern "C" {
 #include <assert.h>
 #include <stdbool.h>
 #include <stdlib.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
 
 #define VECTOR_MINIMUM_CAPACITY__ 8U
 #define VECTOR_METADATA_SIZE__ 16U

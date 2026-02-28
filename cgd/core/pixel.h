@@ -1,14 +1,14 @@
 #ifndef PIXEL_H_
 #define PIXEL_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
 #include "static-tests.h"
 
 #include "shapes.h"
 #include "int.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
 
 typedef color_RGBA32_t pixel_t;
 

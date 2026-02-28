@@ -1,0 +1,43 @@
+cc_defaults {
+    name: "libgenericutil_defaults",
+    cflags: ["-Wall", "-Wextra", "-pipe", "-fPIC"],
+    include_dirs: [
+        ".",
+    ],
+    local_include_dirs: [ "." ],
+}
+
+cc_library_static {
+    name: "libgenericutil",
+    defaults: ["libgenericutil_defaults"],
+
+    srcs: [
+        "./*.c"
+    ],
+
+    cflags: [
+        "-g", "-O0",
+
+        // the cgd core library present here is not used
+        // anywhere outside of `libsuscertmod`, so we can allow such a hack (for now)
+        "-DCGD_LOG_BUILD_TAG=\"certmod\""
+    ],
+    export_include_dirs: [ "./include" ],
+
+    visibility: [ "//visibility:public" ],
+
+    target: {
+        android_arm64: {
+            enabled: true,
+        },
+        android_arm: {
+            enabled: false,
+        },
+        android_x86_64: {
+            enabled: true,
+        },
+        android_x86: {
+            enabled: false,
+        },
+    },
+}

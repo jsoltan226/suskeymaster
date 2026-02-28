@@ -1,6 +1,9 @@
 #ifndef SPINLOCK_H_
 #define SPINLOCK_H_
 
+#include "static-tests.h"
+
+#include "int.h"
 #ifdef __cplusplus
 #include <atomic>
 #else
@@ -10,8 +13,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
-
-#include "int.h"
 
 #ifdef __cplusplus
 typedef std::atomic_flag spinlock_t;

@@ -1,11 +1,13 @@
 #ifndef HEX2ASCII_H_
 #define HEX2ASCII_H_
 
+#include "static-tests.h"
+
+#include "int.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
-
-#include "int.h"
 
 /* The length of the longest string possibly returned by `u_hex2ascii` */
 #define MAX_HEX2ASCII_STR_LEN 5

@@ -20,10 +20,11 @@ cc_library_static {
         "-g", "-O0",
         "-DCGD_LOG_BUILD_TAG=\"certmod\""
     ],
-    export_include_dirs: [ "." ],
+    export_include_dirs: [ "include" ],
 
     static_libs: [
         "libsuscertsign",
+        "libgenericutil",
         "libcgdcore",
         "libcrypto_sus_prebuilt",
     ],

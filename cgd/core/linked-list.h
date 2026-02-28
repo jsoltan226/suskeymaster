@@ -1,14 +1,14 @@
 #ifndef U_LINKED_LIST_H
 #define U_LINKED_LIST_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
 #include "static-tests.h"
 
 #include <stdlib.h>
 #include <stdbool.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
 
 struct ll_node {
     struct ll_node *next, *prev;

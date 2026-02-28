@@ -1,10 +1,29 @@
 CompileFlags:
   Add:
-    - "-I/home/user/.local/src/android-14/system/kmtest/libsuscertmod/external/prefix/include"
-    - "-I/home/user/.local/src/android-14/system/kmtest/include-base"
-    - "-I/home/user/.local/src/android-14/system/kmtest/include-keymaster"
-    - "-I/home/user/.local/src/android-14/system/kmtest/"
-    - "-I/home/user/.local/src/android-14/system/kmtest/cgd"
-    - "-xc++"
-    - "-std=c++20"
+    - "-I../aosp-headers/include-base"
+    - "-I../aosp-headers/include-keymaster"
+    - "-I../cgd"
+    - "-I../libsuscertsign/include"
+    - "-I../libgenericutil/include"
+    - "-I../libsuscertmod/include"
+    - "-Wpedantic"
+    - "-Wall"
     - "-Wno-c11-extensions"
+---
+If:
+  PathMatch: \.(c|h)$
+CompileFlags:
+  Add: [
+    -xc,
+    -std=c11
+  ]
+---
+If:
+  PathMatch: \.(cc|cpp|cxx|hpp|hh|hxx)$
+CompileFlags:
+  Add: [
+    -fno-exceptions,
+    -fno-rtti,
+    -xc++,
+    -std=c++20,
+  ]

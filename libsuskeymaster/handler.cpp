@@ -1,17 +1,19 @@
-#include "handler.hpp"
-#include "android/hardware/keymaster/4.0/types.h"
 #define HIDL_DISABLE_INSTRUMENTATION
-#include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
-#include <android/log.h>
-#include <cstdint>
-#include <cstring>
+#include "handler.hpp"
 #include <core/int.h>
 #include <core/vector.h>
-#include "../libsuscertmod/certmod.h"
-
+#include <libgenericutil/cert-types.h>
+#include <libsuscertmod/certmod.h>
+#include <libsuscertsign/suscertsign.h>
+#include <android/log.h>
+#include <android/hardware/keymaster/4.0/types.h>
+#include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
+#include <cstdint>
+#include <cstring>
 
 using namespace ::android::hardware;
 using namespace ::android::hardware::keymaster::V4_0;
+using namespace suskeymaster;
 
 namespace libsuskeymaster {
 
@@ -60,8 +62,13 @@ extern "C" void sus_attest_cb(
         *reinterpret_cast<const hidl_vec<hidl_vec<uint8_t>> *>(_certChain);
 
     __android_log_print(ANDROID_LOG_INFO, "SUS", "Hello from %s!\n", __func__);
-    __android_log_print(ANDROID_LOG_INFO, "SUS", "err = 0x%.8x, certChain = 0x%.8lx\n",
-            (int32_t)err, reinterpret_cast<unsigned long>(_certChain));
+    __android_log_print(ANDROID_LOG_INFO, "SUS", "err = 0x%.8x (%s), certChain = 0x%.8lx\n",
+            static_cast<int32_t>(err), toString(err).c_str(),
+            reinterpret_cast<unsigned long>(_certChain)
+    );
+
+    if (err != ErrorCode::OK)
+        goto failure;
 
     tmp_cert_chain = certChain;
     if (sus_keymaster_hack_cert_chain(tmp_cert_chain)) {
@@ -95,7 +102,7 @@ int sus_keymaster_hack_cert_chain(hidl_vec<hidl_vec<uint8_t>>& cert_chain)
 
     /* Get the new leaf & chain */
 
-    enum sus_cert_chain_variant variant = SUS_CERT_CHAIN_INVALID_;
+    enum sus_key_variant variant = SUS_KEY_INVALID_;
     VECTOR(u8) new_leaf = NULL;
     if (sus_cert_generate_leaf(old_leaf, &variant, &new_leaf)) {
         __android_log_print(ANDROID_LOG_ERROR, "SUS", "Failed to hack the leaf cert!");
@@ -105,7 +112,8 @@ int sus_keymaster_hack_cert_chain(hidl_vec<hidl_vec<uint8_t>>& cert_chain)
 
     vector_destroy(&old_leaf);
 
-    const VECTOR(VECTOR(u8) const) new_chain = sus_cert_retrieve_chain(variant);
+    const VECTOR(VECTOR(u8) const) new_chain =
+        suskeymaster::sus_cert_sign_retrieve_chain(variant);
     if (new_chain == NULL || vector_size(new_chain) == 0) {
         __android_log_print(ANDROID_LOG_ERROR, "SUS", "Failed to get the new chain!");
         vector_destroy(&new_leaf);

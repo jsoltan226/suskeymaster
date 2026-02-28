@@ -13,8 +13,7 @@
 
 /* Patch levels & os version */
 
-/* Required to be <=11 if we don't want to support v4 attestation */
-#define MOD_AUTHLIST_OS_VERSION 110000
+#define MOD_AUTHLIST_OS_VERSION 140000
 
 #define MOD_AUTHLIST_OS_PATCH_LEVEL 202601
 #define MOD_AUTHLIST_VENDOR_PATCH_LEVEL 20260101
@@ -38,5 +37,8 @@
     0xcc, 0x4c, 0xb2, 0x59, 0xd7, 0x12, 0xe0, 0x04,     \
     0xd4, 0x6c, 0x9e, 0x3e, 0x26, 0x42, 0xc3, 0xb0,     \
 }
+
+/* Don't change the vbmeta if using a properly signed ROM */
+#undef MOD_AUTHLIST_ROT_VERIFIED_BOOT_HASH
 
 #endif /* SUS_CERT_MOD_PARAMS_H_ */

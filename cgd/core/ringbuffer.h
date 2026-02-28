@@ -1,15 +1,15 @@
 #ifndef RINGBUFFER_H_
 #define RINGBUFFER_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
 #include "static-tests.h"
 
 #include "int.h"
 #include "spinlock.h"
 #include <stdbool.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
 
 /* An in-memory buffer used to store text.
  * Works the same as a normal linear buffer,

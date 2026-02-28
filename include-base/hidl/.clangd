@@ -1,9 +1,0 @@
-CompileFlags:
-  Add:
-    - "-I/home/user/projects/c/keymaster/include-base"
-    - "-I/home/user/projects/c/keymaster/include-keymaster"
-    - "-I/home/user/projects/c/keymaster/cgd"
-    - "-I/home/user/projects/c/keymaster/"
-    - "-xc++"
-    - "-std=c++20"
-    - "-Wno-c11-extensions"

@@ -1,9 +1,8 @@
 #include "leaf-cert.h"
-#include "certmod.h"
 #include "key-desc.h"
-#include "certs/certs.h"
 #include "keymaster-types.h"
-#include <suscertsign.h>
+#include <libgenericutil/cert-types.h>
+#include <libsuscertsign/suscertsign.h>
 #include <core/log.h>
 #include <core/util.h>
 #include <core/vector.h>
@@ -19,7 +18,7 @@
 
 static ASN1_TIME *get_notbefore(const struct KM_KeyDescription_v3 *desc);
 static ASN1_TIME *get_notafter(const struct KM_KeyDescription_v3 *desc,
-        enum sus_cert_chain_variant signing_key_variant);
+        enum sus_key_variant signing_key_variant);
 
 static u8 get_keyusage_bits(const struct KM_KeyDescription_v3 *desc);
 
@@ -33,13 +32,13 @@ static unsigned long get_bitstr_tl_length(unsigned long content_len);
 static void encode_bitstr_tl(unsigned char **p, unsigned long content_len);
 
 i32 leaf_cert_gen(VECTOR(u8) *out,
-        enum sus_cert_chain_variant signing_key_variant,
+        enum sus_key_variant signing_key_variant,
         EVP_PKEY *subj_pubkey,
         const struct KM_KeyDescription_v3 *km_desc
 )
 {
-    if ((signing_key_variant != SUS_CERT_CHAIN_EC &&
-        signing_key_variant != SUS_CERT_CHAIN_RSA) ||
+    if ((signing_key_variant != SUS_KEY_EC &&
+        signing_key_variant != SUS_KEY_RSA) ||
         (subj_pubkey == NULL) ||
         (km_desc == NULL))
     {
@@ -59,6 +58,7 @@ i32 leaf_cert_gen(VECTOR(u8) *out,
     ASN1_INTEGER *serial = NULL;
     X509_ALGOR *tbs_sig_alg = NULL;
     X509_NAME *issuer = NULL, *subject = NULL;
+    const unsigned char *issuer_serial_str = NULL;
     ASN1_TIME *not_before = NULL, *not_after = NULL;
 
     u8 key_usage_bits = 0;
@@ -109,8 +109,8 @@ i32 leaf_cert_gen(VECTOR(u8) *out,
     serial = NULL;
 
     /* Set the appropriate signature algorithm */
-    const i32 sig_nid = signing_key_variant == SUS_CERT_CHAIN_RSA ?
-        NID_sha256WithRSAEncryption : NID_ecdsa_with_SHA256;
+    const i32 sig_nid = signing_key_variant == SUS_KEY_EC ?
+        NID_ecdsa_with_SHA256 : NID_sha256WithRSAEncryption ;
 
     /* openssl unfortunately doesn't provide us
      * with a way to do this cleanly :( */
@@ -132,10 +132,9 @@ i32 leaf_cert_gen(VECTOR(u8) *out,
         goto_error("Couldn't add the issuer name entry");
 
     /* add the issuer's (top-most cert's) serial number */
-    const unsigned char *const issuer_serial_str =
-        signing_key_variant == SUS_CERT_CHAIN_RSA ?
-            (const unsigned char *)cert_chain_rsa_top_issuer_serial :
-            (const unsigned char *)cert_chain_ec_top_issuer_serial;
+    if (sus_cert_sign_retrieve_chain_data(signing_key_variant,
+                (const char **)&issuer_serial_str, NULL))
+        goto_error("Couldn't retrieve the top-most cert's serial number");
 
     if (X509_NAME_add_entry_by_NID(issuer, NID_serialNumber,
                 V_ASN1_PRINTABLESTRING, issuer_serial_str, -1, -1, 0) == 0)
@@ -256,9 +255,8 @@ i32 leaf_cert_gen(VECTOR(u8) *out,
     sig_alg = NULL;
 
     /* Generate the signature (over TBS) */
-    const int ec_or_rsa = signing_key_variant == SUS_CERT_CHAIN_RSA ?
-            SUS_CERT_SIGN_RSA : SUS_CERT_SIGN_EC;
-    if (sus_cert_sign(tbs_der, tbs_der_len, &sig, &sig_len, ec_or_rsa))
+    if (sus_cert_sign(tbs_der, tbs_der_len,
+                &sig, &sig_len, signing_key_variant))
         goto_error("Couldn't to sign the X509 cert");
 
 
@@ -268,7 +266,7 @@ i32 leaf_cert_gen(VECTOR(u8) *out,
     if (ret == NULL)
         goto_error("Couldn't construct the final X509 certificate sequence");
 
-    *out = ret;
+    if (out != NULL) *out = ret;
     return 0;
 
 err:
@@ -378,7 +376,7 @@ static ASN1_TIME *get_notbefore(const struct KM_KeyDescription_v3 *desc)
 }
 
 static ASN1_TIME *get_notafter(const struct KM_KeyDescription_v3 *desc,
-        enum sus_cert_chain_variant signing_key_variant)
+        enum sus_key_variant signing_key_variant)
 {
     ASN1_TIME *ret = NULL;
 
@@ -400,9 +398,14 @@ static ASN1_TIME *get_notafter(const struct KM_KeyDescription_v3 *desc,
         s_log_warn("No usageExpireDateTime present in key description; "
                 "setting `notAfter` to the expiration date of the "
                 "attestation batch key certificate");
-        time = signing_key_variant == SUS_CERT_CHAIN_RSA ?
-            cert_chain_rsa_not_after :
-            cert_chain_ec_not_after;
+
+        if (sus_cert_sign_retrieve_chain_data(signing_key_variant, NULL, &time))
+        {
+            s_log_error("Failed to get `notAfter` of the "
+                    "attestation batch key certificate");
+            ASN1_TIME_free(ret);
+            return NULL;
+        }
     }
 
     if (ASN1_TIME_set(ret, time) == 0) {
@@ -416,22 +419,25 @@ static ASN1_TIME *get_notafter(const struct KM_KeyDescription_v3 *desc,
 
 static u8 get_keyusage_bits(const struct KM_KeyDescription_v3 *desc)
 {
-    VECTOR(enum KM_KeyPurpose) hw_purpose = desc->hardwareEnforced.purpose;
-    VECTOR(enum KM_KeyPurpose) sw_purpose = desc->softwareEnforced.purpose;
-
-    for (u32 i = 0; i < vector_size(hw_purpose); i++) {
-        if (hw_purpose[i] == KM_PURPOSE_SIGN ||
-                hw_purpose[i] == KM_PURPOSE_VERIFY)
-        {
-            return 0x80; /* KU_DIGITAL_SIGNATURE */
+    if (desc->hardwareEnforced.__purpose_present) {
+        VECTOR(enum KM_KeyPurpose) hw_purpose = desc->hardwareEnforced.purpose;
+        for (u32 i = 0; i < vector_size(hw_purpose); i++) {
+            if (hw_purpose[i] == KM_PURPOSE_SIGN ||
+                    hw_purpose[i] == KM_PURPOSE_VERIFY)
+            {
+                return 0x80; /* KU_DIGITAL_SIGNATURE */
+            }
         }
     }
 
-    for (u32 i = 0; i < vector_size(sw_purpose); i++) {
-        if (sw_purpose[i] == KM_PURPOSE_SIGN ||
-                sw_purpose[i] == KM_PURPOSE_VERIFY)
-        {
-            return 0x80; /* KU_DIGITAL_SIGNATURE */
+    if (desc->softwareEnforced.__purpose_present) {
+        VECTOR(enum KM_KeyPurpose) sw_purpose = desc->softwareEnforced.purpose;
+        for (u32 i = 0; i < vector_size(sw_purpose); i++) {
+            if (sw_purpose[i] == KM_PURPOSE_SIGN ||
+                    sw_purpose[i] == KM_PURPOSE_VERIFY)
+            {
+                return 0x80; /* KU_DIGITAL_SIGNATURE */
+            }
         }
     }
 

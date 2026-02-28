@@ -1,14 +1,14 @@
 #ifndef U_SHAPES_H_
 #define U_SHAPES_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
 #include "static-tests.h"
 
 #include "int.h"
 #include <assert.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
 
 typedef struct {
     f32 x, y;

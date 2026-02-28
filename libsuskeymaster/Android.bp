@@ -18,8 +18,9 @@ cc_library_shared {
 
     static_libs: [
         "libcgdcore",
-        "libsuscertmod",
+        "libgenericutil",
         "libsuscertsign",
+        "libsuscertmod",
         "libcrypto_sus_prebuilt"
     ],
 

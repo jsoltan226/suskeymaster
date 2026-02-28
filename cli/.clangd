@@ -1,0 +1,34 @@
+CompileFlags:
+  Add:
+    - "-I../aosp-headers/include-base"
+    - "-I../aosp-headers/include-keymaster"
+    - "-I../cgd"
+    - "-I../libsuscertsign/include"
+    - "-I../libgenericutil/include"
+    - "-I../libsuscertmod/include"
+    - "-Wpedantic"
+    - "-Wall"
+    - "-Wno-c11-extensions"
+
+Diagnostics:
+  Includes:
+    IgnoreHeader: stdatomic\.h
+
+---
+If:
+  PathMatch: \.(c|h)$
+CompileFlags:
+  Add: [
+    -xc,
+    -std=c11
+  ]
+---
+If:
+  PathMatch: \.(cc|cpp|cxx|hpp|hh|hxx)$
+CompileFlags:
+  Add: [
+    -fno-exceptions,
+    -fno-rtti,
+    -xc++,
+    -std=c++20,
+  ]

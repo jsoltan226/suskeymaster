@@ -1,10 +1,6 @@
 #ifndef UTIL_H_
 #define UTIL_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
 #include "static-tests.h"
 
 #include "log.h"
@@ -13,6 +9,10 @@ extern "C" {
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
 
 #define u_BUF_SIZE  1024
 #define u_PATH_FROM_BIN_TO_ASSETS "../assets/"

@@ -161,6 +161,18 @@ static struct output g_output_cfgs[S_LOG_N_LEVELS_] = {
 void s_log(enum s_log_level level, const char *module_name,
     const char *fmt, ...)
 {
+
+    va_list fmt_list;
+    va_start(fmt_list, fmt);
+
+    s_logv(level, module_name, fmt, fmt_list);
+
+    va_end(fmt_list);
+}
+
+void s_logv(enum s_log_level level, const char *module_name,
+    const char *fmt, va_list fmt_list)
+{
     if (!(level >= 0 && level < S_LOG_N_LEVELS_))
         s_log_fatal("Invalid parameters: `level` (%d) "
             "not in range <0, S_LOG_N_LEVELS_ (%d)>",
@@ -174,10 +186,6 @@ void s_log(enum s_log_level level, const char *module_name,
 
     if (level < atomic_load(&g_log_level))
         return;
-
-    va_list fmt_list;
-    va_start(fmt_list, fmt);
-
     if (level == S_LOG_FATAL_ERROR)
         do_abort_v(module_name, "(unknown)", fmt, fmt_list);
 
@@ -204,8 +212,6 @@ void s_log(enum s_log_level level, const char *module_name,
     case S_LOG_OUTPUT_NONE:
         break;
     }
-
-    va_end(fmt_list);
 }
 
 _Noreturn void s_abort(const char *module_name, const char *function_name,

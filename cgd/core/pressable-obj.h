@@ -1,14 +1,14 @@
 #ifndef PRESSABLEOBJ_H
 #define PRESSABLEOBJ_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
 #include "static-tests.h"
 
 #include <stdbool.h>
 #include "int.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
 
 typedef struct {
     bool up, down, pressed, force_released;

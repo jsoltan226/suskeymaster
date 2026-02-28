@@ -1,19 +1,21 @@
 #include <assert.h>
 
+#ifndef __cplusplus
+
 #ifndef __STDC__
 #error Please use a standard C compiler!
 #endif /* __STDC__ */
 
-#ifndef __cplusplus
 #if (__STDC_VERSION__ != 201112L)
 #error Please use a C11 compiler (-std=c11)
 #endif /* __STDC_VERSION__ */
-#endif /* __cplusplus */
 
 #ifndef __STDC_HOSTED__
 #error The C standard library implementation may be incomplete. \
     If you are sure that this is not the case, define `__STDC_HOSTED__` in your CFLAGS
 #endif /* __STDC_HOSTED__ */
+
+#endif /* __cplusplus */
 
 static_assert(sizeof(float) == 4, "Sizeof float32 must be 4 bytes (32 bits)");
 static_assert(sizeof(double) == 8, "Sizeof float64 must be 8 bytes (64 bits)");

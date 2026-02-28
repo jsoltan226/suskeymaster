@@ -224,7 +224,7 @@ static void * vector_realloc(void *v, u32 new_cap)
         (new_cap * meta_p->item_size) + sizeof(vector_meta_t));
 
     s_assert(new_v != NULL, "realloc() failed!");
-    meta_p = new_v;
+    meta_p = (vector_meta_t *)new_v;
     meta_p->capacity = new_cap;
 
     new_v = (u8 *)new_v + sizeof(vector_meta_t);

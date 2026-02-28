@@ -11,9 +11,9 @@ namespace libsuskeymaster {
 
     int sus_keymaster_hack_cert_chain(hidl_vec<hidl_vec<uint8_t>>& cert_chain);
 
-    extern "C" void sus_keymaster_attest_cb(
+    extern "C" void sus_attest_cb(
             void * _this,
-            ErrorCode err,
-            const hidl_vec<hidl_vec<uint8_t>>& certChain
+            void * _err,
+            void * _certChain
     );
 }
