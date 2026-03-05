@@ -21,7 +21,8 @@ cc_library_shared {
         "libgenericutil",
         "libsuscertsign",
         "libsuscertmod",
-        "libcrypto_sus_prebuilt"
+        "libcrypto_sus_prebuilt",
+        "libbuiltinkeybox"
     ],
 
     shared_libs: [
@@ -34,6 +35,43 @@ cc_library_shared {
 
     cflags: ["-g", "-O0"],
     cppflags: ["-g", "-O0"],
+
+    visibility: [ "//visibility:public" ],
+
+    target: {
+        android_arm64: {
+            enabled: true,
+        },
+        android_arm: {
+            enabled: false,
+        },
+        android_x86_64: {
+            enabled: true,
+        },
+        android_x86: {
+            enabled: false,
+        },
+    },
+}
+
+cc_library_static {
+    name: "libbuiltinkeybox",
+    defaults: [ "suskeymaster_defaults" ],
+
+    srcs: [ "./builtin-keybox.c" ],
+
+    cflags: [
+        "-g", "-O0",
+        "-DCGD_LOG_BUILD_TAG=\"certmod\""
+    ],
+
+    static_libs: [
+    ],
+
+    shared_libs: [
+    ],
+
+    stl: "none",
 
     visibility: [ "//visibility:public" ],
 

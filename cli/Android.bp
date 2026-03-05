@@ -19,6 +19,7 @@ cc_binary {
         "libcgdcore",
         "libgenericutil",
         "libsuscertmod",
+        "libsuscertsign",
         "libcrypto_sus_prebuilt"
     ],
 

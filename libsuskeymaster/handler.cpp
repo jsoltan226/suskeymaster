@@ -4,6 +4,7 @@
 #include <core/vector.h>
 #include <libgenericutil/cert-types.h>
 #include <libsuscertmod/certmod.h>
+#include <libsuscertsign/keybox.h>
 #include <libsuscertsign/suscertsign.h>
 #include <android/log.h>
 #include <android/hardware/keymaster/4.0/types.h>
@@ -13,7 +14,6 @@
 
 using namespace ::android::hardware;
 using namespace ::android::hardware::keymaster::V4_0;
-using namespace suskeymaster;
 
 namespace libsuskeymaster {
 
@@ -102,9 +102,9 @@ int sus_keymaster_hack_cert_chain(hidl_vec<hidl_vec<uint8_t>>& cert_chain)
 
     /* Get the new leaf & chain */
 
-    enum sus_key_variant variant = SUS_KEY_INVALID_;
+    suskeymaster::sus_key_variant variant = suskeymaster::SUS_KEY_INVALID_;
     VECTOR(u8) new_leaf = NULL;
-    if (sus_cert_generate_leaf(old_leaf, &variant, &new_leaf)) {
+    if (suskeymaster::sus_cert_generate_leaf(old_leaf, &variant, &new_leaf)) {
         __android_log_print(ANDROID_LOG_ERROR, "SUS", "Failed to hack the leaf cert!");
         vector_destroy(&old_leaf);
         return 1;
@@ -112,9 +112,16 @@ int sus_keymaster_hack_cert_chain(hidl_vec<hidl_vec<uint8_t>>& cert_chain)
 
     vector_destroy(&old_leaf);
 
-    const VECTOR(VECTOR(u8) const) new_chain =
-        suskeymaster::sus_cert_sign_retrieve_chain(variant);
-    if (new_chain == NULL || vector_size(new_chain) == 0) {
+    const suskeymaster::keybox *builtin_kb = suskeymaster::keybox_get_builtin();
+    if (builtin_kb == NULL) {
+        __android_log_print(ANDROID_LOG_ERROR, "SUS", "Failed to get the builtin keybox!");
+        vector_destroy(&new_leaf);
+        return 1;
+    }
+
+    VECTOR(VECTOR(u8 const) const) new_chain =
+        suskeymaster::keybox_get_cert_chain(builtin_kb, variant);
+    if (vector_size(new_chain) == 0) {
         __android_log_print(ANDROID_LOG_ERROR, "SUS", "Failed to get the new chain!");
         vector_destroy(&new_leaf);
         return 1;

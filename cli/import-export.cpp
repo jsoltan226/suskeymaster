@@ -1,17 +1,16 @@
 #include "suskeymaster.hpp"
 #include <libgenericutil/util.h>
+#include <libgenericutil/atomic-wrapper.h>
 #include <android/hardware/keymaster/4.0/types.h>
 #include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
 #include <utils/StrongPointer.h>
 #include <ctime>
 #include <mutex>
 #include <cstdio>
-#include <cstring>
 #include <cstdarg>
 #include <cstdbool>
 #include <iostream>
 #include <semaphore.h>
-#include <stdatomic.h>
 
 namespace suskeymaster {
 
@@ -43,7 +42,7 @@ static void import_key_cb(
 {
     (void) out_characteristics;
 
-    if (!::atomic_load(&g_sem_inited)) {
+    if (!util_atomic_load_int(&g_sem_inited)) {
         std::cerr << "FATAL ERROR: Global semaphore not initialized!" << std::endl;
         std::abort();
     }
@@ -52,7 +51,7 @@ static void import_key_cb(
     if (error == ErrorCode::OK)
         g_import_key_output = out_key;
 
-    util::try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
+    try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
 }
 
 static ErrorCode g_export_key_error = ErrorCode::UNKNOWN_ERROR;
@@ -62,7 +61,7 @@ static void export_key_cb(
         hidl_vec<uint8_t> const& out_key_material
 )
 {
-    if (!::atomic_load(&g_sem_inited)) {
+    if (!util_atomic_load_int(&g_sem_inited)) {
         std::cerr << "FATAL ERROR: Global semaphore not initialized!" << std::endl;
         std::abort();
     }
@@ -71,13 +70,14 @@ static void export_key_cb(
     if (error == ErrorCode::OK)
         g_export_key_output = out_key_material;
 
-    util::try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
+    try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
 }
 
 
 int import_key(sp<IKeymasterDevice> hal,
-        const hidl_vec<uint8_t>& priv_pkcs8, hidl_vec<uint8_t>& out,
-        Algorithm alg)
+        const hidl_vec<uint8_t>& priv_pkcs8, Algorithm alg,
+        hidl_vec<uint8_t>& out
+)
 {
     if (alg != Algorithm::EC && alg != Algorithm::RSA) {
         std::cerr << "Unsupported key algorithm: "
@@ -88,17 +88,12 @@ int import_key(sp<IKeymasterDevice> hal,
     struct ::timespec ts;
     struct timespec *const tsp = reinterpret_cast<struct timespec *>(&ts);
 
-    if (util::prepare_timeout(tsp, 2, pr_err))
+    if (prepare_timeout(tsp, 2, pr_err))
         return -1;
-
-    static const uint8_t *const application_id = reinterpret_cast<const uint8_t *>
-            ("suskeymaster");
-    static const size_t application_id_len = sizeof(application_id) - 1;
 
     hidl_vec<KeyParameter> params(2);
     params[0].tag = Tag::APPLICATION_ID;
-    params[0].blob = hidl_vec<uint8_t>(application_id,
-            application_id + application_id_len);
+    params[0].blob = get_sus_application_id();
     params[1].tag = Tag::ALGORITHM;
     params[1].f.algorithm = alg;
 
@@ -108,12 +103,12 @@ int import_key(sp<IKeymasterDevice> hal,
         g_import_key_error = ErrorCode::UNKNOWN_ERROR;
         g_import_key_output = {};
 
-        if (util::try_init_g_sem(&g_sem, &g_sem_inited, pr_err))
+        if (try_init_g_sem(&g_sem, &g_sem_inited, pr_err))
             goto out;
 
         hal->importKey(params, KeyFormat::PKCS8, priv_pkcs8, import_key_cb);
 
-        if (util::wait_on_sem(&g_sem, "importKey operation", tsp, pr_err))
+        if (wait_on_sem(&g_sem, "importKey operation", tsp, pr_err))
             goto out;
 
         if (g_import_key_error != ErrorCode::OK) {
@@ -128,7 +123,7 @@ int import_key(sp<IKeymasterDevice> hal,
             << " private key into KeyMaster" << std::endl;
         ok = true;
 out:
-        util::destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
+        destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
     }
     g_master_mutex.unlock();
 
@@ -141,12 +136,8 @@ int export_key(sp<IKeymasterDevice> hal,
     struct ::timespec ts;
     struct timespec *const tsp = reinterpret_cast<struct timespec *>(&ts);
 
-    if (util::prepare_timeout(tsp, 2, pr_err))
+    if (prepare_timeout(tsp, 2, pr_err))
         return -1;
-
-    hidl_vec<uint8_t> application_id;
-    application_id.resize(sizeof("suskeymaster") - 1);
-    std::memcpy(application_id.data(), "suskeymaster", sizeof("suskeymaster") - 1);
 
     bool ok = false;
     g_master_mutex.lock();
@@ -154,18 +145,18 @@ int export_key(sp<IKeymasterDevice> hal,
         g_export_key_error = ErrorCode::UNKNOWN_ERROR;
         g_export_key_output = {};
 
-        if (util::try_init_g_sem(&g_sem, &g_sem_inited, pr_err))
+        if (try_init_g_sem(&g_sem, &g_sem_inited, pr_err))
             goto out;
 
-        hal->exportKey(KeyFormat::X509, key, application_id, {}, export_key_cb);
+        hal->exportKey(KeyFormat::X509, key, get_sus_application_id(), {}, export_key_cb);
 
-        if (util::wait_on_sem(&g_sem, "exportKey operation", tsp, pr_err))
+        if (wait_on_sem(&g_sem, "exportKey operation", tsp, pr_err))
             goto out;
 
         if (g_export_key_error != ErrorCode::OK) {
             std::cerr << "exportKey operation failed: "
-                << static_cast<int32_t>(g_import_key_error) <<
-                " (" << toString(g_import_key_error) << ")" << std::endl;
+                << static_cast<int32_t>(g_export_key_error) <<
+                " (" << toString(g_export_key_error) << ")" << std::endl;
             goto out;
         }
 
@@ -174,7 +165,7 @@ int export_key(sp<IKeymasterDevice> hal,
         ok = true;
 
 out:
-        util::destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
+        destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
     }
     g_master_mutex.unlock();
 

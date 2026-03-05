@@ -19,10 +19,9 @@ Diagnostics:
 If:
   PathMatch: \.(c|h)$
 CompileFlags:
-  Add: [
-    -xc,
-    -std=c11
-  ]
+  Add:
+    - "-xc"
+    - "-std=c11"
 ---
 If:
   PathMatch: \.(cc|cpp|cxx|hpp|hh|hxx)$

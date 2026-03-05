@@ -2,6 +2,7 @@
 #include "key-desc.h"
 #include "keymaster-types.h"
 #include <libgenericutil/cert-types.h>
+#include <libsuscertsign/keybox.h>
 #include <libsuscertsign/suscertsign.h>
 #include <core/log.h>
 #include <core/util.h>
@@ -58,7 +59,8 @@ i32 leaf_cert_gen(VECTOR(u8) *out,
     ASN1_INTEGER *serial = NULL;
     X509_ALGOR *tbs_sig_alg = NULL;
     X509_NAME *issuer = NULL, *subject = NULL;
-    const unsigned char *issuer_serial_str = NULL;
+    const struct keybox *builtin_kb = NULL;
+    const VECTOR(u8) issuer_serial_str = NULL;
     ASN1_TIME *not_before = NULL, *not_after = NULL;
 
     u8 key_usage_bits = 0;
@@ -132,12 +134,20 @@ i32 leaf_cert_gen(VECTOR(u8) *out,
         goto_error("Couldn't add the issuer name entry");
 
     /* add the issuer's (top-most cert's) serial number */
-    if (sus_cert_sign_retrieve_chain_data(signing_key_variant,
-                (const char **)&issuer_serial_str, NULL))
-        goto_error("Couldn't retrieve the top-most cert's serial number");
+    builtin_kb = keybox_get_builtin();
+    if (builtin_kb == NULL)
+        goto_error("Couldn't get the builtin keybox");
 
-    if (X509_NAME_add_entry_by_NID(issuer, NID_serialNumber,
-                V_ASN1_PRINTABLESTRING, issuer_serial_str, -1, -1, 0) == 0)
+    issuer_serial_str = keybox_get_batch_key_serial(builtin_kb,
+            signing_key_variant);
+    if (issuer_serial_str == NULL)
+        goto_error("Couldn't retrieve the batch key cert's serial number");
+    builtin_kb = NULL;
+
+    if (X509_NAME_add_entry_by_NID(issuer,
+                NID_serialNumber, V_ASN1_PRINTABLESTRING,
+                issuer_serial_str, vector_size(issuer_serial_str),
+                -1, 0) == 0)
         goto_error("Couldn't add the issuer serial entry");
 
     /* append the whole issuer sequence to the cert */
@@ -395,13 +405,18 @@ static ASN1_TIME *get_notafter(const struct KM_KeyDescription_v3 *desc,
     } else if (desc->softwareEnforced.__usageExpireDateTime_present) {
         time = desc->softwareEnforced.usageExpireDateTime / 1000;
     } else {
-        s_log_warn("No usageExpireDateTime present in key description; "
+        s_log_debug("No usageExpireDateTime present in key description; "
                 "setting `notAfter` to the expiration date of the "
                 "attestation batch key certificate");
 
-        if (sus_cert_sign_retrieve_chain_data(signing_key_variant, NULL, &time))
-        {
-            s_log_error("Failed to get `notAfter` of the "
+        const struct keybox *const kb = keybox_get_builtin();
+        if (kb == NULL) {
+            s_log_error("Failed to retrieve the builtin keybox");
+            ASN1_TIME_free(ret);
+            return NULL;
+        }
+        if (keybox_get_not_after(&time, kb, signing_key_variant)) {
+            s_log_error("Failed to get the `notAfter` value of the "
                     "attestation batch key certificate");
             ASN1_TIME_free(ret);
             return NULL;
@@ -515,27 +530,27 @@ static unsigned long get_bitstr_tl_length(unsigned long content_len)
     return 2 + lensz + 1; /* TAG | LENSZ | <LEN> | UNUSED BITS */
 }
 
-static void encode_bitstr_tl(unsigned char **p, unsigned long content_len)
+static void encode_bitstr_tl(unsigned char **p, unsigned long len)
 {
     /* TAG */
     **p = (u8)V_ASN1_BIT_STRING;
     (*p)++;
 
     /* LENGTH */
-    content_len++; /* count the unused bits field */
+    len++; /* count the unused bits field */
 
-    if (content_len <= 127) {
+    if (len <= 127) {
         /* Short-form length */
-        **p = (u8)(content_len & 0x7f);
+        **p = (u8)(len & 0x7f);
         (*p)++;
     } else {
         /* Long-form length */
         u8 lensz = 0;
-        unsigned long len = content_len;
-        do {
+        unsigned long tmp = len;
+        while (tmp != 0) {
             lensz++;
-            len >>= 8;
-        } while (len != 0);
+            tmp >>= 8;
+        }
 
         /* LENGTH SIZE */
         **p = 0x80 | lensz;
@@ -543,12 +558,12 @@ static void encode_bitstr_tl(unsigned char **p, unsigned long content_len)
 
         /* LENGTH (Big endian) */
         for (int i = lensz - 1; i >= 0; i--) {
-            (*p)[1 + (lensz - 1 - i)] = (lensz >> (8*i)) & 0xFF;
+            *(*p) = (len >> (8*i)) & 0xFF;
+            (*p)++;
         }
-        *p += lensz;
     }
 
-    /* UNUSED BITS (must always be 0 for X.509 signatures) */
+    /* UNUSED BITS (must always be 0 for DER-encoded X.509 signatures) */
     **p = 0x00;
     (*p)++;
 }

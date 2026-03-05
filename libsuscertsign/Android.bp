@@ -29,7 +29,8 @@ cc_library_static {
 
     static_libs: [
         "libcgdcore",
-        "libgenericutil"
+        "libgenericutil",
+        "libcrypto_sus_prebuilt"
     ],
 
     shared_libs: [

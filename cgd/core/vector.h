@@ -5,6 +5,7 @@
 
 #include "int.h"
 #include "log.h"
+#include "util.h"
 #include <assert.h>
 #include <stdbool.h>
 #include <stdlib.h>

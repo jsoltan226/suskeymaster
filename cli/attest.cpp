@@ -4,6 +4,7 @@
 #include <libsuscertmod/leaf-cert.h>
 #include <libsuscertmod/keymaster-types.h>
 #include <libgenericutil/util.h>
+#include <libgenericutil/atomic-wrapper.h>
 #include <android/hardware/keymaster/4.0/types.h>
 #include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
 #include <hidl/HidlSupport.h>
@@ -15,10 +16,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <ostream>
+#include <fstream>
 #include <iostream>
 #include <cstdbool>
-#include <stdatomic.h>
 #include <semaphore.h>
+#include <openssl/err.h>
 
 namespace suskeymaster {
 
@@ -64,7 +66,7 @@ static void generate_key_cb(
 {
     (void) out_characteristics;
 
-    if (!::atomic_load(&g_sem_inited)) {
+    if (!util_atomic_load_int(&g_sem_inited)) {
         std::cerr << "FATAL ERROR: Global semaphore not initialized!" << std::endl;
         std::abort();
     }
@@ -73,7 +75,7 @@ static void generate_key_cb(
     if (error == ErrorCode::OK)
         g_generate_key_output = out_key;
 
-    util::try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
+    try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
 }
 
 static ErrorCode g_attest_key_error = ErrorCode::UNKNOWN_ERROR;
@@ -83,7 +85,7 @@ static void attest_key_cb(
         hidl_vec<hidl_vec<uint8_t>> const& cert_chain
 )
 {
-    if (!::atomic_load(&g_sem_inited)) {
+    if (!util_atomic_load_int(&g_sem_inited)) {
         std::cerr << "FATAL ERROR: Global semaphore not initialized!" << std::endl;
         std::abort();
     }
@@ -97,7 +99,42 @@ static void attest_key_cb(
         g_attest_leaf_cert = cert_chain[0];
     }
 
-    util::try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
+    try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
+}
+
+static int openssl_err_print_cb(const char *msg, size_t size, void *userdata)
+{
+    (void) size;
+    (void) userdata;
+    std::cerr << msg;
+    return 1;
+}
+static void print_openssl_errors(void)
+{
+    std::cerr << "BEGIN OPENSSL ERRORS" << std::endl;
+    ERR_print_errors_cb(openssl_err_print_cb, NULL);
+    std::cerr << "END OPENSSL ERRORS" << std::endl;
+}
+
+static int write_file(const char *path, const hidl_vec<uint8_t>& in, const char *name)
+{
+    std::ofstream file(path, std::ios::binary | std::ios::ate);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open " << name << " \"" << path << "\": "
+            << errno << " (" << std::strerror(errno) << ")" << std::endl;
+        return 1;
+    }
+
+    file.write(reinterpret_cast<const char *>(in.data()), in.size());
+    if (file.fail()) {
+        std::cerr << "Failed to write " << name << " \"" << path << "\" : "
+            << errno << " (" << std::strerror(errno) << ")" << std::endl;
+        return 1;
+    }
+    file.close();
+
+    std::cout << "Successfully wrote " << name << " \"" << path << "\"" << std::endl;
+    return 0;
 }
 
 int generate_key(sp<IKeymasterDevice> hal, Algorithm alg, hidl_vec<uint8_t> &out)
@@ -115,7 +152,7 @@ int generate_key(sp<IKeymasterDevice> hal, Algorithm alg, hidl_vec<uint8_t> &out
 
     struct ::timespec ts;
     struct timespec *const tsp = reinterpret_cast<struct timespec *>(&ts);
-    if (util::prepare_timeout(tsp, 2, pr_err))
+    if (prepare_timeout(tsp, 2, pr_err))
         return -1;
 
     bool ok = false;
@@ -124,11 +161,11 @@ int generate_key(sp<IKeymasterDevice> hal, Algorithm alg, hidl_vec<uint8_t> &out
         g_generate_key_error = ErrorCode::UNKNOWN_ERROR;
         g_generate_key_output = {};
 
-        if (util::try_init_g_sem(&g_sem, &g_sem_inited, pr_err)) goto out;
+        if (try_init_g_sem(&g_sem, &g_sem_inited, pr_err)) goto out;
 
         hal->generateKey(params, generate_key_cb);
 
-        if (util::wait_on_sem(&g_sem, "generateKey operation", tsp, pr_err)) goto out;
+        if (wait_on_sem(&g_sem, "generateKey operation", tsp, pr_err)) goto out;
 
         if (g_generate_key_error != ErrorCode::OK) {
             std::cerr << "generateKey operation failed: "
@@ -142,7 +179,7 @@ int generate_key(sp<IKeymasterDevice> hal, Algorithm alg, hidl_vec<uint8_t> &out
         ok = true;
 
 out:
-        util::destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
+        destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
     }
     g_master_mutex.unlock();
 
@@ -156,7 +193,7 @@ int attest_key(sp<IKeymasterDevice> hal, const hidl_vec<uint8_t>& key)
 
     struct ::timespec ts;
     struct timespec *const tsp = reinterpret_cast<struct timespec *>(&ts);
-    if (util::prepare_timeout(tsp, 5, pr_err))
+    if (prepare_timeout(tsp, 5, pr_err))
         return -1;
 
     VECTOR(u8) leaf_cert = vector_new(u8);
@@ -167,12 +204,12 @@ int attest_key(sp<IKeymasterDevice> hal, const hidl_vec<uint8_t>& key)
         g_attest_key_error = ErrorCode::UNKNOWN_ERROR;
         g_attest_leaf_cert = {};
 
-        if (util::try_init_g_sem(&g_sem, &g_sem_inited, pr_err))
+        if (try_init_g_sem(&g_sem, &g_sem_inited, pr_err))
             goto out;
 
         hal->attestKey(key, params, attest_key_cb);
 
-        if (util::wait_on_sem(&g_sem, "attestKey operation", tsp, pr_err))
+        if (wait_on_sem(&g_sem, "attestKey operation", tsp, pr_err))
             goto out;
 
         if (g_attest_key_error != ErrorCode::OK) {
@@ -187,7 +224,7 @@ int attest_key(sp<IKeymasterDevice> hal, const hidl_vec<uint8_t>& key)
         ok = true;
 
 out:
-        util::destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
+        destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
     }
     g_master_mutex.unlock();
 
@@ -201,6 +238,10 @@ out:
     struct KM_KeyDescription_v3 *km_desc = NULL;
     if (leaf_cert_parse(leaf_cert, NULL, NULL, &km_desc)) {
         std::cerr << "Failed to parse the leaf certificate" << std::endl;
+        print_openssl_errors();
+        hidl_vec<uint8_t> hidl_leaf_cert;
+        hidl_leaf_cert.setToExternal(leaf_cert, vector_size(leaf_cert), false);
+        (void) write_file("failed-leaf-cert.der", hidl_leaf_cert, "failed attestation DER");
         vector_destroy(&leaf_cert);
         return 1;
     }
@@ -209,7 +250,7 @@ out:
     key_desc_dump(km_desc, pr_info);
     key_desc_destroy(&km_desc);
 
-    return -1;
+    return 0;
 }
 
 static void init_ec_gen_params(hidl_vec<KeyParameter>& params)
@@ -218,6 +259,7 @@ static void init_ec_gen_params(hidl_vec<KeyParameter>& params)
         PARAM_ALGOR, PARAM_DIGEST,
         PARAM_EC_CURVE,
         PARAM_PURPOSE_SIGN, PARAM_PURPOSE_VERIFY, PARAM_NO_AUTH_REQUIRED,
+        PARAM_APPLICATION_ID,
         PARAM_MAX_
     };
     params.resize(PARAM_MAX_);
@@ -236,6 +278,9 @@ static void init_ec_gen_params(hidl_vec<KeyParameter>& params)
     params[PARAM_PURPOSE_VERIFY].f.purpose = KeyPurpose::VERIFY;
     params[PARAM_NO_AUTH_REQUIRED].tag = Tag::NO_AUTH_REQUIRED;
     params[PARAM_NO_AUTH_REQUIRED].f.boolValue = true;
+
+    params[PARAM_APPLICATION_ID].tag = Tag::APPLICATION_ID;
+    params[PARAM_APPLICATION_ID].blob = get_sus_application_id();
 }
 
 static void init_rsa_gen_params(hidl_vec<KeyParameter>& params)
@@ -244,6 +289,7 @@ static void init_rsa_gen_params(hidl_vec<KeyParameter>& params)
         PARAM_ALGOR, PARAM_DIGEST,
         PARAM_KEY_SIZE, PARAM_PADDING, PARAM_RSA_EXP,
         PARAM_PURPOSE_SIGN, PARAM_PURPOSE_VERIFY, PARAM_NO_AUTH_REQUIRED,
+        PARAM_APPLICATION_ID,
         PARAM_MAX_
     };
     params.resize(PARAM_MAX_);
@@ -267,12 +313,16 @@ static void init_rsa_gen_params(hidl_vec<KeyParameter>& params)
     params[PARAM_PURPOSE_VERIFY].f.purpose = KeyPurpose::VERIFY;
     params[PARAM_NO_AUTH_REQUIRED].tag = Tag::NO_AUTH_REQUIRED;
     params[PARAM_NO_AUTH_REQUIRED].f.boolValue = true;
+
+    params[PARAM_APPLICATION_ID].tag = Tag::APPLICATION_ID;
+    params[PARAM_APPLICATION_ID].blob = get_sus_application_id();
 }
 
 static void init_attest_key_params(hidl_vec<KeyParameter>& params)
 {
     enum {
         PARAM_ATTESTATION_CHALLENGE, PARAM_ATTESTATION_APPLICATION_ID,
+        PARAM_APPLICATION_ID,
         PARAM_MAX_
     };
     params.resize(PARAM_MAX_);
@@ -286,14 +336,17 @@ static void init_attest_key_params(hidl_vec<KeyParameter>& params)
             challenge, challenge + challenge_len
     );
 
-    static const uint8_t *const application_id = reinterpret_cast<const uint8_t *>
+    static const uint8_t *const att_application_id = reinterpret_cast<const uint8_t *>
         ("suskeymaster TEST APPLICATION ID");
-    static const size_t application_id_len = sizeof(application_id) - 1;
+    static const size_t att_application_id_len = sizeof(att_application_id) - 1;
 
     params[PARAM_ATTESTATION_APPLICATION_ID].tag = Tag::ATTESTATION_APPLICATION_ID;
     params[PARAM_ATTESTATION_APPLICATION_ID].blob = hidl_vec<uint8_t>(
-            application_id, application_id + application_id_len
+            att_application_id, att_application_id + att_application_id_len
     );
+
+    params[PARAM_APPLICATION_ID].tag = Tag::APPLICATION_ID;
+    params[PARAM_APPLICATION_ID].blob = get_sus_application_id();
 }
 
 } /* namespace suskeymaster */
