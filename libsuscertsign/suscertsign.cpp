@@ -74,25 +74,26 @@ extern "C" int sus_cert_sign(unsigned char *tbs_der, unsigned long tbs_der_len,
     hidl_vec<uint8_t> keyblob_hidl;
     hidl_vec<KeyParameter> params_hidl;
 
-    const struct keybox *builtin_kb = NULL;
+    const struct keybox *keybox = NULL;
     const VECTOR(u8) keyblob = NULL;
 
-    builtin_kb = keybox_get_builtin();
-    if (builtin_kb == NULL) {
-        pr_err("Failed to retrieve the builtin keybox");
+    if (keybox_read_lock_current(&keybox)) {
+        pr_err("Failed to retrieve the current keybox");
         return -1;
     }
-    keyblob = keybox_get_wrapped_key(builtin_kb, variant);
-    if (keyblob == NULL) {
-        builtin_kb = NULL;
-        pr_err("Failed to retrieve the key blob from the builtin keybox");
-        return -1;
-    }
-    builtin_kb = NULL;
+    {
+        keyblob = keybox_get_wrapped_key(keybox, variant);
+        if (keyblob == NULL) {
+            keybox_unlock_current(&keybox);
+            pr_err("Failed to retrieve the key blob from the current keybox");
+            return -1;
+        }
 
-    keyblob_hidl.resize(vector_size(keyblob));
-    std::memcpy(keyblob_hidl.data(), keyblob, vector_size(keyblob));
-    keyblob = NULL;
+        keyblob_hidl.resize(vector_size(keyblob));
+        std::memcpy(keyblob_hidl.data(), keyblob, vector_size(keyblob));
+        keyblob = NULL;
+    }
+    keybox_unlock_current(&keybox);
 
     if (variant == SUS_KEY_RSA)
         init_rsa_params(params_hidl);

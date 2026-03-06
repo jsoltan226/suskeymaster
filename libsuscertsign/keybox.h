@@ -26,6 +26,14 @@ void keybox_destroy(struct keybox **kb_p);
 
 const struct keybox * keybox_get_builtin(void);
 
+
+#define KEYBOX_LOAD_PATH "/data/vendor/suskeybox.bin"
+
+i32 keybox_read_lock_current(const struct keybox **out);
+void keybox_unlock_current(const struct keybox **kb_p);
+
+i32 keybox_set_current(const struct keybox *kb);
+
 VECTOR(VECTOR(u8 const) const)
 keybox_get_cert_chain(const struct keybox *kb, enum sus_key_variant key_type);
 

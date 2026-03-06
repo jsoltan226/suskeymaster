@@ -112,63 +112,69 @@ int sus_keymaster_hack_cert_chain(hidl_vec<hidl_vec<uint8_t>>& cert_chain)
 
     vector_destroy(&old_leaf);
 
-    const suskeymaster::keybox *builtin_kb = suskeymaster::keybox_get_builtin();
-    if (builtin_kb == NULL) {
-        __android_log_print(ANDROID_LOG_ERROR, "SUS", "Failed to get the builtin keybox!");
+    const suskeymaster::keybox *kb = NULL;
+    if (suskeymaster::keybox_read_lock_current(&kb)) {
+        __android_log_print(ANDROID_LOG_ERROR, "SUS", "Failed to get the current keybox!");
         vector_destroy(&new_leaf);
         return 1;
     }
+    {
 
-    VECTOR(VECTOR(u8 const) const) new_chain =
-        suskeymaster::keybox_get_cert_chain(builtin_kb, variant);
-    if (vector_size(new_chain) == 0) {
-        __android_log_print(ANDROID_LOG_ERROR, "SUS", "Failed to get the new chain!");
-        vector_destroy(&new_leaf);
-        return 1;
-    }
-
-    /* Resize the output vector */
-
-    /* Number of certificates in chain + leaf */
-    const u32 new_chain_len = vector_size(new_chain) + 1;
-    cert_chain.resize(new_chain_len);
-    if (cert_chain.size() != new_chain_len) {
-        __android_log_print(ANDROID_LOG_ERROR, "SUS",
-                "Failed to resize the new cert chain vector!\n");
-        vector_destroy(&new_leaf);
-        return 1;
-    }
-
-    /* Copy the leaf */
-
-    const u32 new_leaf_size = vector_size(new_leaf);
-    cert_chain[0].resize(new_leaf_size);
-    if (cert_chain[0].size() != new_leaf_size) {
-        __android_log_print(ANDROID_LOG_ERROR, "SUS", "Failed to resize the new leaf cert!\n");
-        vector_destroy(&new_leaf);
-        return 1;
-    }
-
-    std::memcpy(cert_chain[0].data(), new_leaf, new_leaf_size);
-    vector_destroy(&new_leaf);
-
-    /* Copy the rest of the chain */
-
-    for (u32 i = 0; i < new_chain_len - 1; i++) {
-        const u32 new_sz = vector_size(new_chain[i]);
-
-        cert_chain[i + 1].resize(new_sz);
-        if (cert_chain[i + 1].size() != new_sz) {
-            __android_log_print(ANDROID_LOG_ERROR, "SUS",
-                    "Failed to resize cert no %d!\n", i + 1);
-            return 1;
+        VECTOR(VECTOR(u8 const) const) new_chain =
+            suskeymaster::keybox_get_cert_chain(kb, variant);
+        if (vector_size(new_chain) == 0) {
+            __android_log_print(ANDROID_LOG_ERROR, "SUS", "Failed to get the new chain!");
+            goto kb_out_err;
         }
 
-        std::memcpy(cert_chain[i + 1].data(), new_chain[i], new_sz);
+        /* Resize the output vector */
+
+        /* Number of certificates in chain + leaf */
+        const u32 new_chain_len = vector_size(new_chain) + 1;
+        cert_chain.resize(new_chain_len);
+        if (cert_chain.size() != new_chain_len) {
+            __android_log_print(ANDROID_LOG_ERROR, "SUS",
+                    "Failed to resize the new cert chain vector!\n");
+            goto kb_out_err;
+        }
+
+        /* Copy the leaf */
+
+        const u32 new_leaf_size = vector_size(new_leaf);
+        cert_chain[0].resize(new_leaf_size);
+        if (cert_chain[0].size() != new_leaf_size) {
+            __android_log_print(ANDROID_LOG_ERROR, "SUS", "Failed to resize the new leaf cert!\n");
+            goto kb_out_err;
+        }
+
+        std::memcpy(cert_chain[0].data(), new_leaf, new_leaf_size);
+        vector_destroy(&new_leaf);
+
+        /* Copy the rest of the chain */
+
+        for (u32 i = 0; i < new_chain_len - 1; i++) {
+            const u32 new_sz = vector_size(new_chain[i]);
+
+            cert_chain[i + 1].resize(new_sz);
+            if (cert_chain[i + 1].size() != new_sz) {
+                __android_log_print(ANDROID_LOG_ERROR, "SUS",
+                        "Failed to resize cert no %d!\n", i + 1);
+                goto kb_out_err;
+            }
+
+            std::memcpy(cert_chain[i + 1].data(), new_chain[i], new_sz);
+        }
+
     }
+    suskeymaster::keybox_unlock_current(&kb);
 
     __android_log_print(ANDROID_LOG_INFO, "SUS", "Successfully hacked the cert chain!");
     return 0;
+
+kb_out_err:
+    suskeymaster::keybox_unlock_current(&kb);
+    vector_destroy(&new_leaf);
+    return 1;
 }
 
 } /* namespace libsuskeymaster */

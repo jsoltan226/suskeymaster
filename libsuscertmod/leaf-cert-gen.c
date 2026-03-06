@@ -59,7 +59,7 @@ i32 leaf_cert_gen(VECTOR(u8) *out,
     ASN1_INTEGER *serial = NULL;
     X509_ALGOR *tbs_sig_alg = NULL;
     X509_NAME *issuer = NULL, *subject = NULL;
-    const struct keybox *builtin_kb = NULL;
+    const struct keybox *keybox = NULL;
     const VECTOR(u8) issuer_serial_str = NULL;
     ASN1_TIME *not_before = NULL, *not_after = NULL;
 
@@ -134,15 +134,19 @@ i32 leaf_cert_gen(VECTOR(u8) *out,
         goto_error("Couldn't add the issuer name entry");
 
     /* add the issuer's (top-most cert's) serial number */
-    builtin_kb = keybox_get_builtin();
-    if (builtin_kb == NULL)
-        goto_error("Couldn't get the builtin keybox");
+    if (keybox_read_lock_current(&keybox))
+        goto_error("Couldn't read-lock the current keybox");
+    {
+        issuer_serial_str = keybox_get_batch_key_serial(keybox,
+                signing_key_variant);
 
-    issuer_serial_str = keybox_get_batch_key_serial(builtin_kb,
-            signing_key_variant);
-    if (issuer_serial_str == NULL)
-        goto_error("Couldn't retrieve the batch key cert's serial number");
-    builtin_kb = NULL;
+        if (issuer_serial_str == NULL) {
+            s_log_error("Couldn't retrieve the batch key cert's serial number");
+            keybox_unlock_current(&keybox);
+            goto err;
+        }
+    }
+    keybox_unlock_current(&keybox);
 
     if (X509_NAME_add_entry_by_NID(issuer,
                 NID_serialNumber, V_ASN1_PRINTABLESTRING,
@@ -409,18 +413,22 @@ static ASN1_TIME *get_notafter(const struct KM_KeyDescription_v3 *desc,
                 "setting `notAfter` to the expiration date of the "
                 "attestation batch key certificate");
 
-        const struct keybox *const kb = keybox_get_builtin();
-        if (kb == NULL) {
-            s_log_error("Failed to retrieve the builtin keybox");
+        const struct keybox *kb = NULL;
+        if (keybox_read_lock_current(&kb)) {
+            s_log_error("Failed to read-lock the current keybox");
             ASN1_TIME_free(ret);
             return NULL;
         }
-        if (keybox_get_not_after(&time, kb, signing_key_variant)) {
-            s_log_error("Failed to get the `notAfter` value of the "
-                    "attestation batch key certificate");
-            ASN1_TIME_free(ret);
-            return NULL;
+        {
+            if (keybox_get_not_after(&time, kb, signing_key_variant)) {
+                s_log_error("Failed to get the `notAfter` value of the "
+                        "attestation batch key certificate");
+                ASN1_TIME_free(ret);
+                keybox_unlock_current(&kb);
+                return NULL;
+            }
         }
+        keybox_unlock_current(&kb);
     }
 
     if (ASN1_TIME_set(ret, time) == 0) {
