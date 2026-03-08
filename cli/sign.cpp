@@ -162,8 +162,9 @@ int sign(sp<IKeymasterDevice> hal,
         hidl_vec<uint8_t>& out)
 {
     bool ok = false;
-    g_master_mutex.lock();
     {
+        std::lock_guard<std::mutex> lock(g_master_mutex);
+
         g_begin_error = ErrorCode::UNKNOWN_ERROR;
         g_operation_handle = 0;
         g_finish_error = ErrorCode::UNKNOWN_ERROR;
@@ -232,7 +233,6 @@ int sign(sp<IKeymasterDevice> hal,
 out:
         destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
     }
-    g_master_mutex.unlock();
 
     if (!ok) {
         std::cerr << "Failed to sign message with provided key" << std::endl;

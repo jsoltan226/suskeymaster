@@ -98,8 +98,9 @@ int import_key(sp<IKeymasterDevice> hal,
     params[1].f.algorithm = alg;
 
     bool ok = false;
-    g_master_mutex.lock();
     {
+        std::lock_guard<std::mutex> lock(g_master_mutex);
+
         g_import_key_error = ErrorCode::UNKNOWN_ERROR;
         g_import_key_output = {};
 
@@ -125,7 +126,6 @@ int import_key(sp<IKeymasterDevice> hal,
 out:
         destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
     }
-    g_master_mutex.unlock();
 
     return ok ? 0 : 1;
 }
@@ -140,8 +140,9 @@ int export_key(sp<IKeymasterDevice> hal,
         return -1;
 
     bool ok = false;
-    g_master_mutex.lock();
     {
+        std::lock_guard<std::mutex> lock(g_master_mutex);
+
         g_export_key_error = ErrorCode::UNKNOWN_ERROR;
         g_export_key_output = {};
 
@@ -167,7 +168,6 @@ int export_key(sp<IKeymasterDevice> hal,
 out:
         destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
     }
-    g_master_mutex.unlock();
 
     return ok ? 0 : 1;
 }

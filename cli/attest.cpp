@@ -156,8 +156,9 @@ int generate_key(sp<IKeymasterDevice> hal, Algorithm alg, hidl_vec<uint8_t> &out
         return -1;
 
     bool ok = false;
-    g_master_mutex.lock();
     {
+        std::lock_guard<std::mutex> lock(g_master_mutex);
+
         g_generate_key_error = ErrorCode::UNKNOWN_ERROR;
         g_generate_key_output = {};
 
@@ -181,7 +182,6 @@ int generate_key(sp<IKeymasterDevice> hal, Algorithm alg, hidl_vec<uint8_t> &out
 out:
         destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
     }
-    g_master_mutex.unlock();
 
     return ok ? 0 : 1;
 }
@@ -199,8 +199,9 @@ int attest_key(sp<IKeymasterDevice> hal, const hidl_vec<uint8_t>& key)
     VECTOR(u8) leaf_cert = vector_new(u8);
 
     bool ok = false;
-    g_master_mutex.lock();
     {
+        std::lock_guard<std::mutex> lock(g_master_mutex);
+
         g_attest_key_error = ErrorCode::UNKNOWN_ERROR;
         g_attest_leaf_cert = {};
 
@@ -226,7 +227,6 @@ int attest_key(sp<IKeymasterDevice> hal, const hidl_vec<uint8_t>& key)
 out:
         destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
     }
-    g_master_mutex.unlock();
 
     if (!ok) {
         std::cerr << "Failed to generate a key attestation" << std::endl;

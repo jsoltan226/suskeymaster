@@ -10,7 +10,7 @@ cc_binary {
     name: "suskeymaster",
     defaults: [ "suskeymaster_cli_defaults" ],
     srcs: [
-        "*.cpp",
+        "*.cpp", "*.c"
     ],
     cflags: [ "-g", "-O0" ],
     cppflags: [ "-g", "-O0" ],

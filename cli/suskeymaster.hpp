@@ -53,11 +53,35 @@ namespace suskeymaster {
 
         std::string const& out_file_path
     );
-
     int dump_keybox(
         std::string const& keybox_path,
 
         std::string const& out_dir_path
+    );
+
+    int transact_c_generate_and_attest_wrapping_key(
+        ::android::sp<::android::hardware::keymaster::V4_0::IKeymasterDevice>   hal,
+
+        ::android::hardware::hidl_vec<uint8_t>&                                 out_wrapping_blob,
+        ::android::hardware::hidl_vec<uint8_t>&                                 out_wrapping_pubkey,
+        ::android::hardware::hidl_vec<::android::hardware::hidl_vec<uint8_t>> * out_cert_chain
+    );
+    int transact_s_verify_attestation(
+        ::android::hardware::hidl_vec<::android::hardware::hidl_vec<uint8_t>> const& cert_chain
+    );
+    int transact_s_encrypt_key(
+        ::android::hardware::hidl_vec<uint8_t> const&                           in_private_key,
+        ::android::hardware::hidl_vec<uint8_t> const&                           in_wrapping_key,
+
+        ::android::hardware::hidl_vec<uint8_t>&                                 out_wrapped_data
+    );
+    int transact_c_import_wrapped_key(
+        ::android::sp<::android::hardware::keymaster::V4_0::IKeymasterDevice>   hal,
+
+        ::android::hardware::hidl_vec<uint8_t> const&                           in_wrapped_data,
+        ::android::hardware::hidl_vec<uint8_t> const&                           in_wrapping_blob,
+
+        ::android::hardware::hidl_vec<uint8_t>&                                 out_key_blob
     );
 };
 
