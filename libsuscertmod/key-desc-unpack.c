@@ -10,12 +10,6 @@
 
 #define MODULE_NAME "key-desc"
 
-static bool parse_auth_list(struct KM_AuthorizationList_v3 *out,
-        const unsigned char **p, long len);
-
-static bool parse_root_of_trust(struct KM_RootOfTrust_v3 *out,
-        const unsigned char **p, long len);
-
 static bool unwrap_asn1_sequence(const unsigned char **p, long len,
         const unsigned char **out_start, const unsigned char **out_end,
         long *out_len);
@@ -84,10 +78,10 @@ struct KM_KeyDescription_v3 * key_desc_unpack(const ASN1_OCTET_STRING *desc)
         goto_error("Missing uniqueId field in key description");
 
 
-    if (!parse_auth_list(&ret->softwareEnforced, &p, seq_end - p))
+    if (!key_desc_parse_auth_list(&ret->softwareEnforced, &p, seq_end - p))
         goto_error("Missing or invalid softwareEnforced authorization list");
 
-    if (!parse_auth_list(&ret->hardwareEnforced, &p, seq_end - p))
+    if (!key_desc_parse_auth_list(&ret->hardwareEnforced, &p, seq_end - p))
         goto_error("Missing or invalid hardwareEnforced authorization list");
 
     if (p != seq_end)
@@ -106,7 +100,7 @@ err:
 }
 
 
-static bool parse_auth_list(struct KM_AuthorizationList_v3 *out,
+bool key_desc_parse_auth_list(struct KM_AuthorizationList_v3 *out,
         const unsigned char **p, long len)
 {
     const unsigned char *seq_end = NULL;
@@ -231,8 +225,9 @@ static bool parse_auth_list(struct KM_AuthorizationList_v3 *out,
                     (int32_t *)&out->keyOrigin);
             break;
         case __KM_TAG_MASK(KM_TAG_ROOT_OF_TRUST):
-            out->__rootOfTrust_present = parse_root_of_trust(&out->rootOfTrust,
-                    p, field_len);
+            out->__rootOfTrust_present = key_desc_parse_root_of_trust(
+                    &out->rootOfTrust, p, field_len
+            );
             break;
         case __KM_TAG_MASK(KM_TAG_OS_VERSION):
             out->__osVersion_present = parse_integer_64(p, field_len,
@@ -305,7 +300,7 @@ static bool parse_auth_list(struct KM_AuthorizationList_v3 *out,
     return true;
 }
 
-static bool parse_root_of_trust(struct KM_RootOfTrust_v3 *out,
+bool key_desc_parse_root_of_trust(struct KM_RootOfTrust_v3 *out,
         const unsigned  char **p, long len)
 {
     const unsigned char *seq_end = NULL;

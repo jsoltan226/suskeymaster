@@ -13,47 +13,19 @@
 
 #define MODULE_NAME "key-desc"
 
-static void destroy_auth_list(struct KM_AuthorizationList_v3 *a);
-
-enum measure_auth_list_variant {
-    MEASURE_AL_SOFTWARE_ENFORCED,
-    MEASURE_AL_HARDWARE_ENFORCED,
-};
-struct measure_ctx {
-    bool initialized_;
-    ASN1_INTEGER *i;
-    ASN1_OCTET_STRING *str;
-    ASN1_ENUMERATED *e;
-
-    struct measure_auth_list_data {
-        u32 al_size;
-        u32 al_rot_size;
-    } hardwareEnforced, softwareEnforced;
-};
-
-static i32 measure_ctx_init(struct measure_ctx *ctx);
-static void measure_ctx_destroy(struct measure_ctx *ctx);
-
-static i32 measure_inner_km_desc_size(struct measure_ctx *ctx,
-        const struct KM_KeyDescription_v3 *desc);
-static i32 measure_outer_km_auth_list_size(struct measure_ctx *ctx,
-        const struct KM_AuthorizationList_v3 *al,
-        enum measure_auth_list_variant variant
-);
-static i32 measure_inner_km_root_of_trust_size(struct measure_ctx *ctx,
-        const struct KM_RootOfTrust_v3 *rot);
-
 /* All of these are `measure_outer_*` */
-static i32 measure_integer_size(struct measure_ctx *ctx, i64 val, u32 tag);
-static i32 measure_octet_string_size(struct measure_ctx *ctx,
+static i32 measure_integer_size(struct key_desc_measure_ctx *ctx,
+        i64 val, u32 tag);
+static i32 measure_octet_string_size(struct key_desc_measure_ctx *ctx,
         const VECTOR(u8) str, u32 tag);
-static i32 measure_enumerated_size(struct measure_ctx *ctx, int val, u32 tag);
-static i32 measure_set_of_integer_32_size(struct measure_ctx *ctx,
+static i32 measure_enumerated_size(struct key_desc_measure_ctx *ctx,
+        int val, u32 tag);
+static i32 measure_set_of_integer_32_size(struct key_desc_measure_ctx *ctx,
         const VECTOR(i32) set, u32 tag);
-static i32 measure_set_of_integer_64_size(struct measure_ctx *ctx,
+static i32 measure_set_of_integer_64_size(struct key_desc_measure_ctx *ctx,
         const VECTOR(i64) set, u32 tag);
 
-static i32 measure_tagged_null_size(struct measure_ctx *ctx_,
+static i32 measure_tagged_null_size(struct key_desc_measure_ctx *ctx_,
         void *null_, u32 tag);
 
 #define MEASURE_NULL_SIZE 2
@@ -63,32 +35,21 @@ static i32 measure_tagged_null_size(struct measure_ctx *ctx_,
  * but not modify them */
 
 static bool write_integer(unsigned char **p, unsigned char *end,
-        const struct measure_ctx *mctx, int64_t val, u32 tag);
+        const struct key_desc_measure_ctx *mctx, i64 val, u32 tag);
 static bool write_enumerated(unsigned char **p, unsigned char *end,
-        const struct measure_ctx *mctx, int val, u32 tag);
+        const struct key_desc_measure_ctx *mctx, int val, u32 tag);
 static bool write_boolean(unsigned char **p, unsigned char *end, bool val);
 static bool write_octet_string(unsigned char **p, unsigned char *end,
-        const struct measure_ctx *mctx, const VECTOR(u8) str, u32 tag);
+        const struct key_desc_measure_ctx *mctx, const VECTOR(u8) str, u32 tag);
 static bool write_set_of_integer_32(unsigned char **p, unsigned char *end,
-        const struct measure_ctx *mctx, const VECTOR(i32) set, u32 tag);
+        const struct key_desc_measure_ctx *mctx, const VECTOR(i32) s, u32 tag);
 static bool write_set_of_integer_64(unsigned char **p, unsigned char *end,
-        const struct measure_ctx *mctx, const VECTOR(i64) set, u32 tag);
+        const struct key_desc_measure_ctx *mctx, const VECTOR(i64) s, u32 tag);
 static bool write_tagged_null(unsigned char **p, unsigned char *end, u32 tag);
-
-static bool write_sequence_header(unsigned char **p, unsigned char *end,
-        u32 content_len, u32 tag);
-static bool write_authorization_list(unsigned char **p, unsigned char *end,
-        const struct KM_AuthorizationList_v3 *al,
-        const struct measure_ctx *mctx, enum measure_auth_list_variant variant
-);
-static bool write_root_of_trust(unsigned char **p, unsigned char *end,
-        const struct KM_RootOfTrust_v3 *rot,
-        const struct measure_ctx *mctx, enum measure_auth_list_variant variant
-);
 
 ASN1_OCTET_STRING * key_desc_repack(const struct KM_KeyDescription_v3 *desc)
 {
-    struct measure_ctx m_ctx = { 0 };
+    struct key_desc_measure_ctx m_ctx = { 0 };
     unsigned char *der = NULL;
     i32 key_desc_content_len = 0;
     u32 der_len = 0;
@@ -97,10 +58,10 @@ ASN1_OCTET_STRING * key_desc_repack(const struct KM_KeyDescription_v3 *desc)
 
     ASN1_OCTET_STRING *ret = NULL;
 
-    if (measure_ctx_init(&m_ctx))
+    if (key_desc_measure_ctx_init(&m_ctx))
         goto_error("Failed to initialize the measurement context");
 
-    key_desc_content_len = measure_inner_km_desc_size(&m_ctx, desc);
+    key_desc_content_len = key_desc_measure_inner_key_desc(&m_ctx, desc);
     if (key_desc_content_len < 0)
         goto_error("Failed to measure the KeyDescription's length");
 
@@ -114,7 +75,8 @@ ASN1_OCTET_STRING * key_desc_repack(const struct KM_KeyDescription_v3 *desc)
     end = der + der_len;
 
     /* Write the KeyDescription SEQUENCE header */
-    if (!write_sequence_header(&p, end, key_desc_content_len, KM_TAG_INVALID))
+    if (!key_desc_write_sequence_header(&p, end,
+                key_desc_content_len, KM_TAG_INVALID))
         goto_error("Failed to write the KeyDescription SEQUENCE header");
 
     /* Construct the actual KeyDescription sequence */
@@ -141,11 +103,11 @@ ASN1_OCTET_STRING * key_desc_repack(const struct KM_KeyDescription_v3 *desc)
     if (!write_octet_string(&p, end, &m_ctx, desc->uniqueId, KM_TAG_INVALID))
         goto_error("Failed to write the uniqueId string");
 
-    if (!write_authorization_list(&p, end, &desc->softwareEnforced, &m_ctx,
+    if (!key_desc_write_auth_list(&p, end, &desc->softwareEnforced, &m_ctx,
             MEASURE_AL_SOFTWARE_ENFORCED))
         goto_error("Failed to write the softwareEnforced authorization list");
 
-    if (!write_authorization_list(&p, end, &desc->hardwareEnforced, &m_ctx,
+    if (!key_desc_write_auth_list(&p, end, &desc->hardwareEnforced, &m_ctx,
             MEASURE_AL_HARDWARE_ENFORCED))
         goto_error("Failed to write the hardwareEnforced authorization list");
 
@@ -164,7 +126,7 @@ ASN1_OCTET_STRING * key_desc_repack(const struct KM_KeyDescription_v3 *desc)
     s_log_info("Successfully serialized the KeyDescription");
 
     /* Clean up */
-    measure_ctx_destroy(&m_ctx);
+    key_desc_measure_ctx_destroy(&m_ctx);
     /* `der` is now owned by `ret`, so it shouldn't be freed */
 
     return ret;
@@ -179,7 +141,7 @@ err:
         der = NULL;
     }
 
-    measure_ctx_destroy(&m_ctx);
+    key_desc_measure_ctx_destroy(&m_ctx);
 
     return NULL;
 }
@@ -194,23 +156,22 @@ void key_desc_destroy(struct KM_KeyDescription_v3 **desc_p)
     vector_destroy(&d->attestationChallenge);
     vector_destroy(&d->uniqueId);
 
-    destroy_auth_list(&d->softwareEnforced);
-    destroy_auth_list(&d->hardwareEnforced);
+    key_desc_destroy_auth_list(&d->softwareEnforced);
+    key_desc_destroy_auth_list(&d->hardwareEnforced);
 
     memset(d, 0, sizeof(struct KM_KeyDescription_v3));
     free(d);
     *desc_p = NULL;
 }
 
-static void destroy_auth_list(struct KM_AuthorizationList_v3 *a)
+void key_desc_destroy_auth_list(struct KM_AuthorizationList_v3 *a)
 {
     vector_destroy(&a->purpose);
     vector_destroy(&a->blockMode);
     vector_destroy(&a->digest);
     vector_destroy(&a->padding);
     vector_destroy(&a->userSecureId);
-    vector_destroy(&a->rootOfTrust.verifiedBootKey);
-    vector_destroy(&a->rootOfTrust.verifiedBootHash);
+    key_desc_destroy_root_of_trust(&a->rootOfTrust);
     vector_destroy(&a->attestationApplicationId);
     vector_destroy(&a->attestationIdBrand);
     vector_destroy(&a->attestationIdDevice);
@@ -222,7 +183,15 @@ static void destroy_auth_list(struct KM_AuthorizationList_v3 *a)
     vector_destroy(&a->attestationIdModel);
 }
 
-static i32 measure_ctx_init(struct measure_ctx *ctx)
+void key_desc_destroy_root_of_trust(struct KM_RootOfTrust_v3 *rot)
+{
+    vector_destroy(&rot->verifiedBootKey);
+    rot->deviceLocked = 0;
+    rot->verifiedBootState = 0;
+    vector_destroy(&rot->verifiedBootHash);
+}
+
+i32 key_desc_measure_ctx_init(struct key_desc_measure_ctx *ctx)
 {
     if (ctx == NULL) {
         s_log_error("Invalid parameters!");
@@ -254,11 +223,11 @@ static i32 measure_ctx_init(struct measure_ctx *ctx)
     return 0;
 
 err:
-    measure_ctx_destroy(ctx);
+    key_desc_measure_ctx_destroy(ctx);
     return 1;
 }
 
-static void measure_ctx_destroy(struct measure_ctx *ctx)
+void key_desc_measure_ctx_destroy(struct key_desc_measure_ctx *ctx)
 {
     if (ctx == NULL || !ctx->initialized_)
         return;
@@ -281,7 +250,7 @@ static void measure_ctx_destroy(struct measure_ctx *ctx)
     ctx->hardwareEnforced.al_size = ctx->hardwareEnforced.al_rot_size = 0;
 }
 
-static i32 measure_inner_km_desc_size(struct measure_ctx *ctx,
+i32 key_desc_measure_inner_key_desc(struct key_desc_measure_ctx *ctx,
         const struct KM_KeyDescription_v3 *desc)
 {
     i32 content_len = 0, tmp = 0;
@@ -332,7 +301,7 @@ static i32 measure_inner_km_desc_size(struct measure_ctx *ctx,
     }
     content_len += tmp;
 
-    tmp = measure_outer_km_auth_list_size(ctx, &desc->softwareEnforced,
+    tmp = key_desc_measure_outer_auth_list(ctx, &desc->softwareEnforced,
             MEASURE_AL_SOFTWARE_ENFORCED);
     if (tmp < 0) {
         s_log_error("Failed to measure the size of the "
@@ -341,7 +310,7 @@ static i32 measure_inner_km_desc_size(struct measure_ctx *ctx,
     }
     content_len += tmp;
 
-    tmp = measure_outer_km_auth_list_size(ctx, &desc->hardwareEnforced,
+    tmp = key_desc_measure_outer_auth_list(ctx, &desc->hardwareEnforced,
             MEASURE_AL_HARDWARE_ENFORCED);
     if (tmp < 0) {
         s_log_error("Failed to measure the size of the "
@@ -353,9 +322,9 @@ static i32 measure_inner_km_desc_size(struct measure_ctx *ctx,
     return content_len;
 }
 
-static i32 measure_outer_km_auth_list_size(struct measure_ctx *ctx,
+i32 key_desc_measure_outer_auth_list(struct key_desc_measure_ctx *ctx,
         const struct KM_AuthorizationList_v3 *al,
-        enum measure_auth_list_variant variant
+        enum key_desc_measure_auth_list_variant variant
 )
 {
     if (ctx == NULL || al == NULL ||
@@ -428,19 +397,11 @@ static i32 measure_outer_km_auth_list_size(struct measure_ctx *ctx,
      * for `mctx`, store only the rootOfTrust content len */
     if (al->__rootOfTrust_present) {
         i32 tmp = 0;
-        tmp = measure_inner_km_root_of_trust_size(ctx, &al->rootOfTrust);
+        tmp = key_desc_measure_inner_root_of_trust(ctx, &al->rootOfTrust,
+                variant);
         if (tmp < 0) {
             s_log_error("Failed to measure the size of the rootOfTrust");
             return -1;
-        }
-
-        switch (variant) {
-        case MEASURE_AL_SOFTWARE_ENFORCED:
-            ctx->softwareEnforced.al_rot_size = tmp;
-            break;
-        case MEASURE_AL_HARDWARE_ENFORCED:
-            ctx->hardwareEnforced.al_rot_size = tmp;
-            break;
         }
 
         /* Inner SEQUENCE header */
@@ -490,8 +451,9 @@ static i32 measure_outer_km_auth_list_size(struct measure_ctx *ctx,
     return ret;
 }
 
-static i32 measure_inner_km_root_of_trust_size(struct measure_ctx *ctx,
-        const struct KM_RootOfTrust_v3 *rot)
+i32 key_desc_measure_inner_root_of_trust(struct key_desc_measure_ctx *ctx,
+        const struct KM_RootOfTrust_v3 *rot,
+        enum key_desc_measure_auth_list_variant variant)
 {
     i32 r = 0;
     i32 total_size = 0;
@@ -503,7 +465,8 @@ static i32 measure_inner_km_root_of_trust_size(struct measure_ctx *ctx,
     }
     total_size += r;
 
-    total_size += MEASURE_BOOLEAN_SIZE; /* `rot->deviceLocked` */
+    /* `rot->deviceLocked` */
+    total_size += MEASURE_BOOLEAN_SIZE;
 
     r = measure_enumerated_size(ctx, rot->verifiedBootState, KM_TAG_INVALID);
     if (r < 0) {
@@ -519,10 +482,20 @@ static i32 measure_inner_km_root_of_trust_size(struct measure_ctx *ctx,
     }
     total_size += r;
 
+    switch (variant) {
+    case MEASURE_AL_SOFTWARE_ENFORCED:
+        ctx->softwareEnforced.al_rot_size = total_size;
+        break;
+    case MEASURE_AL_HARDWARE_ENFORCED:
+        ctx->hardwareEnforced.al_rot_size = total_size;
+        break;
+    }
+
     return total_size;
 }
 
-static i32 measure_integer_size(struct measure_ctx *ctx, i64 val, u32 tag)
+static i32 measure_integer_size(struct key_desc_measure_ctx *ctx,
+        i64 val, u32 tag)
 {
     if (ctx == NULL || !ctx->initialized_) {
         s_log_error("Invalid parameters!");
@@ -543,7 +516,7 @@ static i32 measure_integer_size(struct measure_ctx *ctx, i64 val, u32 tag)
         return ASN1_object_size(true, content_len, __KM_TAG_MASK(tag));
 }
 
-static i32 measure_octet_string_size(struct measure_ctx *ctx,
+static i32 measure_octet_string_size(struct key_desc_measure_ctx *ctx,
         const VECTOR(u8) str, u32 tag)
 {
     if (ctx == NULL || !ctx->initialized_ || str == NULL) {
@@ -565,7 +538,8 @@ static i32 measure_octet_string_size(struct measure_ctx *ctx,
         return ASN1_object_size(true, content_len, __KM_TAG_MASK(tag));
 }
 
-static i32 measure_enumerated_size(struct measure_ctx *ctx, int val, u32 tag)
+static i32 measure_enumerated_size(struct key_desc_measure_ctx *ctx,
+        int val, u32 tag)
 {
     if (ctx == NULL || !ctx->initialized_) {
         s_log_error("Invalid parameters!");
@@ -586,7 +560,7 @@ static i32 measure_enumerated_size(struct measure_ctx *ctx, int val, u32 tag)
         return ASN1_object_size(true, content_len, __KM_TAG_MASK(tag));
 }
 
-static i32 measure_set_of_integer_32_size(struct measure_ctx *ctx,
+static i32 measure_set_of_integer_32_size(struct key_desc_measure_ctx *ctx,
         const VECTOR(i32) set, u32 tag)
 {
     if (ctx == NULL || !ctx->initialized_ || set == NULL) {
@@ -623,7 +597,7 @@ static i32 measure_set_of_integer_32_size(struct measure_ctx *ctx,
     }
 }
 
-static i32 measure_set_of_integer_64_size(struct measure_ctx *ctx,
+static i32 measure_set_of_integer_64_size(struct key_desc_measure_ctx *ctx,
         const VECTOR(i64) set, u32 tag)
 {
     /* Have to duplicate the code here because doing `set[i]`
@@ -666,7 +640,7 @@ static i32 measure_set_of_integer_64_size(struct measure_ctx *ctx,
     }
 }
 
-static i32 measure_tagged_null_size(struct measure_ctx *ctx_,
+static i32 measure_tagged_null_size(struct key_desc_measure_ctx *ctx_,
         void *null_, u32 tag)
 {
     (void) ctx_;
@@ -676,7 +650,7 @@ static i32 measure_tagged_null_size(struct measure_ctx *ctx_,
 }
 
 static bool write_integer(unsigned char **p, unsigned char *end,
-        const struct measure_ctx *mctx, i64 val, u32 tag)
+        const struct key_desc_measure_ctx *mctx, i64 val, u32 tag)
 {
     if (ASN1_INTEGER_set_int64(mctx->i, val) == 0) {
         s_log_error("Couldn't set the value of an ASN.1 INTEGER!");
@@ -712,7 +686,7 @@ static bool write_integer(unsigned char **p, unsigned char *end,
 }
 
 static bool write_enumerated(unsigned char **p, unsigned char *end,
-        const struct measure_ctx *mctx, int val, u32 tag)
+        const struct key_desc_measure_ctx *mctx, int val, u32 tag)
 {
     if (ASN1_ENUMERATED_set_int64(mctx->e, val) == 0) {
         s_log_error("Couldn't set the value of an ASN.1 ENUMERATED type!");
@@ -766,7 +740,7 @@ static bool write_boolean(unsigned char **p, unsigned char *end, bool val)
 }
 
 static bool write_octet_string(unsigned char **p, unsigned char *end,
-        const struct measure_ctx *mctx, const VECTOR(u8) str, u32 tag)
+        const struct key_desc_measure_ctx *mctx, const VECTOR(u8) str, u32 tag)
 {
     if (ASN1_OCTET_STRING_set(mctx->str, str, vector_size(str)) == 0) {
         s_log_error("Failed to set the value of an ASN.1 OCTET_STRING!");
@@ -864,7 +838,8 @@ static bool serialize_set_elements_64(VECTOR(struct der_element) out,
     return true;
 }
 static bool write_set_of_integer_generic(unsigned char **p, unsigned char *end,
-        const struct measure_ctx *mctx, const void *set, u32 tag, bool is64)
+        const struct key_desc_measure_ctx *mctx,
+        const void *set, u32 tag, bool is64)
 {
     VECTOR(struct der_element) ders = NULL;
     i32 set_len = 0, set_and_tag_len = 0, total_len = 0;
@@ -926,13 +901,15 @@ err:
 }
 
 static bool write_set_of_integer_32(unsigned char **p, unsigned char *end,
-        const struct measure_ctx *mctx, const VECTOR(i32) set, u32 tag)
+        const struct key_desc_measure_ctx *mctx,
+        const VECTOR(i32) set, u32 tag)
 {
     return write_set_of_integer_generic(p, end, mctx, set, tag, false);
 }
 
 static bool write_set_of_integer_64(unsigned char **p, unsigned char *end,
-        const struct measure_ctx *mctx, const VECTOR(i64) set, u32 tag)
+        const struct key_desc_measure_ctx *mctx,
+        const VECTOR(i64) set, u32 tag)
 {
     return write_set_of_integer_generic(p, end, mctx, set, tag, true);
 }
@@ -964,7 +941,7 @@ static bool write_tagged_null(unsigned char **p, unsigned char *end, u32 tag)
     return true;
 }
 
-static bool write_sequence_header(unsigned char **p, unsigned char *end,
+bool key_desc_write_sequence_header(unsigned char **p, unsigned char *end,
         u32 content_len, u32 tag)
 {
     const i32 inner_size = ASN1_object_size(true,
@@ -991,9 +968,10 @@ static bool write_sequence_header(unsigned char **p, unsigned char *end,
     return true;
 }
 
-static bool write_authorization_list(unsigned char **p, unsigned char *end,
+bool key_desc_write_auth_list(unsigned char **p, unsigned char *end,
         const struct KM_AuthorizationList_v3 *al,
-        const struct measure_ctx *mctx, enum measure_auth_list_variant variant
+        const struct key_desc_measure_ctx *mctx,
+        enum key_desc_measure_auth_list_variant variant
 )
 {
     u32 content_len = 0;
@@ -1006,7 +984,7 @@ static bool write_authorization_list(unsigned char **p, unsigned char *end,
         break;
     }
 
-    if (!write_sequence_header(p, end, content_len, KM_TAG_INVALID)) {
+    if (!key_desc_write_sequence_header(p, end, content_len, KM_TAG_INVALID)) {
         s_log_error("Failed to write the AuthorizationList SEQUENCE header!");
         return false;
     }
@@ -1138,9 +1116,11 @@ static bool write_authorization_list(unsigned char **p, unsigned char *end,
             !write_integer(p, end, mctx, al->keyOrigin, KM_TAG_ORIGIN))
         goto_error("Failed to write the key origin");
 
-    if (al->__rootOfTrust_present &&
-            !write_root_of_trust(p, end, &al->rootOfTrust, mctx, variant))
-        goto_error("Failed to write the root of trust");
+    if (al->__rootOfTrust_present) {
+        if (!key_desc_write_root_of_trust(p, end, &al->rootOfTrust,
+                    mctx, variant))
+            goto_error("Failed to write the root of trust");
+    }
 
     if (al->__osVersion_present &&
             !write_integer(p, end, mctx, al->osVersion, KM_TAG_OS_VERSION))
@@ -1228,9 +1208,10 @@ err:
     return false;
 }
 
-static bool write_root_of_trust(unsigned char **p, unsigned char *end,
+bool key_desc_write_root_of_trust(unsigned char **p, unsigned char *end,
         const struct KM_RootOfTrust_v3 *rot,
-        const struct measure_ctx *mctx, enum measure_auth_list_variant variant
+        const struct key_desc_measure_ctx *mctx,
+        enum key_desc_measure_auth_list_variant variant
 )
 {
     u32 len = 0;
@@ -1248,7 +1229,7 @@ static bool write_root_of_trust(unsigned char **p, unsigned char *end,
         return false;
     }
 
-    if (!write_sequence_header(p, end, len, KM_TAG_ROOT_OF_TRUST)) {
+    if (!key_desc_write_sequence_header(p, end, len, KM_TAG_ROOT_OF_TRUST)) {
         s_log_error("Failed to write the tagged rootOfTrust SEQUENCE header!");
         return false;
     }

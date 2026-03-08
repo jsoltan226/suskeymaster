@@ -60,6 +60,179 @@ typedef void (*key_desc_log_proc_t)(const char *fmt, ...);
 void key_desc_dump(const struct KM_KeyDescription_v3 *desc,
         key_desc_log_proc_t log_proc);
 
+
+/** Internal procedures & interfaces of `key-desc-unpack.c`,
+ ** exposed here only because they were needed in other modules
+ **/
+
+/* Parses an AuthorizationList ASN.1 SEQUENCE starting at `*p`,
+ * stored in a container of length `len`,
+ * and writes the resulting struct in `out`.
+ *
+ * Note that `*p` will be incremented to point past the parsed
+ * AuthorizationList sequence.
+ *
+ * Returns `true` on success and `false` on failure.
+ */
+bool key_desc_parse_auth_list(struct KM_AuthorizationList_v3 *out,
+        const unsigned char **p, long len);
+
+/* Parses a RootOfTrust ASN.1 SEQUENCE starting at `*p`,
+ * stored in a container of length `len`,
+ * and writes the resulting struct in `out`.
+ *
+ * Note that `*p` will be incremented to point past the parsed
+ * RootOfTrust sequence.
+ *
+ * Returns `true` on success and `false` on failure.
+ */
+bool key_desc_parse_root_of_trust(struct KM_RootOfTrust_v3 *out,
+        const unsigned char **p, long len);
+
+
+/** Internal procedures & interfaces of `key-desc-repack.c`,
+ ** exposed here only because they were needed in other modules
+ **/
+
+/* Frees and cleans up all the data in `al` (see `KM_AuthorizationList_v3`) */
+void key_desc_destroy_auth_list(struct KM_AuthorizationList_v3 *al);
+
+/* Frees and cleans up all the data in `rot` (see `KM_RootOfTrust_v3`) */
+void key_desc_destroy_root_of_trust(struct KM_RootOfTrust_v3 *rot);
+
+/* The possible variants of the AuthorizationList
+ * (see `KM_KeyDescription_v3`) */
+enum key_desc_measure_auth_list_variant {
+
+    /* Corresponds to the `softwareEnforced` authorization list */
+    MEASURE_AL_SOFTWARE_ENFORCED,
+
+    /* Corresponds to the `hardwareEnforced` authorization list */
+    MEASURE_AL_HARDWARE_ENFORCED,
+};
+
+/* A structure used to store temporary/cached state when measuring
+ * the KeyDescription sequence's required DER size */
+struct key_desc_measure_ctx {
+    bool initialized_;
+    ASN1_INTEGER *i;
+    ASN1_OCTET_STRING *str;
+    ASN1_ENUMERATED *e;
+
+    /* This will contain the sizes of nested SEQUENCEs in the Key Description.
+     * This is their layout:
+     *
+     * KeyDescription
+     *           \-> ...
+     *              hardwareEnforced AuthorizationList
+     *                      \-> ...
+     *                          RootOfTrust
+     *                          ...
+     *              ...
+     *              softwareEnforced AuthorizationList
+     *                      \-> ...
+     *                          ...
+     */
+    struct measure_auth_list_data {
+        u32 al_size;
+        u32 al_rot_size;
+    } hardwareEnforced, softwareEnforced;
+};
+
+/* Initializes a new measuring context (see `key_desc_measure_ctx`).
+ * Returns 0 on success and non-zero on failure. */
+i32 key_desc_measure_ctx_init(struct key_desc_measure_ctx *ctx);
+
+/* Destroys a key description measuring context (see `key_desc_measure_ctx`). */
+void key_desc_measure_ctx_destroy(struct key_desc_measure_ctx *ctx);
+
+/* Measures the amount of bytes required to store a DER-encoded representation
+ * of the KeyDescription in `key_desc` (see `KM_KeyDescription_v3`),
+ * using the measurement context `ctx`.
+ *
+ * Note: The returned value *DOES NOT INCLUDE* the ASN.1 SEQUENCE TLV container!
+ *
+ * Returns a negative value on error.
+ * Otherwise, the return value is the measured number of bytes.
+ */
+i32 key_desc_measure_inner_key_desc(struct key_desc_measure_ctx *ctx,
+        const struct KM_KeyDescription_v3 *auth_list);
+
+/* Measures the amount of bytes required to store a DER-encoded representation
+ * of the AuthorizationList in `auth_list` of variant `variant`
+ * (see `key_desc_measure_auth_list_variant`),
+ * using the measurement context `ctx`.
+ *
+ * Note: The returned value *INCLUDES* the ASN.1 SEQUENCE TLV container!
+ *
+ * Returns a negative value on error.
+ * Otherwise, the return value is the measured number of bytes.
+ */
+i32 key_desc_measure_outer_auth_list(struct key_desc_measure_ctx *ctx,
+        const struct KM_AuthorizationList_v3 *auth_list,
+        enum key_desc_measure_auth_list_variant variant);
+
+/* Measures the amount of bytes required to store a DER-encoded representation
+ * of the RootOfTrust sequence in `rot` of variant `variant`
+ * (see `key_desc_measure_auth_list_variant`),
+ * using the measurement context `ctx`.
+ *
+ * Note: The returned value *DOES NOT INCLUDE* the ASN.1 SEQUENCE TLV container!
+ *
+ * Returns a negative value on error.
+ * Otherwise, the return value is the measured number of bytes.
+ */
+i32 key_desc_measure_inner_root_of_trust(struct key_desc_measure_ctx *ctx,
+        const struct KM_RootOfTrust_v3 *rot,
+        enum key_desc_measure_auth_list_variant variant);
+
+/* Writes a DER-encoded ASN.1 AuthorizationList SEQUENCE, starting at `*p`
+ * and incrementing it to point past the written bytes,
+ * stopping before reaching `end`.
+ *
+ * `auth_list` cntains the values to be encoded, `mctx` is the measurement
+ * context used previously to measure the size of the sequence,
+ * and `variant` is the variant of the AuthorizationList being encoded
+ * (see `key_desc_measure_auth_list_variant`).
+ *
+ * Returns `true` on success and `false` on failure.
+ */
+bool key_desc_write_auth_list(unsigned char **p, unsigned char *end,
+        const struct KM_AuthorizationList_v3 *auth_list,
+        const struct key_desc_measure_ctx *mctx,
+        enum key_desc_measure_auth_list_variant variant);
+
+/* Writes a DER-encoded ASN.1 RootOfTrust SEQUENCE, starting at `*p`
+ * and incrementing it to point past the written bytes,
+ * stopping before reaching `end`.
+ *
+ * `rot` cntains the values to be encoded, `mctx` is the measurement
+ * context used previously to measure the size of the sequence,
+ * and `variant` corresponds to the AuthorizationList sequence
+ * in which the RootOfTrust is contained
+ * (see `key_desc_measure_auth_list_variant`).
+ *
+ * Returns `true` on success and `false` on failure.
+ */
+bool key_desc_write_root_of_trust(unsigned char **p, unsigned char *end,
+        const struct KM_RootOfTrust_v3 *rot,
+        const struct key_desc_measure_ctx *mctx,
+        enum key_desc_measure_auth_list_variant variant);
+
+/* Writes the DER-encoded ASN.1 EXPLICIT OPTIONAL Tag and Length
+ * present in the AuthorizationList SEQUENCE, starting at `*p`
+ * and incrementing it to point past the written bytes,
+ * stopping before reaching `end`.
+ *
+ * `content_len` is the length of the inner contained SEQUENCE, while
+ * `tag` is the KeyMaster tag (see `KM_Tag`) associated with the contained data.
+ * If no KeyMaster tag should be written, set `tag` to `KM_TAG_INVALID`.
+ *
+ * Returns `true` on success and `false` on failure.
+ */
+bool key_desc_write_sequence_header(unsigned char **p, unsigned char *end,
+        u32 content_len, u32 tag);
+
 #ifdef __cplusplus
 } /* namespace suskeymaster */
 } /* extern "C" */
