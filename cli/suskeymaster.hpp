@@ -69,7 +69,7 @@ namespace suskeymaster {
     int transact_s_verify_attestation(
         ::android::hardware::hidl_vec<::android::hardware::hidl_vec<uint8_t>> const& cert_chain
     );
-    int transact_s_encrypt_key(
+    int transact_s_wrap_key(
         ::android::hardware::hidl_vec<uint8_t> const&                           in_private_key,
         ::android::hardware::hidl_vec<uint8_t> const&                           in_wrapping_key,
 

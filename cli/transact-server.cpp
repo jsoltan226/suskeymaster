@@ -83,6 +83,15 @@ err:
     }
 }
 
+int transact_s_wrap_key(hidl_vec<uint8_t> const& in_private_key,
+        hidl_vec<uint8_t> const& in_wrapping_key, hidl_vec<uint8_t> &out_wrapped_data)
+{
+    (void) in_private_key;
+    (void) in_wrapping_key;
+    (void) out_wrapped_data;
+    return -1;
+}
+
 static int deserialize_cert_chain(hidl_vec<hidl_vec<uint8_t>> const& in_cert_chain,
         X509 **out_leaf, STACK_OF(X509) **out_intermediates, X509 **out_root)
 {
@@ -232,7 +241,7 @@ static int check_google_root(hidl_vec<uint8_t> const& root_der, bool *is_old_roo
 static void destroy_certs(X509 **leaf_p, STACK_OF(X509) **intermediates_p, X509 **root_p)
 {
     if (*intermediates_p != NULL) {
-        for (uint32_t i = 0; i < sk_X509_num(*intermediates_p); i++) {
+        for (int i = 0; i < sk_X509_num(*intermediates_p); i++) {
             X509 *const curr = sk_X509_value(*intermediates_p, i);
             if (curr != NULL)
                 X509_free(curr);

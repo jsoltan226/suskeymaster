@@ -241,6 +241,7 @@ int transact_c_import_wrapped_key(sp<IKeymasterDevice> hal,
         }
 
         std::cout << "Successfully imported wrapped key" << std::endl;
+        out_key_blob = g_import_wrapped_key_out_keyblob;
         ok = true;
 out:
         destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
