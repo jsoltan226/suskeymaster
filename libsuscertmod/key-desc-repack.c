@@ -104,15 +104,15 @@ ASN1_OCTET_STRING * key_desc_repack(const struct KM_KeyDescription_v3 *desc)
         goto_error("Failed to write the uniqueId string");
 
     if (!key_desc_write_auth_list(&p, end, &desc->softwareEnforced, &m_ctx,
-            MEASURE_AL_SOFTWARE_ENFORCED))
+            KEY_DESC_MEASURE_AL_SOFTWARE_ENFORCED))
         goto_error("Failed to write the softwareEnforced authorization list");
 
     if (!key_desc_write_auth_list(&p, end, &desc->hardwareEnforced, &m_ctx,
-            MEASURE_AL_HARDWARE_ENFORCED))
+            KEY_DESC_MEASURE_AL_HARDWARE_ENFORCED))
         goto_error("Failed to write the hardwareEnforced authorization list");
 
     if (p != end)
-        goto_error("Invalid number of bytes written (p: %p, end: %p)", p, end);
+        goto_error("Invalid number of bytes written");
 
     /* Pack everything up */
     ret = ASN1_OCTET_STRING_new();
@@ -302,7 +302,7 @@ i32 key_desc_measure_inner_key_desc(struct key_desc_measure_ctx *ctx,
     content_len += tmp;
 
     tmp = key_desc_measure_outer_auth_list(ctx, &desc->softwareEnforced,
-            MEASURE_AL_SOFTWARE_ENFORCED);
+            KEY_DESC_MEASURE_AL_SOFTWARE_ENFORCED);
     if (tmp < 0) {
         s_log_error("Failed to measure the size of the "
                 "softwareEnforced authorization list!");
@@ -311,7 +311,7 @@ i32 key_desc_measure_inner_key_desc(struct key_desc_measure_ctx *ctx,
     content_len += tmp;
 
     tmp = key_desc_measure_outer_auth_list(ctx, &desc->hardwareEnforced,
-            MEASURE_AL_HARDWARE_ENFORCED);
+            KEY_DESC_MEASURE_AL_HARDWARE_ENFORCED);
     if (tmp < 0) {
         s_log_error("Failed to measure the size of the "
                 "hardwareEnforced authorization list!");
@@ -328,8 +328,8 @@ i32 key_desc_measure_outer_auth_list(struct key_desc_measure_ctx *ctx,
 )
 {
     if (ctx == NULL || al == NULL ||
-            (variant != MEASURE_AL_SOFTWARE_ENFORCED &&
-             variant != MEASURE_AL_HARDWARE_ENFORCED)
+            (variant != KEY_DESC_MEASURE_AL_SOFTWARE_ENFORCED &&
+             variant != KEY_DESC_MEASURE_AL_HARDWARE_ENFORCED)
     )
     {
         s_log_error("Invalid parameters!");
@@ -439,10 +439,10 @@ i32 key_desc_measure_outer_auth_list(struct key_desc_measure_ctx *ctx,
     /* `mctx` should store the length of the sequence content,
      * without the header */
     switch (variant) {
-    case MEASURE_AL_SOFTWARE_ENFORCED:
+    case KEY_DESC_MEASURE_AL_SOFTWARE_ENFORCED:
         ctx->softwareEnforced.al_size = ret;
         break;
-    case MEASURE_AL_HARDWARE_ENFORCED:
+    case KEY_DESC_MEASURE_AL_HARDWARE_ENFORCED:
         ctx->hardwareEnforced.al_size = ret;
     }
 
@@ -457,6 +457,13 @@ i32 key_desc_measure_inner_root_of_trust(struct key_desc_measure_ctx *ctx,
 {
     i32 r = 0;
     i32 total_size = 0;
+
+    if (variant != KEY_DESC_MEASURE_AL_HARDWARE_ENFORCED &&
+        variant != KEY_DESC_MEASURE_AL_SOFTWARE_ENFORCED)
+    {
+        s_log_error("Invalid parameters!");
+        return -1;
+    }
 
     r = measure_octet_string_size(ctx, rot->verifiedBootKey, KM_TAG_INVALID);
     if (r < 0) {
@@ -483,10 +490,10 @@ i32 key_desc_measure_inner_root_of_trust(struct key_desc_measure_ctx *ctx,
     total_size += r;
 
     switch (variant) {
-    case MEASURE_AL_SOFTWARE_ENFORCED:
+    case KEY_DESC_MEASURE_AL_SOFTWARE_ENFORCED:
         ctx->softwareEnforced.al_rot_size = total_size;
         break;
-    case MEASURE_AL_HARDWARE_ENFORCED:
+    case KEY_DESC_MEASURE_AL_HARDWARE_ENFORCED:
         ctx->hardwareEnforced.al_rot_size = total_size;
         break;
     }
@@ -976,10 +983,10 @@ bool key_desc_write_auth_list(unsigned char **p, unsigned char *end,
 {
     u32 content_len = 0;
     switch (variant) {
-    case MEASURE_AL_SOFTWARE_ENFORCED:
+    case KEY_DESC_MEASURE_AL_SOFTWARE_ENFORCED:
         content_len = mctx->softwareEnforced.al_size;
         break;
-    case MEASURE_AL_HARDWARE_ENFORCED:
+    case KEY_DESC_MEASURE_AL_HARDWARE_ENFORCED:
         content_len = mctx->hardwareEnforced.al_size;
         break;
     }
@@ -1216,10 +1223,10 @@ bool key_desc_write_root_of_trust(unsigned char **p, unsigned char *end,
 {
     u32 len = 0;
     switch (variant) {
-    case MEASURE_AL_SOFTWARE_ENFORCED:
+    case KEY_DESC_MEASURE_AL_SOFTWARE_ENFORCED:
         len = mctx->softwareEnforced.al_rot_size;
         break;
-    case MEASURE_AL_HARDWARE_ENFORCED:
+    case KEY_DESC_MEASURE_AL_HARDWARE_ENFORCED:
         len = mctx->hardwareEnforced.al_rot_size;
         break;
     }

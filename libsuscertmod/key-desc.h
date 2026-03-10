@@ -105,10 +105,10 @@ void key_desc_destroy_root_of_trust(struct KM_RootOfTrust_v3 *rot);
 enum key_desc_measure_auth_list_variant {
 
     /* Corresponds to the `softwareEnforced` authorization list */
-    MEASURE_AL_SOFTWARE_ENFORCED,
+    KEY_DESC_MEASURE_AL_SOFTWARE_ENFORCED,
 
     /* Corresponds to the `hardwareEnforced` authorization list */
-    MEASURE_AL_HARDWARE_ENFORCED,
+    KEY_DESC_MEASURE_AL_HARDWARE_ENFORCED,
 };
 
 /* A structure used to store temporary/cached state when measuring

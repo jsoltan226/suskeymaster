@@ -1,6 +1,7 @@
 #ifndef CLI_SUSKEYMASTER_HPP_
 #define CLI_SUSKEYMASTER_HPP_
 
+#include <libgenericutil/cert-types.h>
 #include <vector>
 #include <string>
 #include <cstdint>
@@ -71,6 +72,7 @@ namespace suskeymaster {
     );
     int transact_s_wrap_key(
         ::android::hardware::hidl_vec<uint8_t> const&                           in_private_key,
+        enum sus_key_variant                                                    in_key_variant,
         ::android::hardware::hidl_vec<uint8_t> const&                           in_wrapping_key,
 
         ::android::hardware::hidl_vec<uint8_t>&                                 out_wrapped_data

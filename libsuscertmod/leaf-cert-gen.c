@@ -508,10 +508,8 @@ static VECTOR(u8) construct_x509_der(
     p += sig_len;
 
     u8 *const end = ret + outer_length;
-    if (p != end) {
-        goto_error("Wrote an incorrect amount of bytes (p: %p, end: %p)",
-                p, end);
-    }
+    if (p != end)
+        goto_error("Wrote an incorrect amount of bytes");
 
     return ret;
 
