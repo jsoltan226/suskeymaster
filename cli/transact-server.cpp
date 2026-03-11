@@ -56,12 +56,13 @@ static int wrap_with_transport_key(
 );
 
 static int encrypt_transport_key(const uint8_t plaintext[TRANSPORT_KEY_SIZE],
-        EVP_PKEY *wrapping_key, hidl_vec<uint8_t>& out_ciphertext);
+        const uint8_t masking_key[TRANSPORT_KEY_SIZE], EVP_PKEY *wrapping_key,
+        hidl_vec<uint8_t>& out_ciphertext);
 
 static int do_transport_encryption(
-        hidl_vec<uint8_t> const& in_wrapping_key, hidl_vec<uint8_t> const& in_aad,
+        hidl_vec<uint8_t> const& in_wrapping_key_x509, hidl_vec<uint8_t> const& in_aad,
         hidl_vec<uint8_t> &private_key, hidl_vec<uint8_t>& out_encrypted_transport_key,
-        hidl_vec<uint8_t>& out_iv, hidl_vec<uint8_t>& out_tag
+        hidl_vec<uint8_t>& out_iv, hidl_vec<uint8_t>& out_tag, hidl_vec<uint8_t>& out_masking_key
 );
 
 static void init_ec_auth_list(struct KM_AuthorizationList_v3 *al);
@@ -121,6 +122,7 @@ int transact_s_verify_attestation(const hidl_vec<hidl_vec<uint8_t>> &cert_chain)
         goto err;
     } else if (!verify_ok) {
         std::cerr << "Certificate chain verification failed!" << std::endl;
+        goto err;
     }
 
     ok = true;
@@ -139,7 +141,8 @@ err:
 }
 
 int transact_s_wrap_key(hidl_vec<uint8_t> const& in_private_key, enum sus_key_variant key_variant,
-        hidl_vec<uint8_t> const& in_wrapping_key, hidl_vec<uint8_t> &out_wrapped_data)
+        hidl_vec<uint8_t> const& in_wrapping_key,
+        hidl_vec<uint8_t>& out_wrapped_data, hidl_vec<uint8_t>& out_masking_key)
 {
     struct KM_AuthorizationList_v3 auth_list = {};
     hidl_vec<uint8_t> iwk_key_description_der = {};
@@ -168,8 +171,8 @@ int transact_s_wrap_key(hidl_vec<uint8_t> const& in_private_key, enum sus_key_va
         return 1;
     }
 
-    if (do_transport_encryption(in_wrapping_key, iwk_key_description_der,
-            encrypted_key, encrypted_transport_key, transport_iv, transport_tag))
+    if (do_transport_encryption(in_wrapping_key, iwk_key_description_der, encrypted_key,
+                encrypted_transport_key, transport_iv, transport_tag, out_masking_key))
     {
         std::cerr << "Failed to perform the transport wrapping" << std::endl;
         return 1;
@@ -198,6 +201,7 @@ static int deserialize_cert_chain(hidl_vec<hidl_vec<uint8_t>> const& in_cert_cha
     *out_root = NULL;
 
     hidl_vec<uint8_t> const& leaf_hidl = in_cert_chain[0];
+    std::cout << "DEBUG: cert[0] - leaf" << std::endl;
     hidl_vec<uint8_t> const& root_hidl = in_cert_chain[in_cert_chain.size() - 1];
 
     /* De-serialize everything */
@@ -234,7 +238,11 @@ static int deserialize_cert_chain(hidl_vec<hidl_vec<uint8_t>> const& in_cert_cha
             X509_free(curr);
             return 1;
         }
+
+        std::cout << "DEBUG: cert[" << i << "] - intermediate" << std::endl;
     }
+
+    std::cout << "DEBUG: cert[" << in_cert_chain.size() - 1 << "] - root" << std::endl;
 
     return 0;
 }
@@ -319,16 +327,35 @@ static int check_google_root(hidl_vec<uint8_t> const& root_der, bool *is_old_roo
     if (root_der.size() == google_root_1_rsa_4096_der_len) {
         if (!std::memcmp(root_der.data(), google_root_1_rsa_4096_der,
                 google_root_1_rsa_4096_der_len))
-        {
-            *is_old_root = true;
             return 0;
-        }
     }
 
     if (root_der.size() == google_root_2_ec_p384_der_len) {
         if (!std::memcmp(root_der.data(), google_root_2_ec_p384_der,
                 google_root_2_ec_p384_der_len))
             return 0;
+    }
+
+    if (root_der.size() == google_root_3_rsa_4096_der_len) {
+        if (!std::memcmp(root_der.data(), google_root_3_rsa_4096_der,
+                google_root_3_rsa_4096_der_len))
+            return 0;
+    }
+
+    if (root_der.size() == google_root_4_rsa_4096_der_len) {
+        if (!std::memcmp(root_der.data(), google_root_4_rsa_4096_der,
+                google_root_4_rsa_4096_der_len))
+            return 0;
+    }
+
+    if (root_der.size() == google_root_5_rsa_4096_old_der_len) {
+        if (!std::memcmp(root_der.data(), google_root_5_rsa_4096_old_der,
+                google_root_5_rsa_4096_old_der_len))
+        {
+            std::cout << "WARNING: using old attestation root" << std::endl;
+            *is_old_root = true;
+            return 0;
+        }
     }
 
     return 1;
@@ -385,6 +412,8 @@ static int ignore_old_root_expiry_vfy_cb(int preverify_ok, X509_STORE_CTX *ctx)
         return 1;
     }
 
+    std::cerr << "Verification err " << err << " on cert " << curr_depth << std::endl;
+
     return 0;
 }
 
@@ -405,7 +434,6 @@ static void print_openssl_errors(void)
 
 static EVP_PKEY * extract_x509_public_key(hidl_vec<uint8_t> const& x509_der)
 {
-    X509 *x509 = NULL;
     const uint8_t *p = NULL;
 
     EVP_PKEY *ret = NULL;
@@ -413,15 +441,9 @@ static EVP_PKEY * extract_x509_public_key(hidl_vec<uint8_t> const& x509_der)
     bool ok = false;
 
     p = x509_der.data();
-    x509 = d2i_X509(NULL, &p, x509_der.size());
-    if (x509 == NULL) {
-        std::cerr << "Couldn't deserialize the X.509 public key" << std::endl;
-        goto err;
-    }
-
-    ret = X509_get_pubkey(x509);
+    ret = d2i_PUBKEY(NULL, &p, x509_der.size());
     if (ret == NULL) {
-        std::cerr << "Couldn't get the public key from the X.509 certificate" << std::endl;
+        std::cerr << "Couldn't deserialize the X.509 public key" << std::endl;
         goto err;
     }
 
@@ -443,9 +465,9 @@ err:
         EVP_PKEY_free(ret);
         ret = NULL;
     }
-    if (x509 != NULL) {
-        X509_free(x509);
-        x509 = NULL;
+
+    if (!ok) {
+        print_openssl_errors();
     }
 
     return ok ? ret : NULL;
@@ -521,9 +543,11 @@ err:
 }
 
 static int encrypt_transport_key(const uint8_t plaintext[TRANSPORT_KEY_SIZE],
-        EVP_PKEY *wrapping_key, hidl_vec<uint8_t>& out_ciphertext)
+        const uint8_t masking_key[TRANSPORT_KEY_SIZE], EVP_PKEY *wrapping_key,
+        hidl_vec<uint8_t>& out_ciphertext)
 {
     EVP_PKEY_CTX *ctx = NULL;
+    uint8_t masked_plaintext[TRANSPORT_KEY_SIZE] = { 0 };
     size_t out_len = 0;
 
     bool ok = false;
@@ -547,19 +571,23 @@ static int encrypt_transport_key(const uint8_t plaintext[TRANSPORT_KEY_SIZE],
         std::cerr << "Failed to set the OAEP hash" << std::endl;
         goto err;
     }
-    if (EVP_PKEY_CTX_set_rsa_mgf1_md(ctx, EVP_sha256()) <= 0) {
+    if (EVP_PKEY_CTX_set_rsa_mgf1_md(ctx, EVP_sha1()) <= 0) {
         std::cerr << "Failed to set the OAEP MGF1" << std::endl;
         goto err;
     }
 
-    if (EVP_PKEY_encrypt(ctx, NULL, &out_len, plaintext, TRANSPORT_KEY_SIZE) <= 0) {
+    /* Apply the masking key */
+    for (uint32_t i = 0; i < TRANSPORT_KEY_SIZE; i++)
+        masked_plaintext[i] = plaintext[i] ^ masking_key[i];
+
+    if (EVP_PKEY_encrypt(ctx, NULL, &out_len, masked_plaintext, TRANSPORT_KEY_SIZE) <= 0) {
         std::cerr << "Failed to determine ciphertext size" << std::endl;
         goto err;
     }
 
     out_ciphertext.resize(out_len);
     if (EVP_PKEY_encrypt(ctx, out_ciphertext.data(), &out_len,
-                plaintext, TRANSPORT_KEY_SIZE) <= 0)
+                masked_plaintext, TRANSPORT_KEY_SIZE) <= 0)
     {
         OPENSSL_cleanse(out_ciphertext.data(), out_ciphertext.size());
         std::cerr << "RSA encrypt operation failed" << std::endl;
@@ -580,7 +608,7 @@ err:
 static int do_transport_encryption(
         hidl_vec<uint8_t> const& in_wrapping_key_x509, hidl_vec<uint8_t> const& in_aad,
         hidl_vec<uint8_t> &private_key, hidl_vec<uint8_t>& out_encrypted_transport_key,
-        hidl_vec<uint8_t>& out_iv, hidl_vec<uint8_t>& out_tag
+        hidl_vec<uint8_t>& out_iv, hidl_vec<uint8_t>& out_tag, hidl_vec<uint8_t>& out_masking_key
 )
 {
     bool ok = false;
@@ -588,6 +616,7 @@ static int do_transport_encryption(
     uint8_t transport_key[TRANSPORT_KEY_SIZE] = { 0 };
     uint8_t iv[TRANSPORT_IV_SIZE] = { 0 };
     uint8_t tag[TRANSPORT_TAG_SIZE] = { 0 };
+    uint8_t masking_key[TRANSPORT_KEY_SIZE] = { 0 };
 
     out_iv.resize(TRANSPORT_IV_SIZE);
     out_tag.resize(TRANSPORT_TAG_SIZE);
@@ -608,6 +637,11 @@ static int do_transport_encryption(
         goto err;
     }
 
+    if (RAND_bytes(masking_key, TRANSPORT_KEY_SIZE) != 1) {
+        std::cerr << "Couldn't generate the masking key" << std::endl;
+        goto err;
+    }
+
     if (wrap_with_transport_key(transport_key, iv,
                 in_aad.data(), in_aad.size(),
                 private_key.data(), private_key.size(), tag))
@@ -622,7 +656,9 @@ static int do_transport_encryption(
         goto err;
     }
 
-    if (encrypt_transport_key(transport_key, wrapping_public_key, out_encrypted_transport_key)) {
+    if (encrypt_transport_key(transport_key, masking_key,
+                wrapping_public_key, out_encrypted_transport_key))
+    {
         OPENSSL_cleanse(transport_key, TRANSPORT_KEY_SIZE);
         std::cerr << "Failed to encrypt the transport key with the wrapping key" << std::endl;
         goto err;
@@ -645,10 +681,14 @@ err:
 
         out_tag.resize(TRANSPORT_TAG_SIZE);
         std::memcpy(out_tag.data(), tag, TRANSPORT_TAG_SIZE);
+
+        out_masking_key.resize(TRANSPORT_KEY_SIZE);
+        std::memcpy(out_masking_key.data(), masking_key, TRANSPORT_KEY_SIZE);
     }
 
     OPENSSL_cleanse(tag, TRANSPORT_TAG_SIZE);
     OPENSSL_cleanse(iv, TRANSPORT_IV_SIZE);
+    OPENSSL_cleanse(masking_key, TRANSPORT_KEY_SIZE);
 
     return ok ? 0 : 1;
 }
@@ -745,7 +785,7 @@ static int encode_iwk_key_description_der(hidl_vec<uint8_t>& der,
     p = der.data();
     end = der.data() + der.size();
 
-    if (key_desc_write_sequence_header(&p, end,
+    if (!key_desc_write_sequence_header(&p, end,
                 content_bytes, static_cast<u32>(KM_TAG_INVALID)))
     {
         std::cerr << "Failed to write the iwk key description SEQUENCE header" << std::endl;
@@ -788,7 +828,7 @@ static int encode_iwk_secure_key_wrapper_der(hidl_vec<uint8_t>& der,
 )
 {
     struct key_desc_measure_ctx mctx = {};
-    size_t len = 0;
+    size_t len = 0, total_len = 0;
     i32 tmp = 0;
     u8 *p = NULL, *end = NULL;
     bool ok = false;
@@ -819,22 +859,30 @@ static int encode_iwk_secure_key_wrapper_der(hidl_vec<uint8_t>& der,
 
     len += key_description_der.size();
 
-    der.resize(len);
+    /* Add the SEQUENCE tag size */
+    total_len = ASN1_object_size(true, len, V_ASN1_SEQUENCE);
+
+    der.resize(total_len);
 
     /** Encode the DER **/
     p = der.data();
     end = p + der.size();
 
-    if (write_integer(&p, end, &mctx, 0)) {
+    if (!key_desc_write_sequence_header(&p, end, len, KM_TAG_INVALID)) {
+        std::cerr << "Failed to write the SecureKeyWrapper SEQUENCE header" << std::endl;
+        goto err;
+    }
+
+    if (!write_integer(&p, end, &mctx, 0)) {
         std::cerr << "Failed to write the `version` INTEGER" << std::endl;
         goto err;
     }
 
-    if (write_octet_string(&p, end, &mctx, encrypted_transport_key)) {
+    if (!write_octet_string(&p, end, &mctx, encrypted_transport_key)) {
         std::cerr << "Failed to write the encrypted transport key OCTET STRING" << std::endl;
         goto err;
     }
-    if (write_octet_string(&p, end, &mctx, initialization_vector)) {
+    if (!write_octet_string(&p, end, &mctx, initialization_vector)) {
         std::cerr << "Failed to write the initialization vector OCTET STRING" << std::endl;
         goto err;
     }
@@ -846,11 +894,11 @@ static int encode_iwk_secure_key_wrapper_der(hidl_vec<uint8_t>& der,
     std::memcpy(p, key_description_der.data(), key_description_der.size());
     p += key_description_der.size();
 
-    if (write_octet_string(&p, end, &mctx, encrypted_key)) {
+    if (!write_octet_string(&p, end, &mctx, encrypted_key)) {
         std::cerr << "Failed to write the encrypted key OCTET STRING" << std::endl;
         goto err;
     }
-    if (write_octet_string(&p, end, &mctx, tag)) {
+    if (!write_octet_string(&p, end, &mctx, tag)) {
         std::cerr << "Failed to write the authentication tag OCTET STRING" << std::endl;
         goto err;
     }

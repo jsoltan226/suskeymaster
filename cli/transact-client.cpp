@@ -203,15 +203,9 @@ out_attest:
 }
 
 int transact_c_import_wrapped_key(sp<IKeymasterDevice> hal,
-        hidl_vec<uint8_t> const& in_wrapped_data, hidl_vec<uint8_t> const& in_wrapping_blob,
-        hidl_vec<uint8_t>& out_key_blob)
+        hidl_vec<uint8_t> const& in_wrapped_data, hidl_vec<uint8_t> const& in_masking_key,
+        hidl_vec<uint8_t> const& in_wrapping_blob, hidl_vec<uint8_t>& out_key_blob)
 {
-    hidl_vec<uint8_t> masking_key(32);
-    if (RAND_bytes(masking_key.data(), masking_key.size()) == 0) {
-        std::cerr << "Failed to generate the random masking key" << std::endl;
-        return 1;
-    }
-
     hidl_vec<KeyParameter> params;
     init_unwrapping_params(params);
 
@@ -228,7 +222,7 @@ int transact_c_import_wrapped_key(sp<IKeymasterDevice> hal,
         if (try_init_g_sem(&g_sem, &g_sem_inited, pr_err)) goto out;
 
         hal->importWrappedKey(in_wrapped_data, in_wrapping_blob,
-                masking_key, params, 0, 0, import_wrapped_key_cb);
+                in_masking_key, params, 0, 0, import_wrapped_key_cb);
 
         if (wait_on_sem(&g_sem, "importWrappedKey operation", tsp, pr_err))
             goto out;
@@ -265,8 +259,8 @@ static void init_rsa_gen_params(hidl_vec<KeyParameter>& params)
         PARAM_DIGEST,
         PARAM_PADDING,
         PARAM_NO_AUTH_REQUIRED,
+        PARAM_MAX_,
         PARAM_APPLICATION_ID,
-        PARAM_MAX_
     };
     params.resize(PARAM_MAX_);
 
@@ -291,8 +285,10 @@ static void init_rsa_gen_params(hidl_vec<KeyParameter>& params)
     params[PARAM_NO_AUTH_REQUIRED].tag = Tag::NO_AUTH_REQUIRED;
     params[PARAM_NO_AUTH_REQUIRED].f.boolValue = true;
 
+    /*
     params[PARAM_APPLICATION_ID].tag = Tag::APPLICATION_ID;
     params[PARAM_APPLICATION_ID].blob = get_sus_application_id();
+    */
 }
 
 static void init_attest_key_params(hidl_vec<KeyParameter>& params)
@@ -331,7 +327,9 @@ static void init_unwrapping_params(hidl_vec<KeyParameter>& params)
     enum {
         PARAM_DIGEST,
         PARAM_PADDING,
+        /*
         PARAM_APPLICATION_ID,
+        */
         PARAM_MAX_
     };
     params.resize(PARAM_MAX_);
@@ -341,8 +339,10 @@ static void init_unwrapping_params(hidl_vec<KeyParameter>& params)
     params[PARAM_PADDING].tag = Tag::PADDING;
     params[PARAM_PADDING].f.paddingMode = PaddingMode::RSA_OAEP;
 
+    /*
     params[PARAM_APPLICATION_ID].tag = Tag::APPLICATION_ID;
     params[PARAM_APPLICATION_ID].blob = get_sus_application_id();
+    */
 }
 
 } /* namespace suskeymaster */

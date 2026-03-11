@@ -259,7 +259,7 @@ static void init_ec_gen_params(hidl_vec<KeyParameter>& params)
         PARAM_ALGOR, PARAM_DIGEST,
         PARAM_EC_CURVE,
         PARAM_PURPOSE_SIGN, PARAM_PURPOSE_VERIFY, PARAM_NO_AUTH_REQUIRED,
-        PARAM_APPLICATION_ID,
+        /*PARAM_APPLICATION_ID,*/
         PARAM_MAX_
     };
     params.resize(PARAM_MAX_);
@@ -279,8 +279,10 @@ static void init_ec_gen_params(hidl_vec<KeyParameter>& params)
     params[PARAM_NO_AUTH_REQUIRED].tag = Tag::NO_AUTH_REQUIRED;
     params[PARAM_NO_AUTH_REQUIRED].f.boolValue = true;
 
+    /*
     params[PARAM_APPLICATION_ID].tag = Tag::APPLICATION_ID;
     params[PARAM_APPLICATION_ID].blob = get_sus_application_id();
+    */
 }
 
 static void init_rsa_gen_params(hidl_vec<KeyParameter>& params)
@@ -289,7 +291,7 @@ static void init_rsa_gen_params(hidl_vec<KeyParameter>& params)
         PARAM_ALGOR, PARAM_DIGEST,
         PARAM_KEY_SIZE, PARAM_PADDING, PARAM_RSA_EXP,
         PARAM_PURPOSE_SIGN, PARAM_PURPOSE_VERIFY, PARAM_NO_AUTH_REQUIRED,
-        PARAM_APPLICATION_ID,
+        /*PARAM_APPLICATION_ID,*/
         PARAM_MAX_
     };
     params.resize(PARAM_MAX_);
@@ -314,15 +316,17 @@ static void init_rsa_gen_params(hidl_vec<KeyParameter>& params)
     params[PARAM_NO_AUTH_REQUIRED].tag = Tag::NO_AUTH_REQUIRED;
     params[PARAM_NO_AUTH_REQUIRED].f.boolValue = true;
 
+    /*
     params[PARAM_APPLICATION_ID].tag = Tag::APPLICATION_ID;
     params[PARAM_APPLICATION_ID].blob = get_sus_application_id();
+    */
 }
 
 static void init_attest_key_params(hidl_vec<KeyParameter>& params)
 {
     enum {
         PARAM_ATTESTATION_CHALLENGE, PARAM_ATTESTATION_APPLICATION_ID,
-        PARAM_APPLICATION_ID,
+        /*PARAM_APPLICATION_ID,*/
         PARAM_MAX_
     };
     params.resize(PARAM_MAX_);
@@ -345,8 +349,10 @@ static void init_attest_key_params(hidl_vec<KeyParameter>& params)
             att_application_id, att_application_id + att_application_id_len
     );
 
+    /*
     params[PARAM_APPLICATION_ID].tag = Tag::APPLICATION_ID;
     params[PARAM_APPLICATION_ID].blob = get_sus_application_id();
+    */
 }
 
 } /* namespace suskeymaster */

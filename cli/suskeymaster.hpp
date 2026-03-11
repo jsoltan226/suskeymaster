@@ -75,12 +75,14 @@ namespace suskeymaster {
         enum sus_key_variant                                                    in_key_variant,
         ::android::hardware::hidl_vec<uint8_t> const&                           in_wrapping_key,
 
-        ::android::hardware::hidl_vec<uint8_t>&                                 out_wrapped_data
+        ::android::hardware::hidl_vec<uint8_t>&                                 out_wrapped_data,
+        ::android::hardware::hidl_vec<uint8_t>&                                 out_masking_key
     );
     int transact_c_import_wrapped_key(
         ::android::sp<::android::hardware::keymaster::V4_0::IKeymasterDevice>   hal,
 
         ::android::hardware::hidl_vec<uint8_t> const&                           in_wrapped_data,
+        ::android::hardware::hidl_vec<uint8_t> const&                           in_masking_key,
         ::android::hardware::hidl_vec<uint8_t> const&                           in_wrapping_blob,
 
         ::android::hardware::hidl_vec<uint8_t>&                                 out_key_blob
