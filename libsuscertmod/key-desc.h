@@ -7,6 +7,7 @@
 #ifdef __cplusplus
 extern "C" {
 namespace suskeymaster {
+namespace certmod {
 #endif /* __cplusplus */
 
 /* Various utilities for working with Android Attestation Extension objects,
@@ -234,6 +235,7 @@ bool key_desc_write_sequence_header(unsigned char **p, unsigned char *end,
         u32 content_len, u32 tag);
 
 #ifdef __cplusplus
+} /* namespace certmod */
 } /* namespace suskeymaster */
 } /* extern "C" */
 #endif /* __cplusplus */

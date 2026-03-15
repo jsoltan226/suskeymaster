@@ -1,6 +1,3 @@
-#include "external/prefix/include/openssl/asn1.h"
-#include "external/prefix/include/openssl/obj_mac.h"
-#include "external/prefix/include/openssl/x509_vfy.h"
 #include "leaf-cert.h"
 #include "key-desc.h"
 #include "keymaster-types.h"
@@ -16,6 +13,7 @@
 #include <openssl/objects.h>
 #include <openssl/obj_mac.h>
 #include <openssl/x509v3.h>
+#include <openssl/x509_vfy.h>
 #include <stdlib.h>
 #include <string.h>
 

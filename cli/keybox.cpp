@@ -1,7 +1,10 @@
-#include "suskeymaster.hpp"
+#include "cli.hpp"
 #include <libsuscertsign/keybox.h>
 #include <core/util.h>
 #include <core/vector.h>
+#include <hidl/HidlSupport.h>
+#include <android/hardware/keymaster/4.0/types.h>
+#include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
 #include <array>
 #include <ctime>
 #include <string>
@@ -14,13 +17,17 @@
 #include <fstream>
 #include <iostream>
 
+namespace suskeymaster {
+namespace cli {
+namespace keybox {
+
+using namespace ::android::hardware::keymaster::V4_0;
+
 static VECTOR(uint8_t) read_file(std::string const& path);
 static int write_file(std::string const& path, VECTOR(uint8_t const) data);
 static std::string utc_to_string(std::time_t ts);
 
-namespace suskeymaster {
-
-int make_keybox(
+int make_kb(
     std::vector<std::string> const& ec_cert_paths, std::string const& ec_wrapped_key_path,
     std::vector<std::string> const& rsa_cert_paths, std::string const& rsa_wrapped_key_path,
     std::string const& out_file_path)
@@ -29,7 +36,7 @@ int make_keybox(
     VECTOR(VECTOR(uint8_t)) rsa_cert_chain = NULL;
     VECTOR(uint8_t) ec_key = NULL;
     VECTOR(uint8_t) rsa_key = NULL;
-    struct keybox *new_kb = NULL;
+    struct certsign::keybox *new_kb = NULL;
     VECTOR(uint8_t) out_data = NULL;
 
     int ret = 1;
@@ -72,14 +79,14 @@ int make_keybox(
         goto out;
     }
 
-    new_kb = keybox_init(ec_cert_chain, ec_key, rsa_cert_chain, rsa_key, false);
+    new_kb = certsign::keybox_init(ec_cert_chain, ec_key, rsa_cert_chain, rsa_key, false);
     if (new_kb == NULL) {
         std::cerr << "Couldn't initialize a keybox structure " <<
             "with the provided cert chains & keys" << std::endl;
         goto out;
     }
 
-    out_data = keybox_store(new_kb);
+    out_data = certsign::keybox_store((const struct certsign::keybox *)new_kb);
     if (out_data == NULL) {
         std::cerr << "Failed to serialize the new keybox" << std::endl;
         goto out;
@@ -111,18 +118,18 @@ out:
     return ret;
 }
 
-const std::array<std::pair<enum sus_key_variant, const char *>, 2> algs({
-        std::pair(SUS_KEY_EC, "ec"),
-        std::pair(SUS_KEY_RSA, "rsa")
+const std::array<std::pair<enum util::sus_key_variant, const char *>, 2> algs({
+        std::pair(util::SUS_KEY_EC, "ec"),
+        std::pair(util::SUS_KEY_RSA, "rsa")
 });
-int dump_keybox(
+int dump_kb(
     std::string const& keybox_path,
 
     std::string const& out_dir_path
 )
 {
     VECTOR(u8) keybox_data = NULL;
-    struct keybox *kb = NULL;
+    struct certsign::keybox *kb = NULL;
     char path_buf[128] = { 0 };
     VECTOR(char) tmp_str = NULL;
     int ret = EXIT_FAILURE;
@@ -133,7 +140,7 @@ int dump_keybox(
         goto fail;
     }
 
-    kb = keybox_load(keybox_data);
+    kb = certsign::keybox_load(keybox_data);
     if (kb == NULL) {
         std::cerr << "Failed to deserialize the keybox file" << std::endl;
         goto fail;
@@ -143,7 +150,7 @@ int dump_keybox(
         VECTOR(u8 const) tmp_blob = NULL;
         VECTOR(VECTOR(u8 const) const) tmp_cert_chain = NULL;
 
-        const enum sus_key_variant variant = a.first;
+        const enum util::sus_key_variant variant = a.first;
         const char *name = a.second;
 
         tmp_cert_chain = keybox_get_cert_chain(kb, variant);
@@ -191,7 +198,7 @@ int dump_keybox(
         }
         tmp_str = (VECTOR(char))vector_clone((void *)tmp_blob);
         vector_push_back(&tmp_str, '\0');
-        std::cout << name << " Issuer title: \"" << tmp_str << "\"" << std::endl;
+        std::cout << name << " issuer title: \"" << tmp_str << "\"" << std::endl;
         vector_destroy(&tmp_str);
 
         tmp_blob = keybox_get_issuer_serial(kb, variant);
@@ -229,8 +236,6 @@ fail:
 
     return ret;
 }
-
-} /* namespace suskeymaster */
 
 static VECTOR(uint8_t) read_file(std::string const& path)
 {
@@ -299,3 +304,7 @@ static std::string utc_to_string(std::time_t ts)
 
     return std::string(buf);
 }
+
+} /* namespace keybox */
+} /* namespace cli */
+} /* namespace suskeymaster */

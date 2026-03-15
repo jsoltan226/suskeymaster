@@ -7,7 +7,9 @@
 
 #ifdef __cplusplus
 namespace suskeymaster {
+namespace certsign {
 extern "C" {
+using ::suskeymaster::util::sus_key_variant;
 #endif /* __cplusplus */
 
 struct keybox;
@@ -51,6 +53,7 @@ VECTOR(u8 const) keybox_get_keyblob(const struct keybox *kb,
 
 #ifdef __cplusplus
 } /* extern "C" */
+} /* namespace certsign */
 } /* namespace suskeymaster */
 #endif /* __cplusplus */
 

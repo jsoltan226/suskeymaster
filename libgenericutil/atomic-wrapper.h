@@ -2,13 +2,17 @@
 #define SUSKEYMASTER_GENERIC_UTIL_ATOMIC_WRAPPER_H_
 
 #ifdef __cplusplus
+namespace suskeymaster {
+namespace util {
 extern "C" {
 #endif /* __cplusplus */
 
-int util_atomic_load_int(const _Atomic int *a);
-void util_atomic_store_int(_Atomic int *a, int value);
+int do_atomic_load_int(const _Atomic int *a);
+void do_atomic_store_int(_Atomic int *a, int value);
 
 #ifdef __cplusplus
+} /* namespace util */
+} /* namespace suskeymaster */
 } /* extern "C" */
 #endif /* __cplusplus */
 

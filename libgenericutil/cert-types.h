@@ -3,6 +3,7 @@
 
 #ifdef __cplusplus
 namespace suskeymaster {
+namespace util {
 extern "C" {
 #endif /* __cplusplus */
 
@@ -15,6 +16,7 @@ enum sus_key_variant {
 
 #ifdef __cplusplus
 } /* extern "C" */
+} /* namespace util */
 } /* namespace suskeymaster */
 #endif /* __cplusplus */
 

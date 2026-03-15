@@ -10,6 +10,7 @@
 #ifdef __cplusplus
 extern "C" {
 namespace suskeymaster {
+namespace certmod {
 #endif /* __cplusplus */
 
 /**
@@ -1520,6 +1521,7 @@ __attribute__((unused)) static inline const char * KM_ErrorCodeToString(enum KM_
 }
 
 #ifdef __cplusplus
+} /* namespace certmod */
 } /* namespace suskeymaster */
 } /* extern "C" */
 #endif /* __cplusplus */

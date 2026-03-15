@@ -16,9 +16,11 @@
 #include <cstdarg>
 #include <semaphore.h>
 
+namespace suskeymaster {
+namespace certsign {
+
 using ::android::hardware::hidl_vec;
 using namespace ::android::hardware::keymaster::V4_0;
-using namespace suskeymaster;
 
 static void pr_err(const char *fmt, ...)
 {
@@ -95,7 +97,7 @@ extern "C" int sus_cert_sign(unsigned char *tbs_der, unsigned long tbs_der_len,
     }
     keybox_unlock_current(&keybox);
 
-    if (variant == SUS_KEY_RSA)
+    if (variant == util::SUS_KEY_RSA)
         init_rsa_params(params_hidl);
     else
         init_ec_params(params_hidl);
@@ -112,14 +114,14 @@ extern "C" int sus_cert_sign(unsigned char *tbs_der, unsigned long tbs_der_len,
         g_out_sig = NULL;
         g_out_sig_len = 0;
         struct ::timespec ts = { };
-        util_atomic_store_int(&g_sem_inited, false);
+        util::do_atomic_store_int(&g_sem_inited, false);
 
-        if (try_init_g_sem(&g_sem, &g_sem_inited, pr_err))
+        if (util::try_init_g_sem(&g_sem, &g_sem_inited, pr_err))
             goto out;
 
-        if (prepare_timeout(&ts, 1, pr_err)) goto out;
+        if (util::prepare_timeout(&ts, 1, pr_err)) goto out;
         hal->begin(KeyPurpose::SIGN, keyblob_hidl, params_hidl, {}, begin_cb);
-        if (wait_on_sem(&g_sem, "BEGIN operation", &ts, pr_err)) goto out;
+        if (util::wait_on_sem(&g_sem, "BEGIN operation", &ts, pr_err)) goto out;
 
         if (g_begin_error != ErrorCode::OK) {
             pr_err("BEGIN operation failed: %d (%s)",
@@ -127,9 +129,9 @@ extern "C" int sus_cert_sign(unsigned char *tbs_der, unsigned long tbs_der_len,
             goto out;
         }
 
-        if (prepare_timeout(&ts, 2, pr_err)) goto out;
+        if (util::prepare_timeout(&ts, 2, pr_err)) goto out;
         hal->finish(g_operation_handle, {}, tbs_hidl, {}, {}, {}, finish_cb);
-        if (wait_on_sem(&g_sem, "FINISH operation", &ts, pr_err)) goto out;
+        if (util::wait_on_sem(&g_sem, "FINISH operation", &ts, pr_err)) goto out;
 
         if (g_finish_error != ErrorCode::OK) {
             pr_err("FINISH operation failed: %d (%s)",
@@ -142,7 +144,7 @@ extern "C" int sus_cert_sign(unsigned char *tbs_der, unsigned long tbs_der_len,
         ok = true;
 
 out:
-        destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
+        util::destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
     }
     g_mutex.unlock();
     if (!ok) {
@@ -155,7 +157,7 @@ out:
 
     __android_log_print(ANDROID_LOG_INFO, "certsign",
             "Successfully signed %s cert",
-            variant == SUS_KEY_EC ? "ECDSA" : "RSA");
+            variant == util::SUS_KEY_EC ? "ECDSA" : "RSA");
     return 0;
 }
 
@@ -217,7 +219,7 @@ static void begin_cb(
     if (error == ErrorCode::OK)
         g_operation_handle = operation_handle;
 
-    try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
+    util::try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
 }
 
 static void finish_cb(
@@ -250,5 +252,8 @@ static void finish_cb(
 
 err:
 
-    try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
+    util::try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
 }
+
+} /* namespace certsign */
+} /* namespace suskeymaster */

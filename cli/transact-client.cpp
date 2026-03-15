@@ -1,7 +1,7 @@
-#include "android/hardware/keymaster/4.0/types.h"
-#include "suskeymaster.hpp"
+#include "cli.hpp"
 #include <libgenericutil/util.h>
 #include <libgenericutil/atomic-wrapper.h>
+#include <android/hardware/keymaster/4.0/types.h>
 #include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
 #include <mutex>
 #include <cstdio>
@@ -11,6 +11,9 @@
 #include <openssl/rand.h>
 
 namespace suskeymaster {
+namespace cli {
+namespace transact {
+namespace client {
 
 using namespace ::android::hardware::keymaster::V4_0;
 using ::android::hardware::hidl_vec;
@@ -46,7 +49,7 @@ static void generate_key_cb(
 {
     (void) out_characteristics;
 
-    if (!util_atomic_load_int(&g_sem_inited)) {
+    if (!util::do_atomic_load_int(&g_sem_inited)) {
         std::cerr << "FATAL ERROR: Global semaphore not initialized!" << std::endl;
         std::abort();
     }
@@ -55,7 +58,7 @@ static void generate_key_cb(
     if (error == ErrorCode::OK)
         g_generate_key_output = out_key;
 
-    try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
+    util::try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
 }
 
 static ErrorCode g_attest_key_error = ErrorCode::UNKNOWN_ERROR;
@@ -65,7 +68,7 @@ static void attest_key_cb(
         hidl_vec<hidl_vec<uint8_t>> const& cert_chain
 )
 {
-    if (!util_atomic_load_int(&g_sem_inited)) {
+    if (!util::do_atomic_load_int(&g_sem_inited)) {
         pr_err("FATAL ERROR: Global semaphore not initialized!");
         std::abort();
     }
@@ -79,7 +82,7 @@ static void attest_key_cb(
         g_attest_cert_chain = cert_chain;
     }
 
-    try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
+    util::try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
 }
 
 static ErrorCode g_import_wrapped_key_error = ErrorCode::UNKNOWN_ERROR;
@@ -92,7 +95,7 @@ static void import_wrapped_key_cb(
 {
     (void) key_characteristics;
 
-    if (!util_atomic_load_int(&g_sem_inited)) {
+    if (!util::do_atomic_load_int(&g_sem_inited)) {
         pr_err("FATAL ERROR: Global semaphore not initialized!");
         std::abort();
     }
@@ -101,10 +104,10 @@ static void import_wrapped_key_cb(
     if (error == ErrorCode::OK)
         g_import_wrapped_key_out_keyblob = key_blob;
 
-    try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
+    util::try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
 }
 
-int transact_c_generate_and_attest_wrapping_key(sp<IKeymasterDevice> hal,
+int generate_and_attest_wrapping_key(sp<IKeymasterDevice> hal,
     hidl_vec<uint8_t>& out_wrapping_blob, hidl_vec<uint8_t>& out_wrapping_pubkey,
     hidl_vec<hidl_vec<uint8_t>> * out_cert_chain)
 {
@@ -122,12 +125,12 @@ int transact_c_generate_and_attest_wrapping_key(sp<IKeymasterDevice> hal,
         g_generate_key_error = ErrorCode::UNKNOWN_ERROR;
         g_generate_key_output = {};
 
-        if (try_init_g_sem(&g_sem, &g_sem_inited, pr_err)) goto out_generate;
-        if (prepare_timeout(tsp, 4, pr_err)) goto out_generate;
+        if (util::try_init_g_sem(&g_sem, &g_sem_inited, pr_err)) goto out_generate;
+        if (util::prepare_timeout(tsp, 4, pr_err)) goto out_generate;
 
         hal->generateKey(params, generate_key_cb);
 
-        if (wait_on_sem(&g_sem, "wrapping key generateKey", tsp, pr_err)) goto out_generate;
+        if (util::wait_on_sem(&g_sem, "wrapping key generateKey", tsp, pr_err)) goto out_generate;
 
         if (g_generate_key_error != ErrorCode::OK) {
             std::cerr << "Failed to generate the wrapping key: "
@@ -141,11 +144,11 @@ int transact_c_generate_and_attest_wrapping_key(sp<IKeymasterDevice> hal,
         ok = true;
 
 out_generate:
-        destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
+        util::destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
     }
 
     /* Export the public part */
-    if (suskeymaster::export_key(hal, out_wrapping_blob, out_wrapping_pubkey)) {
+    if (::suskeymaster::cli::export_key(hal, out_wrapping_blob, out_wrapping_pubkey)) {
         std::cerr << "Failed to export the wrapping public key" << std::endl;
         return 1;
     }
@@ -171,12 +174,12 @@ out_generate:
         g_attest_key_error = ErrorCode::UNKNOWN_ERROR;
         g_attest_cert_chain = {};
 
-        if (try_init_g_sem(&g_sem, &g_sem_inited, pr_err)) goto out_attest;
-        if (prepare_timeout(tsp, 4, pr_err)) goto out_attest;
+        if (util::try_init_g_sem(&g_sem, &g_sem_inited, pr_err)) goto out_attest;
+        if (util::prepare_timeout(tsp, 4, pr_err)) goto out_attest;
 
         hal->attestKey(out_wrapping_blob, params, attest_key_cb);
 
-        if (wait_on_sem(&g_sem, "wrapping key attestKey", tsp, pr_err)) goto out_attest;
+        if (util::wait_on_sem(&g_sem, "wrapping key attestKey", tsp, pr_err)) goto out_attest;
 
         if (g_attest_key_error != ErrorCode::OK) {
             std::cerr << "Failed to attest the wrapping key: "
@@ -190,7 +193,7 @@ out_generate:
         ok = true;
 
 out_attest:
-        destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
+        util::destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
     }
 
     if (!ok) {
@@ -202,7 +205,7 @@ out_attest:
     return 0;
 }
 
-int transact_c_import_wrapped_key(sp<IKeymasterDevice> hal,
+int import_wrapped_key(sp<IKeymasterDevice> hal,
         hidl_vec<uint8_t> const& in_wrapped_data, hidl_vec<uint8_t> const& in_masking_key,
         hidl_vec<uint8_t> const& in_wrapping_blob, hidl_vec<uint8_t>& out_key_blob)
 {
@@ -218,13 +221,13 @@ int transact_c_import_wrapped_key(sp<IKeymasterDevice> hal,
         g_import_wrapped_key_error = ErrorCode::UNKNOWN_ERROR;
         g_import_wrapped_key_out_keyblob = {};
 
-        if (prepare_timeout(tsp, 4, pr_err)) goto out;
-        if (try_init_g_sem(&g_sem, &g_sem_inited, pr_err)) goto out;
+        if (util::prepare_timeout(tsp, 4, pr_err)) goto out;
+        if (util::try_init_g_sem(&g_sem, &g_sem_inited, pr_err)) goto out;
 
         hal->importWrappedKey(in_wrapped_data, in_wrapping_blob,
                 in_masking_key, params, 0, 0, import_wrapped_key_cb);
 
-        if (wait_on_sem(&g_sem, "importWrappedKey operation", tsp, pr_err))
+        if (util::wait_on_sem(&g_sem, "importWrappedKey operation", tsp, pr_err))
             goto out;
 
         if (g_import_wrapped_key_error != ErrorCode::OK) {
@@ -238,7 +241,7 @@ int transact_c_import_wrapped_key(sp<IKeymasterDevice> hal,
         out_key_blob = g_import_wrapped_key_out_keyblob;
         ok = true;
 out:
-        destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
+        util::destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
     }
 
     if (!ok) {
@@ -345,4 +348,7 @@ static void init_unwrapping_params(hidl_vec<KeyParameter>& params)
     */
 }
 
+} /* namespace client */
+} /* namespace transact */
+} /* namespace cli */
 } /* namespace suskeymaster */

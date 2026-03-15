@@ -9,6 +9,8 @@
 #ifdef __cplusplus
 extern "C" {
 namespace suskeymaster {
+namespace certmod {
+using ::suskeymaster::util::sus_key_variant;
 #endif /* __cplusplus */
 
 i32 leaf_cert_parse(const VECTOR(u8) cert,
@@ -24,6 +26,7 @@ i32 leaf_cert_gen(VECTOR(u8) *out,
 );
 
 #ifdef __cplusplus
+} /* namespace certmod */
 } /* namespace suskeymaster */
 } /* extern "C" */
 #endif /* __cplusplus */

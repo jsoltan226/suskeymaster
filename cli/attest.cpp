@@ -1,4 +1,4 @@
-#include "suskeymaster.hpp"
+#include "cli.hpp"
 #include <core/vector.h>
 #include <libsuscertmod/key-desc.h>
 #include <libsuscertmod/leaf-cert.h>
@@ -21,6 +21,7 @@
 #include <semaphore.h>
 
 namespace suskeymaster {
+namespace cli {
 
 using namespace ::android::hardware::keymaster::V4_0;
 using ::android::hardware::hidl_vec;
@@ -55,7 +56,7 @@ static void generate_key_cb(
 {
     (void) out_characteristics;
 
-    if (!util_atomic_load_int(&g_sem_inited)) {
+    if (!util::do_atomic_load_int(&g_sem_inited)) {
         std::cerr << "FATAL ERROR: Global semaphore not initialized!" << std::endl;
         std::abort();
     }
@@ -64,7 +65,7 @@ static void generate_key_cb(
     if (error == ErrorCode::OK)
         g_generate_key_output = out_key;
 
-    try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
+    util::try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
 }
 
 static ErrorCode g_attest_key_error = ErrorCode::UNKNOWN_ERROR;
@@ -74,7 +75,7 @@ static void attest_key_cb(
         hidl_vec<hidl_vec<uint8_t>> const& cert_chain
 )
 {
-    if (!util_atomic_load_int(&g_sem_inited)) {
+    if (!util::do_atomic_load_int(&g_sem_inited)) {
         std::cerr << "FATAL ERROR: Global semaphore not initialized!" << std::endl;
         std::abort();
     }
@@ -88,7 +89,7 @@ static void attest_key_cb(
         g_attest_cert_chain = cert_chain;
     }
 
-    try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
+    util::try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
 }
 
 int generate_key(sp<IKeymasterDevice> hal, Algorithm alg, hidl_vec<uint8_t> &out)
@@ -106,7 +107,7 @@ int generate_key(sp<IKeymasterDevice> hal, Algorithm alg, hidl_vec<uint8_t> &out
 
     struct ::timespec ts;
     struct timespec *const tsp = reinterpret_cast<struct timespec *>(&ts);
-    if (prepare_timeout(tsp, 2, pr_err))
+    if (util::prepare_timeout(tsp, 2, pr_err))
         return -1;
 
     bool ok = false;
@@ -116,11 +117,11 @@ int generate_key(sp<IKeymasterDevice> hal, Algorithm alg, hidl_vec<uint8_t> &out
         g_generate_key_error = ErrorCode::UNKNOWN_ERROR;
         g_generate_key_output = {};
 
-        if (try_init_g_sem(&g_sem, &g_sem_inited, pr_err)) goto out;
+        if (util::try_init_g_sem(&g_sem, &g_sem_inited, pr_err)) goto out;
 
         hal->generateKey(params, generate_key_cb);
 
-        if (wait_on_sem(&g_sem, "generateKey operation", tsp, pr_err)) goto out;
+        if (util::wait_on_sem(&g_sem, "generateKey operation", tsp, pr_err)) goto out;
 
         if (g_generate_key_error != ErrorCode::OK) {
             std::cerr << "generateKey operation failed: "
@@ -134,7 +135,7 @@ int generate_key(sp<IKeymasterDevice> hal, Algorithm alg, hidl_vec<uint8_t> &out
         ok = true;
 
 out:
-        destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
+        util::destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
     }
 
     return ok ? 0 : 1;
@@ -147,7 +148,7 @@ int attest_key(sp<IKeymasterDevice> hal, const hidl_vec<uint8_t>& key)
 
     struct ::timespec ts;
     struct timespec *const tsp = reinterpret_cast<struct timespec *>(&ts);
-    if (prepare_timeout(tsp, 5, pr_err))
+    if (util::prepare_timeout(tsp, 5, pr_err))
         return -1;
 
     VECTOR(u8) leaf_cert = vector_new(u8);
@@ -160,12 +161,12 @@ int attest_key(sp<IKeymasterDevice> hal, const hidl_vec<uint8_t>& key)
         g_attest_key_error = ErrorCode::UNKNOWN_ERROR;
         g_attest_cert_chain = {};
 
-        if (try_init_g_sem(&g_sem, &g_sem_inited, pr_err))
+        if (util::try_init_g_sem(&g_sem, &g_sem_inited, pr_err))
             goto out;
 
         hal->attestKey(key, params, attest_key_cb);
 
-        if (wait_on_sem(&g_sem, "attestKey operation", tsp, pr_err))
+        if (util::wait_on_sem(&g_sem, "attestKey operation", tsp, pr_err))
             goto out;
 
         if (g_attest_key_error != ErrorCode::OK) {
@@ -184,7 +185,7 @@ int attest_key(sp<IKeymasterDevice> hal, const hidl_vec<uint8_t>& key)
         g_attest_cert_chain = {};
 
 out:
-        destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
+        util::destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
     }
 
     if (!ok) {
@@ -194,7 +195,7 @@ out:
     }
     std::cout << "Successfully generated KeyMaster key attestation" << std::endl;
 
-    return suskeymaster::transact_s_verify_attestation(cert_chain);
+    return transact::server::verify_attestation(cert_chain);
 }
 
 static void init_ec_gen_params(hidl_vec<KeyParameter>& params)
@@ -299,4 +300,5 @@ static void init_attest_key_params(hidl_vec<KeyParameter>& params)
     */
 }
 
+} /* namespace cli */
 } /* namespace suskeymaster */

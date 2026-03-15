@@ -1,4 +1,4 @@
-#include "suskeymaster.hpp"
+#include "cli.hpp"
 #include <libgenericutil/util.h>
 #include <libgenericutil/atomic-wrapper.h>
 #include <utils/StrongPointer.h>
@@ -12,6 +12,7 @@
 #include <semaphore.h>
 
 namespace suskeymaster {
+namespace cli {
 
 using namespace ::android::hardware::keymaster::V4_0;
 using ::android::hardware::hidl_vec;
@@ -38,7 +39,7 @@ static void get_key_characteristics_cb(
         const KeyCharacteristics& key_characteristics
 )
 {
-    if (!util_atomic_load_int(&g_sem_inited)) {
+    if (!util::do_atomic_load_int(&g_sem_inited)) {
         std::cerr << "FATAL ERROR: Global semaphore not initialized!" << std::endl;
         std::abort();
     }
@@ -67,13 +68,13 @@ static void get_key_characteristics_cb(
 
 /* failure: */
     g_get_key_characteristics_error = error;
-    try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
+    util::try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
     return;
 
 found:
     g_get_key_characteristics_error = error;
     std::cout << "Key type is: " << toString(g_key_type) << std::endl;
-    try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
+    util::try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
 }
 
 static ErrorCode g_begin_error = ErrorCode::UNKNOWN_ERROR;
@@ -86,7 +87,7 @@ static void begin_cb(
 {
     (void) out_params;
 
-    if (!util_atomic_load_int(&g_sem_inited)) {
+    if (!util::do_atomic_load_int(&g_sem_inited)) {
         std::cerr << "FATAL ERROR: Global semaphore not initialized!" << std::endl;
         std::abort();
     }
@@ -95,7 +96,7 @@ static void begin_cb(
         g_operation_handle = operation_handle;
 
     g_begin_error = error;
-    try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
+    util::try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
 }
 
 static ErrorCode g_finish_error = ErrorCode::UNKNOWN_ERROR;
@@ -108,7 +109,7 @@ static void finish_cb(
 {
     (void) out_params;
 
-    if (!util_atomic_load_int(&g_sem_inited)) {
+    if (!util::do_atomic_load_int(&g_sem_inited)) {
         std::cerr << "FATAL ERROR: Global semaphore not initialized!" << std::endl;
         std::abort();
     }
@@ -119,7 +120,7 @@ static void finish_cb(
         g_out_sig = output;
 
     g_finish_error = error;
-    try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
+    util::try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
 }
 
 static void init_ec_params(hidl_vec<KeyParameter>& params)
@@ -175,13 +176,13 @@ int sign(sp<IKeymasterDevice> hal,
         hidl_vec<KeyParameter> params;
         int begin_timeout_s = 0, finish_timeout_s = 0;
 
-        if (try_init_g_sem(&g_sem, &g_sem_inited, pr_err))
+        if (util::try_init_g_sem(&g_sem, &g_sem_inited, pr_err))
             goto out;
 
         /* Determine the key's algorithm (EC or RSA) */
-        if (prepare_timeout(tsp, 1, pr_err)) goto out;
+        if (util::prepare_timeout(tsp, 1, pr_err)) goto out;
         hal->getKeyCharacteristics(key, get_sus_application_id(), {}, get_key_characteristics_cb);
-        if (wait_on_sem(&g_sem, "getKeyCharacteristics operation", tsp, pr_err)) goto out;
+        if (util::wait_on_sem(&g_sem, "getKeyCharacteristics operation", tsp, pr_err)) goto out;
 
         if (g_get_key_characteristics_error != ErrorCode::OK) {
             pr_err("Couldn't get the signing key's characteristics: %d (%s)",
@@ -206,9 +207,9 @@ int sign(sp<IKeymasterDevice> hal,
         }
 
         /* Initialize the operation */
-        if (prepare_timeout(tsp, begin_timeout_s, pr_err)) goto out;
+        if (util::prepare_timeout(tsp, begin_timeout_s, pr_err)) goto out;
         hal->begin(KeyPurpose::SIGN, key, params, {}, begin_cb);
-        if (wait_on_sem(&g_sem, "BEGIN operation", tsp, pr_err)) goto out;
+        if (util::wait_on_sem(&g_sem, "BEGIN operation", tsp, pr_err)) goto out;
 
         if (g_begin_error != ErrorCode::OK) {
             pr_err("BEGIN operation failed: %d (%s)",
@@ -217,9 +218,9 @@ int sign(sp<IKeymasterDevice> hal,
         }
 
         /* Finalize (actually perform) the operation */
-        if (prepare_timeout(tsp, finish_timeout_s, pr_err)) goto out;
+        if (util::prepare_timeout(tsp, finish_timeout_s, pr_err)) goto out;
         hal->finish(g_operation_handle, {}, message, {}, {}, {}, finish_cb);
-        if (wait_on_sem(&g_sem, "FINISH operation", tsp, pr_err)) goto out;
+        if (util::wait_on_sem(&g_sem, "FINISH operation", tsp, pr_err)) goto out;
 
         if (g_finish_error != ErrorCode::OK) {
             pr_err("FINISH operation failed: %d (%s)",
@@ -231,7 +232,7 @@ int sign(sp<IKeymasterDevice> hal,
         ok = true;
 
 out:
-        destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
+        util::destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
     }
 
     if (!ok) {
@@ -243,4 +244,5 @@ out:
     }
 }
 
+} /* namespace cli */
 } /* namespace suskeymaster */

@@ -6,6 +6,8 @@
 #include <semaphore.h>
 
 #ifdef __cplusplus
+namespace suskeymaster {
+namespace util {
 extern "C" {
 #endif /* __cplusplus */
 
@@ -27,6 +29,8 @@ void destroy_g_sem(sem_t *g_sem, _Atomic int *g_sem_inited_p,
 
 #ifdef __cplusplus
 } /* extern "C" */
+} /* namespace util */
+} /* namespace suskeymaster */
 #endif /* __cplusplus */
 
 #endif /* SUS_CERT_SIGN_UTIL_H_ */

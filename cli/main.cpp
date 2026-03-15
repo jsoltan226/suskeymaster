@@ -1,4 +1,4 @@
-#include "suskeymaster.hpp"
+#include "cli.hpp"
 #include <libgenericutil/cert-types.h>
 #include <core/log.h>
 #include <android/hardware/keymaster/4.0/types.h>
@@ -23,8 +23,42 @@
 using namespace ::android::hardware::keymaster::V4_0;
 using namespace ::android::hardware;
 
+static const char *g_argv0 = NULL;
+static ::android::sp<IKeymasterDevice> g_hal;
+
+static void setup_cgd_log(void);
+
+static void check_args(int argc, const char **argv,
+        bool *o_should_return, int *o_return_val);
+static int dispatch_cmd(int argc, const char **argv);
+
+static int init_g_hal(void);
+
 static void print_usage(void);
 static void print_not_enough_args_for_cmd(const char *cmd);
+
+int main(int argc, char **argv)
+{
+    g_argv0 = argv[0];
+    setup_cgd_log();
+
+    bool should_return = false;
+    int ret = 0;
+    check_args(argc, (const char **)argv, &should_return, &ret);
+    if (should_return)
+        return ret;
+
+    ret = dispatch_cmd(argc, (const char **)argv);
+    if (ret < 0) {
+        std::cerr << "Unknown command: " << argv[1] << std::endl;
+        print_usage();
+        return EXIT_FAILURE;
+    } else {
+        return ret;
+    }
+}
+
+namespace suskeymaster {
 
 static int read_file(const char *path, hidl_vec<uint8_t>& out, const char *name);
 static int write_file(const char *path, const hidl_vec<uint8_t>& in, const char *name);
@@ -63,39 +97,7 @@ static int handle_cmd_transact_client_import(const char *in_wrapped_data_path,
         const char *in_masking_key_path, const char *in_wrapping_keyblob_path,
         const char *out_keyblob_path);
 
-static void setup_cgd_log(void);
-
-static void check_args(int argc, const char **argv,
-        bool *o_should_return, int *o_return_val);
-static int dispatch_cmd(int argc, const char **argv);
-
-static int init_g_hal(void);
-
-static const char *g_argv0 = NULL;
-static ::android::sp<IKeymasterDevice> g_hal;
-
-int main(int argc, char **argv)
-{
-    g_argv0 = argv[0];
-    setup_cgd_log();
-
-    bool should_return = false;
-    int ret = 0;
-    check_args(argc, (const char **)argv, &should_return, &ret);
-    if (should_return)
-        return ret;
-
-    ret = dispatch_cmd(argc, (const char **)argv);
-    if (ret < 0) {
-        std::cerr << "Unknown command: " << argv[1] << std::endl;
-        print_usage();
-        return EXIT_FAILURE;
-    } else {
-        return ret;
-    }
-}
-
-namespace suskeymaster {
+namespace cli {
     hidl_vec<uint8_t> const& get_sus_application_id(void)
     {
         /*
@@ -107,131 +109,7 @@ namespace suskeymaster {
 
         return application_id;
     }
-}
-
-static void print_usage()
-{
-    const char *progname = g_argv0 ? g_argv0 : "suskeymaster";
-
-    std::cout << "Usage: " << progname << " <command> <args...>\n"
-        "Available commands:\n"
-        "   generate <algorithm> <out_key_blob>\n"
-        "       Generate a new keypair in KeyMaster and save the resulting key blob"
-            "to <out_key_blob>\n"
-        "\n"
-        "   attest <key_source> <key_spec>\n"
-        "       Generate a KeyMaster attestation for a given key\n"
-        "       <key_source> can be either \"generated\" or \"file\"\n"
-        "       If <key_source> is \"generated\", then <key_spec> must be:\n"
-        "           \"ec\" for an ECDSA key\n"
-        "           \"rsa\" for an RSA key\n"
-        "       If <key_source> is \"file\", then <key_spec> must be "
-                "the path to a keymaster key blob file.\n"
-        "\n"
-        "   import <in_private_pkcs8> <algorithm> <out_key_blob>\n"
-        "       Imports a PKCS#8 DER-encoded ECDSA or RSA private key <in_private_pkcs8> "
-                "into the device's keymaster, writing the resulting key blob to <out_key_blob>.\n"
-        "       <algorithm> must be either \"ec\" or \"rsa\", "
-                "in accordance to the content of <in_private_pkcs8>.\n"
-        "\n"
-        "   export <in_keyblob> <out_public_x509>\n"
-        "       Exports the given keymaster key blob <in_keyblob>'s public key "
-                "to a DER-encoded X.509 certificate <out_public_x509>\n"
-        "\n"
-        "   sign <in_keyblob> <in_message> <out_signature>\n"
-        "       Signs <in_message> with <in_keyblob>, saving the signature to <out_signature>\n"
-        "\n"
-        "   mkkeybox <out_keybox> <cmdline1> <cmdline2>\n"
-        "       Creates a new suskeymaster binary keybox file <out_keybox> "
-                "from the two command lines (for EC and RSA).\n"
-        "       The command lines have the following format:\n"
-        "           <alg> <n_certs> <cert_1> ... <cert_n> <wrapped_key>\n"
-        "       Where:\n"
-        "           <alg> must be either \"ec\" or \"rsa\", depening on which key type "
-                    "the given command line corresponds to.\n"
-        "           <n_certs> is the number of certificates in the keybox\n"
-        "           <cert_1> ... <cert_n> are the file paths of the individual DER-encoded "
-                    "X.509 certificate files. They may be quoted if they contain spaces.\n"
-        "           <wrapped_key> is the file path of the wrapped keymaster key blob "
-                    "which contains the private leaf cert signing key of the given keybox\n"
-        "       Note: The command lines have to be supplied in quotes if written in a shell.\n"
-        "\n"
-        "   dumpkeybox <in_keybox> <out_dir_path>\n"
-        "       Dumps the suskeymaster binary keybox file <in_keybox> "
-                "to the directory <out_dir_path>\n"
-        "       Note: The directory <out_dir_path> must already exist\n"
-        "\n"
-        "   transact client generate <out_keyblob> <out_pubkey> [out_attestation]\n"
-        "       Generates the wrapping key for a secure import transaction, "
-                "writing the resulting keyblob to <out_keyblob> and exports the public part"
-                "to a DER-encoded X.509 certificate <out_pubkey>.\n"
-        "       Optionally also generates an attestation certificate chain for the wrapping key, "
-                "writing it to <out_attestation>\n"
-        "\n"
-        "   transact server verify <attestation>\n"
-        "       Verifies the KeyMaster attestation certificate chain <attestation>\n"
-        "\n"
-        "   transact server wrap <in_private_key> <algorithm> <wrapping_key> <out_wrapped_data>\n"
-        "       Wraps the DER-encoded PKCS#8 private key <in_private_key> "
-                "for a secure import transaction.\n"
-        "       <algorithm> must be either \"ec\" or \"rsa\", "
-                "depending on the content of <in_private_key>.\n"
-        "       <wrapping_key> is the DER-encoded X.509 public wrapping key "
-                "received from the client.\n"
-        "       <out_wrapped_data> is the path to the file to which the wrapped data "
-                "(which is supposed to be sent to the client) will be written.\n"
-        "       <out_masking_key> is the path to the file to which "
-                "the ephemeral masking key will be written\n"
-        "\n"
-        "   transact client import <in_wrapped_data> <in_masking_key> "
-            "<in_wrapping_keyblob> <out_keyblob>\n"
-        "       Performs the secure import of <in_wrapped_data> (masked with `<in_masking_key>`) "
-                "using <in_wrapping_keyblob>.\n"
-        "       This finalizes the secure import transaction, "
-        "and the resulting keyblob is written to <out_keyblob>.\n"
-        "\n"
-        "\n"
-        "Examples:\n"
-        "   To generate an ECDSA key and attest it:\n"
-        "   $ " << progname << " attest generated ec\n"
-        "\n"
-        "   To import an RSA private key:\n"
-        "   $ " << progname << " import rsa rsa-private-pkcs8.der keyblob-rsa.bin\n"
-        "\n"
-        "   To generate and save an ECDSA KeyMaster key:\n"
-        "   $ " << progname << " generate ec keyblob-ec.bin\n"
-        "\n"
-        "   To export the public part of an EC key:\n"
-        "   $ " << progname << " export keyblob-ec.bin pubkey.x509\n"
-        "\n"
-        "   To sign a message with a KeyMaster key:\n"
-        "   $ " << progname << " sign keyblob.bin message.txt signature.bin\n"
-        "\n"
-        "   To generate a binary suskeymaster keybox file from certificates and key blobs:\n"
-        "   $ " << progname << " mkkeybox keybox.bin \\\n"
-        "       'ec 3 cert1-ec.der cert2-ec.der cert3-ec.der key-ec.bin' \\\n"
-        "       'rsa 3 cert1-rsa.der cert2-rsa.der cert3-rsa.der key-rsa.der'\n"
-        "\n"
-        "   To dump a binary keybox file to the current working directory:\n"
-        "   $ " << progname << " dumpkeybox keybox.bin .\n"
-        "\n"
-        "   To securely provision an EC key from a server to the KeyMaster of the client:\n"
-        "   (client) $ " << progname << " transact client generate "
-                                        "wrapping-key.bin wrapping-pub.x509 attestation.bin\n"
-        "   (server) $ " << progname << " transact server verify attestation.bin\n"
-        "   (server) $ " << progname << " transact server wrap private-ec-key-pkcs8.der ec "
-                                        "wrapping-pub.x509 wrapped-data.bin\n"
-        "   (client) $ " << progname << " transact client import "
-                                        "wrapped-data.bin wrapping-key.bin keyblob-ec.bin\n"
-        "\n"
-        << std::endl;
-}
-
-static void print_not_enough_args_for_cmd(const char *cmd)
-{
-    std::cerr << "Not enough arguments for command \"" << cmd << "\"" << std::endl;
-    print_usage();
-}
+} /* namespace cli */
 
 static int read_file(const char *path, hidl_vec<uint8_t>& out, const char *name)
 {
@@ -410,7 +288,7 @@ static int handle_cmd_attest(const char *key_source, const char *key_spec)
             return EXIT_FAILURE;
         }
 
-        if (suskeymaster::generate_key(g_hal, alg, keyblob)) {
+        if (cli::generate_key(g_hal, alg, keyblob)) {
             std::cerr << "Failed to generate an " << toString(alg) << " key" << std::endl;
             return EXIT_FAILURE;
         }
@@ -424,7 +302,7 @@ static int handle_cmd_attest(const char *key_source, const char *key_spec)
         return EXIT_FAILURE;
     }
 
-    return suskeymaster::attest_key(g_hal, keyblob);
+    return cli::attest_key(g_hal, keyblob);
 }
 
 static int handle_cmd_import(const char *algorithm_name,
@@ -448,7 +326,7 @@ static int handle_cmd_import(const char *algorithm_name,
         return EXIT_FAILURE;
     }
 
-    if (suskeymaster::import_key(g_hal, priv_key_pkcs8, alg, out_key_blob)) {
+    if (cli::import_key(g_hal, priv_key_pkcs8, alg, out_key_blob)) {
         std::cerr << "Couldn't import private key!" << std::endl;
         return EXIT_FAILURE;
     }
@@ -472,7 +350,7 @@ static int handle_cmd_export(const char *in_km_keyblob_path,
         return EXIT_FAILURE;
     }
 
-    if (suskeymaster::export_key(g_hal, key_blob, out_pubkey_x509)) {
+    if (cli::export_key(g_hal, key_blob, out_pubkey_x509)) {
         std::cerr << "Couldn't export keymaster key!" << std::endl;
         return EXIT_FAILURE;
     }
@@ -501,7 +379,7 @@ static int handle_cmd_sign(const char *in_km_keyblob_path,
         return EXIT_FAILURE;
     }
 
-    if (suskeymaster::sign(g_hal, message, keyblob, signature)) {
+    if (cli::sign(g_hal, message, keyblob, signature)) {
         std::cerr << "Signing operation failed!" << std::endl;
         return EXIT_FAILURE;
     }
@@ -529,7 +407,7 @@ static int handle_cmd_generate(const char *algorithm_name,
         return EXIT_FAILURE;
     }
 
-    if (suskeymaster::generate_key(g_hal, alg, keyblob)) {
+    if (cli::generate_key(g_hal, alg, keyblob)) {
         std::cerr << "Failed to generate key!" << std::endl;
         return EXIT_FAILURE;
     }
@@ -580,7 +458,7 @@ static int handle_cmd_mkkeybox(const char *out,
         return 1;
     }
 
-    return suskeymaster::make_keybox(ec_cert_paths, ec_key_path,
+    return cli::keybox::make_kb(ec_cert_paths, ec_key_path,
             rsa_cert_paths, rsa_key_path,
             std::string(out)
     );
@@ -589,7 +467,7 @@ static int handle_cmd_mkkeybox(const char *out,
 static int handle_cmd_dumpkeybox(const char *in_keybox_path,
         const char *out_dir_path)
 {
-    return suskeymaster::dump_keybox(in_keybox_path, out_dir_path);
+    return cli::keybox::dump_kb(in_keybox_path, out_dir_path);
 }
 
 static int handle_cmd_transact(const char *actor, const char *cmd,
@@ -672,7 +550,7 @@ static int handle_cmd_transact_client_generate(const char *out_wrapping_keyblob_
     hidl_vec<uint8_t> out_keyblob;
     hidl_vec<uint8_t> out_pubkey;
     hidl_vec<hidl_vec<uint8_t>> out_attestation;
-    int r = suskeymaster::transact_c_generate_and_attest_wrapping_key(
+    int r = cli::transact::client::generate_and_attest_wrapping_key(
             g_hal, out_keyblob, out_pubkey,
             (out_attestation_path != NULL) ? &out_attestation : NULL
     );
@@ -710,7 +588,7 @@ static int handle_cmd_transact_server_verify(const char *in_attestation_path)
         return 1;
     }
 
-    return suskeymaster::transact_s_verify_attestation(attestation);
+    return cli::transact::server::verify_attestation(attestation);
 }
 
 
@@ -718,11 +596,11 @@ static int handle_cmd_transact_server_wrap(const char *in_private_pkcs8_path,
         const char *in_alg_str, const char *in_wrapping_key_path,
         const char *out_wrapped_data_path, const char *out_masking_key_path)
 {
-    enum suskeymaster::sus_key_variant variant;
+    enum util::sus_key_variant variant;
     if (!strcasecmp(in_alg_str, "ec"))
-        variant = suskeymaster::SUS_KEY_EC;
+        variant = util::SUS_KEY_EC;
     else if (!strcasecmp(in_alg_str, "rsa"))
-        variant = suskeymaster::SUS_KEY_RSA;
+        variant = util::SUS_KEY_RSA;
     else {
         std::cerr << "Invalid algorithm name: " << in_alg_str << std::endl;
         return 1;
@@ -742,7 +620,7 @@ static int handle_cmd_transact_server_wrap(const char *in_private_pkcs8_path,
     hidl_vec<uint8_t> out_wrapped_data;
     hidl_vec<uint8_t> out_masking_key;
 
-    if (suskeymaster::transact_s_wrap_key(in_private_pkcs8, variant,
+    if (cli::transact::server::wrap_key(in_private_pkcs8, variant,
             in_wrapping_key, out_wrapped_data, out_masking_key))
     {
         std::cerr << "Failed to wrap the private key for transact" << std::endl;
@@ -782,7 +660,7 @@ static int handle_cmd_transact_client_import(const char *in_wrapped_data_path,
     }
 
     hidl_vec<uint8_t> out_keyblob;
-    if (suskeymaster::transact_c_import_wrapped_key(g_hal, in_wrapped_data,
+    if (cli::transact::client::import_wrapped_key(g_hal, in_wrapped_data,
                 in_masking_key, in_wrapping_keyblob, out_keyblob))
     {
         std::cerr << "Failed to securely import wrapped key blob" << std::endl;
@@ -797,6 +675,54 @@ static int handle_cmd_transact_client_import(const char *in_wrapped_data_path,
     std::cout << "Successfully performed secure transact & import of private key!" << std::endl;
     return 0;
 }
+
+static int scan_keybox_arg(const char *cmdline,
+        std::vector<std::string>& out_cert_chain,
+        std::string& out_key_path)
+{
+    std::istringstream iss(cmdline);
+    uint32_t n_certs;
+
+    iss >> n_certs;
+    if (iss.fail()) {
+        std::cerr << "Couldn't get number of certs from cmdline" << std::endl;
+        return 1;
+    }
+
+    out_cert_chain.clear();
+    out_cert_chain.reserve(n_certs);
+    for (uint32_t i = 0; i < n_certs; i++) {
+        std::string curr_path;
+        iss >> std::quoted(curr_path);
+        if (iss.fail()) {
+            std::cerr << "Failed to parse cert path no. " << i << std::endl;
+            return 1;
+        }
+
+        out_cert_chain.push_back(curr_path);
+    }
+
+    std::string key_path;
+    iss >> std::quoted(key_path);
+    if (iss.fail()) {
+        std::cerr << "Couldn't parse the wrapped key file path" << std::endl;
+        return 1;
+    }
+
+    out_key_path = key_path;
+
+    iss >> std::ws;
+    if (!iss.eof()) {
+        std::cerr << "Trailing characters at the end of cmdline" << std::endl;
+        return 1;
+    }
+
+    return 0;
+}
+
+} /* namespace suskeymaster */
+
+using namespace suskeymaster;
 
 static void setup_cgd_log(void)
 {
@@ -946,50 +872,6 @@ static int dispatch_cmd(int argc, const char **argv)
     }
 }
 
-static int scan_keybox_arg(const char *cmdline,
-        std::vector<std::string>& out_cert_chain,
-        std::string& out_key_path)
-{
-    std::istringstream iss(cmdline);
-    uint32_t n_certs;
-
-    iss >> n_certs;
-    if (iss.fail()) {
-        std::cerr << "Couldn't get number of certs from cmdline" << std::endl;
-        return 1;
-    }
-
-    out_cert_chain.clear();
-    out_cert_chain.reserve(n_certs);
-    for (uint32_t i = 0; i < n_certs; i++) {
-        std::string curr_path;
-        iss >> std::quoted(curr_path);
-        if (iss.fail()) {
-            std::cerr << "Failed to parse cert path no. " << i << std::endl;
-            return 1;
-        }
-
-        out_cert_chain.push_back(curr_path);
-    }
-
-    std::string key_path;
-    iss >> std::quoted(key_path);
-    if (iss.fail()) {
-        std::cerr << "Couldn't parse the wrapped key file path" << std::endl;
-        return 1;
-    }
-
-    out_key_path = key_path;
-
-    iss >> std::ws;
-    if (!iss.eof()) {
-        std::cerr << "Trailing characters at the end of cmdline" << std::endl;
-        return 1;
-    }
-
-    return 0;
-}
-
 static int init_g_hal(void)
 {
     g_hal = ::android::hardware::keymaster::V4_0::IKeymasterDevice::tryGetService();
@@ -999,4 +881,128 @@ static int init_g_hal(void)
     }
 
     return EXIT_SUCCESS;
+}
+
+static void print_usage()
+{
+    const char *progname = g_argv0 ? g_argv0 : "suskeymaster";
+
+    std::cout << "Usage: " << progname << " <command> <args...>\n"
+        "Available commands:\n"
+        "   generate <algorithm> <out_key_blob>\n"
+        "       Generate a new keypair in KeyMaster and save the resulting key blob"
+            "to <out_key_blob>\n"
+        "\n"
+        "   attest <key_source> <key_spec>\n"
+        "       Generate a KeyMaster attestation for a given key\n"
+        "       <key_source> can be either \"generated\" or \"file\"\n"
+        "       If <key_source> is \"generated\", then <key_spec> must be:\n"
+        "           \"ec\" for an ECDSA key\n"
+        "           \"rsa\" for an RSA key\n"
+        "       If <key_source> is \"file\", then <key_spec> must be "
+                "the path to a keymaster key blob file.\n"
+        "\n"
+        "   import <in_private_pkcs8> <algorithm> <out_key_blob>\n"
+        "       Imports a PKCS#8 DER-encoded ECDSA or RSA private key <in_private_pkcs8> "
+                "into the device's keymaster, writing the resulting key blob to <out_key_blob>.\n"
+        "       <algorithm> must be either \"ec\" or \"rsa\", "
+                "in accordance to the content of <in_private_pkcs8>.\n"
+        "\n"
+        "   export <in_keyblob> <out_public_x509>\n"
+        "       Exports the given keymaster key blob <in_keyblob>'s public key "
+                "to a DER-encoded X.509 certificate <out_public_x509>\n"
+        "\n"
+        "   sign <in_keyblob> <in_message> <out_signature>\n"
+        "       Signs <in_message> with <in_keyblob>, saving the signature to <out_signature>\n"
+        "\n"
+        "   mkkeybox <out_keybox> <cmdline1> <cmdline2>\n"
+        "       Creates a new suskeymaster binary keybox file <out_keybox> "
+                "from the two command lines (for EC and RSA).\n"
+        "       The command lines have the following format:\n"
+        "           <alg> <n_certs> <cert_1> ... <cert_n> <wrapped_key>\n"
+        "       Where:\n"
+        "           <alg> must be either \"ec\" or \"rsa\", depening on which key type "
+                    "the given command line corresponds to.\n"
+        "           <n_certs> is the number of certificates in the keybox\n"
+        "           <cert_1> ... <cert_n> are the file paths of the individual DER-encoded "
+                    "X.509 certificate files. They may be quoted if they contain spaces.\n"
+        "           <wrapped_key> is the file path of the wrapped keymaster key blob "
+                    "which contains the private leaf cert signing key of the given keybox\n"
+        "       Note: The command lines have to be supplied in quotes if written in a shell.\n"
+        "\n"
+        "   dumpkeybox <in_keybox> <out_dir_path>\n"
+        "       Dumps the suskeymaster binary keybox file <in_keybox> "
+                "to the directory <out_dir_path>\n"
+        "       Note: The directory <out_dir_path> must already exist\n"
+        "\n"
+        "   transact client generate <out_keyblob> <out_pubkey> [out_attestation]\n"
+        "       Generates the wrapping key for a secure import transaction, "
+                "writing the resulting keyblob to <out_keyblob> and exports the public part"
+                "to a DER-encoded X.509 certificate <out_pubkey>.\n"
+        "       Optionally also generates an attestation certificate chain for the wrapping key, "
+                "writing it to <out_attestation>\n"
+        "\n"
+        "   transact server verify <attestation>\n"
+        "       Verifies the KeyMaster attestation certificate chain <attestation>\n"
+        "\n"
+        "   transact server wrap <in_private_key> <algorithm> <wrapping_key> <out_wrapped_data>\n"
+        "       Wraps the DER-encoded PKCS#8 private key <in_private_key> "
+                "for a secure import transaction.\n"
+        "       <algorithm> must be either \"ec\" or \"rsa\", "
+                "depending on the content of <in_private_key>.\n"
+        "       <wrapping_key> is the DER-encoded X.509 public wrapping key "
+                "received from the client.\n"
+        "       <out_wrapped_data> is the path to the file to which the wrapped data "
+                "(which is supposed to be sent to the client) will be written.\n"
+        "       <out_masking_key> is the path to the file to which "
+                "the ephemeral masking key will be written\n"
+        "\n"
+        "   transact client import <in_wrapped_data> <in_masking_key> "
+            "<in_wrapping_keyblob> <out_keyblob>\n"
+        "       Performs the secure import of <in_wrapped_data> (masked with `<in_masking_key>`) "
+                "using <in_wrapping_keyblob>.\n"
+        "       This finalizes the secure import transaction, "
+        "and the resulting keyblob is written to <out_keyblob>.\n"
+        "\n"
+        "\n"
+        "Examples:\n"
+        "   To generate an ECDSA key and attest it:\n"
+        "   $ " << progname << " attest generated ec\n"
+        "\n"
+        "   To import an RSA private key:\n"
+        "   $ " << progname << " import rsa rsa-private-pkcs8.der keyblob-rsa.bin\n"
+        "\n"
+        "   To generate and save an ECDSA KeyMaster key:\n"
+        "   $ " << progname << " generate ec keyblob-ec.bin\n"
+        "\n"
+        "   To export the public part of an EC key:\n"
+        "   $ " << progname << " export keyblob-ec.bin pubkey.x509\n"
+        "\n"
+        "   To sign a message with a KeyMaster key:\n"
+        "   $ " << progname << " sign keyblob.bin message.txt signature.bin\n"
+        "\n"
+        "   To generate a binary suskeymaster keybox file from certificates and key blobs:\n"
+        "   $ " << progname << " mkkeybox keybox.bin \\\n"
+        "       'ec 3 cert1-ec.der cert2-ec.der cert3-ec.der key-ec.bin' \\\n"
+        "       'rsa 3 cert1-rsa.der cert2-rsa.der cert3-rsa.der key-rsa.der'\n"
+        "\n"
+        "   To dump a binary keybox file to the current working directory:\n"
+        "   $ " << progname << " dumpkeybox keybox.bin .\n"
+        "\n"
+        "   To securely provision an EC key from a server to the KeyMaster of the client:\n"
+        "   (client) $ " << progname << " transact client generate "
+                                        "wrapping-key.bin wrapping-pub.x509 attestation.bin\n"
+        "   (server) $ " << progname << " transact server verify attestation.bin\n"
+        "   (server) $ " << progname << " transact server wrap private-ec-key-pkcs8.der ec "
+                                        "wrapping-pub.x509 wrapped-data.bin\n"
+        "   (client) $ " << progname << " transact client import "
+                                        "wrapped-data.bin wrapping-key.bin keyblob-ec.bin\n"
+        "\n"
+        << std::endl;
+}
+
+static void print_not_enough_args_for_cmd(const char *cmd)
+{
+    std::cerr << "Not enough arguments for command \"" << cmd << "\"" << std::endl;
+    print_usage();
 }

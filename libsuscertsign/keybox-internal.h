@@ -10,6 +10,7 @@
 
 #ifdef __cplusplus
 namespace suskeymaster {
+namespace certsign {
 extern "C" {
 #endif /* __cplusplus */
 
@@ -91,6 +92,7 @@ struct keybox_file_header {
 
 #ifdef __cplusplus
 } /* extern "C" */
+} /* namespace certsign */
 } /* namespace suskeymaster */
 #endif /* __cplusplus */
 

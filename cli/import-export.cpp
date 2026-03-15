@@ -1,4 +1,4 @@
-#include "suskeymaster.hpp"
+#include "cli.hpp"
 #include <libgenericutil/util.h>
 #include <libgenericutil/atomic-wrapper.h>
 #include <android/hardware/keymaster/4.0/types.h>
@@ -13,6 +13,7 @@
 #include <semaphore.h>
 
 namespace suskeymaster {
+namespace cli {
 
 using namespace ::android::hardware::keymaster::V4_0;
 using ::android::hardware::hidl_vec;
@@ -42,7 +43,7 @@ static void import_key_cb(
 {
     (void) out_characteristics;
 
-    if (!util_atomic_load_int(&g_sem_inited)) {
+    if (!util::do_atomic_load_int(&g_sem_inited)) {
         std::cerr << "FATAL ERROR: Global semaphore not initialized!" << std::endl;
         std::abort();
     }
@@ -51,7 +52,7 @@ static void import_key_cb(
     if (error == ErrorCode::OK)
         g_import_key_output = out_key;
 
-    try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
+    util::try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
 }
 
 static ErrorCode g_export_key_error = ErrorCode::UNKNOWN_ERROR;
@@ -61,7 +62,7 @@ static void export_key_cb(
         hidl_vec<uint8_t> const& out_key_material
 )
 {
-    if (!util_atomic_load_int(&g_sem_inited)) {
+    if (!util::do_atomic_load_int(&g_sem_inited)) {
         std::cerr << "FATAL ERROR: Global semaphore not initialized!" << std::endl;
         std::abort();
     }
@@ -70,7 +71,7 @@ static void export_key_cb(
     if (error == ErrorCode::OK)
         g_export_key_output = out_key_material;
 
-    try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
+    util::try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
 }
 
 
@@ -88,7 +89,7 @@ int import_key(sp<IKeymasterDevice> hal,
     struct ::timespec ts;
     struct timespec *const tsp = reinterpret_cast<struct timespec *>(&ts);
 
-    if (prepare_timeout(tsp, 2, pr_err))
+    if (util::prepare_timeout(tsp, 2, pr_err))
         return -1;
 
     hidl_vec<KeyParameter> params(2);
@@ -104,12 +105,12 @@ int import_key(sp<IKeymasterDevice> hal,
         g_import_key_error = ErrorCode::UNKNOWN_ERROR;
         g_import_key_output = {};
 
-        if (try_init_g_sem(&g_sem, &g_sem_inited, pr_err))
+        if (util::try_init_g_sem(&g_sem, &g_sem_inited, pr_err))
             goto out;
 
         hal->importKey(params, KeyFormat::PKCS8, priv_pkcs8, import_key_cb);
 
-        if (wait_on_sem(&g_sem, "importKey operation", tsp, pr_err))
+        if (util::wait_on_sem(&g_sem, "importKey operation", tsp, pr_err))
             goto out;
 
         if (g_import_key_error != ErrorCode::OK) {
@@ -124,7 +125,7 @@ int import_key(sp<IKeymasterDevice> hal,
             << " private key into KeyMaster" << std::endl;
         ok = true;
 out:
-        destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
+        util::destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
     }
 
     return ok ? 0 : 1;
@@ -136,7 +137,7 @@ int export_key(sp<IKeymasterDevice> hal,
     struct ::timespec ts;
     struct timespec *const tsp = reinterpret_cast<struct timespec *>(&ts);
 
-    if (prepare_timeout(tsp, 2, pr_err))
+    if (util::prepare_timeout(tsp, 2, pr_err))
         return -1;
 
     bool ok = false;
@@ -146,12 +147,12 @@ int export_key(sp<IKeymasterDevice> hal,
         g_export_key_error = ErrorCode::UNKNOWN_ERROR;
         g_export_key_output = {};
 
-        if (try_init_g_sem(&g_sem, &g_sem_inited, pr_err))
+        if (util::try_init_g_sem(&g_sem, &g_sem_inited, pr_err))
             goto out;
 
         hal->exportKey(KeyFormat::X509, key, get_sus_application_id(), {}, export_key_cb);
 
-        if (wait_on_sem(&g_sem, "exportKey operation", tsp, pr_err))
+        if (util::wait_on_sem(&g_sem, "exportKey operation", tsp, pr_err))
             goto out;
 
         if (g_export_key_error != ErrorCode::OK) {
@@ -166,10 +167,11 @@ int export_key(sp<IKeymasterDevice> hal,
         ok = true;
 
 out:
-        destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
+        util::destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
     }
 
     return ok ? 0 : 1;
 }
 
+} /* namespace cli */
 } /* namespace suskeymaster */

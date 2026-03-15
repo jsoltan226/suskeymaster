@@ -7,7 +7,9 @@
 
 #ifdef __cplusplus
 namespace suskeymaster {
+namespace certsign {
 extern "C" {
+using ::suskeymaster::util::sus_key_variant;
 #endif /* __cplusplus */
 
 int sus_cert_sign(unsigned char *tbs_der, unsigned long tbs_der_len,
@@ -16,6 +18,7 @@ int sus_cert_sign(unsigned char *tbs_der, unsigned long tbs_der_len,
 
 #ifdef __cplusplus
 } /* extern "C" */
+} /* namespace certsign */
 } /* namespace suskeymaster */
 #endif /* __cplusplus */
 
