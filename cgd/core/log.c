@@ -629,7 +629,7 @@ static i32 try_init_new_output(enum s_log_level level,
         if (o->fp == NULL) {
             s_log_error("Failed to open new log file \"%s\" "
                 "(for level %s): %s",
-                log_level_strings[level], strerror(errno)
+                i->out.filepath, log_level_strings[level], strerror(errno)
             );
             return 1;
         }

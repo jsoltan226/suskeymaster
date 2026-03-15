@@ -198,7 +198,9 @@ static void mod_patch_levels(struct KM_AuthorizationList_v3 *al,
 #ifdef MOD_AUTHLIST_OS_VERSION
     if (al->__osVersion_present && al->osVersion != MOD_AUTHLIST_OS_VERSION) {
         s_log_info("%s.osVersion: %llu -> %llu", al_name,
-                al->osVersion, MOD_AUTHLIST_OS_VERSION);
+                (unsigned long long)al->osVersion,
+                (unsigned long long)MOD_AUTHLIST_OS_VERSION
+        );
         al->osVersion = MOD_AUTHLIST_OS_VERSION;
     }
 #endif /* MOD_AUTHLIST_OS_VERSION */
@@ -208,7 +210,9 @@ static void mod_patch_levels(struct KM_AuthorizationList_v3 *al,
                 al->osPatchLevel != MOD_AUTHLIST_OS_PATCH_LEVEL)
     {
         s_log_info("%s.osPatchLevel: %llu -> %llu", al_name,
-                al->osPatchLevel, MOD_AUTHLIST_OS_PATCH_LEVEL);
+                (unsigned long long)al->osPatchLevel,
+                (unsigned long long)MOD_AUTHLIST_OS_PATCH_LEVEL
+        );
         al->osPatchLevel = MOD_AUTHLIST_OS_PATCH_LEVEL;
     }
 #endif /* MOD_AUTHLIST_OS_PATCH_LEVEL */
@@ -218,7 +222,9 @@ static void mod_patch_levels(struct KM_AuthorizationList_v3 *al,
             al->vendorPatchLevel != MOD_AUTHLIST_VENDOR_PATCH_LEVEL)
     {
         s_log_info("%s.vendorPatchLevel: %llu -> %llu", al_name,
-                al->vendorPatchLevel, MOD_AUTHLIST_VENDOR_PATCH_LEVEL);
+                (unsigned long long)al->vendorPatchLevel,
+                (unsigned long long)MOD_AUTHLIST_VENDOR_PATCH_LEVEL
+        );
         al->vendorPatchLevel = MOD_AUTHLIST_VENDOR_PATCH_LEVEL;
     }
 #endif /* MOD_AUTHLIST_VENDOR_PATCH_LEVEL */
@@ -228,7 +234,9 @@ static void mod_patch_levels(struct KM_AuthorizationList_v3 *al,
             al->bootPatchLevel != MOD_AUTHLIST_BOOT_PATCH_LEVEL)
     {
         s_log_info("%s.bootPatchLevel: %llu -> %llu", al_name,
-                al->bootPatchLevel, MOD_AUTHLIST_BOOT_PATCH_LEVEL);
+                (unsigned long long)al->bootPatchLevel,
+                (unsigned long long)MOD_AUTHLIST_BOOT_PATCH_LEVEL
+        );
         al->bootPatchLevel = MOD_AUTHLIST_BOOT_PATCH_LEVEL;
     }
 #endif /* MOD_AUTHLIST_BOOT_PATCH_LEVEL */

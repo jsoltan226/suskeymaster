@@ -41,14 +41,23 @@ i32 keybox_read_lock_current(const struct keybox **out)
         return 1;
 
     if (g_curr_keybox == NULL) {
-        s_log_info("Current keybox is not initialized; "
-                "attempting to load from \"%s\"...", KEYBOX_LOAD_PATH);
+#define FILE_KB_LOAD_MAX_TRIES 10
+        static u32 file_kb_load_failcnt = 0;
+        s_log_info("Current keybox is not initialized; file_load_failcnt = %u",
+                file_kb_load_failcnt);
+        if (file_kb_load_failcnt >= FILE_KB_LOAD_MAX_TRIES)
+            goto try_builtin;
+
+        s_log_info("attempting to load from file \"%s\"...", KEYBOX_LOAD_PATH);
 
         VECTOR(u8) data = load_file(KEYBOX_LOAD_PATH);
         if (data == NULL) {
-try_builtin:
+            file_kb_load_failcnt++;
             s_log_error("Failed to load the keybox from file \"%s\"; "
-                    "trying built-in one...", KEYBOX_LOAD_PATH);
+                    "new failcnt = %u", KEYBOX_LOAD_PATH, file_kb_load_failcnt);
+
+try_builtin:
+            s_log_info("Attempting to load built-in keybox...");
 
             const struct keybox *const kb = keybox_get_builtin();
             if (kb == NULL) {
@@ -75,8 +84,10 @@ try_builtin:
             }
 
             vector_destroy(&data);
-            s_log_info("Loaded keybox from file \"%s\"; "
-                    "setting it as current", KEYBOX_LOAD_PATH);
+            s_log_info("Loaded keybox from file \"%s\" after %u failed attempts"
+                    "; setting it as current",
+                    KEYBOX_LOAD_PATH, file_kb_load_failcnt
+            );
 
             keybox_unlock_current(NULL);
             if (keybox_set_current(kb)) {
@@ -148,7 +159,8 @@ static VECTOR(u8) load_file(const char *path)
         goto_error("Couldn't ftell() the stream position in \"%s\": %d (%s)",
                 path, errno, strerror(errno));
     else if (size > UINT32_MAX)
-        goto_error("File size (of \"%s\") %lld too big!", path, size);
+        goto_error("File size (of \"%s\") %lld too big!",
+                path, (long long)size);
 
     if (fseek(fp, 0, SEEK_SET))
         goto_error("Couldn't seek to the beginning in \"%s\": %d (%s)",
@@ -171,7 +183,8 @@ static VECTOR(u8) load_file(const char *path)
                 path, errno, strerror(errno));
     fp = NULL;
 
-    s_log_info("Successfully read %lld bytes from file \"%s\"", size, path);
+    s_log_info("Successfully read %lld bytes from file \"%s\"",
+            (long long)size, path);
     return ret;
 
 

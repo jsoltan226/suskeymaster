@@ -16,11 +16,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <ostream>
-#include <fstream>
 #include <iostream>
 #include <cstdbool>
 #include <semaphore.h>
-#include <openssl/err.h>
 
 namespace suskeymaster {
 
@@ -32,15 +30,6 @@ static std::mutex g_master_mutex;
 
 static sem_t g_sem = {};
 static _Atomic int g_sem_inited = false;
-
-static void pr_info(const char *fmt, ...)
-{
-    va_list vlist;
-    va_start(vlist, fmt);
-    vfprintf(stdout, fmt, vlist);
-    putchar('\n');
-    va_end(vlist);
-}
 
 static void pr_err(const char *fmt, ...)
 {
@@ -79,7 +68,7 @@ static void generate_key_cb(
 }
 
 static ErrorCode g_attest_key_error = ErrorCode::UNKNOWN_ERROR;
-static hidl_vec<uint8_t> g_attest_leaf_cert = {};
+static hidl_vec<hidl_vec<uint8_t>> g_attest_cert_chain = {};
 static void attest_key_cb(
         ErrorCode error,
         hidl_vec<hidl_vec<uint8_t>> const& cert_chain
@@ -96,45 +85,10 @@ static void attest_key_cb(
             std::cerr << "FATAL ERROR: Returned cert chain's size is 0!" << std::endl;
             std::abort();
         }
-        g_attest_leaf_cert = cert_chain[0];
+        g_attest_cert_chain = cert_chain;
     }
 
     try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
-}
-
-static int openssl_err_print_cb(const char *msg, size_t size, void *userdata)
-{
-    (void) size;
-    (void) userdata;
-    std::cerr << msg;
-    return 1;
-}
-static void print_openssl_errors(void)
-{
-    std::cerr << "BEGIN OPENSSL ERRORS" << std::endl;
-    ERR_print_errors_cb(openssl_err_print_cb, NULL);
-    std::cerr << "END OPENSSL ERRORS" << std::endl;
-}
-
-static int write_file(const char *path, const hidl_vec<uint8_t>& in, const char *name)
-{
-    std::ofstream file(path, std::ios::binary | std::ios::ate);
-    if (!file.is_open()) {
-        std::cerr << "Failed to open " << name << " \"" << path << "\": "
-            << errno << " (" << std::strerror(errno) << ")" << std::endl;
-        return 1;
-    }
-
-    file.write(reinterpret_cast<const char *>(in.data()), in.size());
-    if (file.fail()) {
-        std::cerr << "Failed to write " << name << " \"" << path << "\" : "
-            << errno << " (" << std::strerror(errno) << ")" << std::endl;
-        return 1;
-    }
-    file.close();
-
-    std::cout << "Successfully wrote " << name << " \"" << path << "\"" << std::endl;
-    return 0;
 }
 
 int generate_key(sp<IKeymasterDevice> hal, Algorithm alg, hidl_vec<uint8_t> &out)
@@ -197,13 +151,14 @@ int attest_key(sp<IKeymasterDevice> hal, const hidl_vec<uint8_t>& key)
         return -1;
 
     VECTOR(u8) leaf_cert = vector_new(u8);
+    hidl_vec<hidl_vec<uint8_t>> cert_chain = {};
 
     bool ok = false;
     {
         std::lock_guard<std::mutex> lock(g_master_mutex);
 
         g_attest_key_error = ErrorCode::UNKNOWN_ERROR;
-        g_attest_leaf_cert = {};
+        g_attest_cert_chain = {};
 
         if (try_init_g_sem(&g_sem, &g_sem_inited, pr_err))
             goto out;
@@ -220,9 +175,13 @@ int attest_key(sp<IKeymasterDevice> hal, const hidl_vec<uint8_t>& key)
             goto out;
         }
 
-        vector_resize(&leaf_cert, g_attest_leaf_cert.size());
-        std::memcpy(leaf_cert, g_attest_leaf_cert.data(), g_attest_leaf_cert.size());
         ok = true;
+
+        cert_chain.resize(g_attest_cert_chain.size());
+        for (uint32_t i = 0; i < g_attest_cert_chain.size(); i++) {
+            cert_chain.data()[i] = hidl_vec<uint8_t>(g_attest_cert_chain.data()[i]);
+        }
+        g_attest_cert_chain = {};
 
 out:
         destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
@@ -235,22 +194,7 @@ out:
     }
     std::cout << "Successfully generated KeyMaster key attestation" << std::endl;
 
-    struct KM_KeyDescription_v3 *km_desc = NULL;
-    if (leaf_cert_parse(leaf_cert, NULL, NULL, &km_desc)) {
-        std::cerr << "Failed to parse the leaf certificate" << std::endl;
-        print_openssl_errors();
-        hidl_vec<uint8_t> hidl_leaf_cert;
-        hidl_leaf_cert.setToExternal(leaf_cert, vector_size(leaf_cert), false);
-        (void) write_file("failed-leaf-cert.der", hidl_leaf_cert, "failed attestation DER");
-        vector_destroy(&leaf_cert);
-        return 1;
-    }
-    vector_destroy(&leaf_cert);
-
-    key_desc_dump(km_desc, pr_info);
-    key_desc_destroy(&km_desc);
-
-    return 0;
+    return suskeymaster::transact_s_verify_attestation(cert_chain);
 }
 
 static void init_ec_gen_params(hidl_vec<KeyParameter>& params)

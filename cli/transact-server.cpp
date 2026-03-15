@@ -1,8 +1,9 @@
-#include "core/vector.h"
 #include "suskeymaster.hpp"
 #include "google-root.h"
 #include <core/int.h>
+#include <core/vector.h>
 #include <libsuscertmod/key-desc.h>
+#include <libsuscertmod/leaf-cert.h>
 #include <libsuscertmod/keymaster-types.h>
 #include <libgenericutil/cert-types.h>
 #include <android/hardware/keymaster/4.0/types.h>
@@ -16,6 +17,7 @@
 #include <openssl/rand.h>
 #include <openssl/x509.h>
 #include <openssl/x509_vfy.h>
+#include <stdio.h>
 
 namespace suskeymaster {
 
@@ -88,6 +90,15 @@ static bool write_integer(unsigned char **p, unsigned char *end,
 static bool write_octet_string(unsigned char **p, unsigned char *end,
         const struct key_desc_measure_ctx *mctx, hidl_vec<uint8_t> const& str);
 
+static void pr_info(const char *fmt, ...)
+{
+    va_list vlist;
+    va_start(vlist, fmt);
+    vfprintf(stdout, fmt, vlist);
+    putchar('\n');
+    va_end(vlist);
+}
+
 int transact_s_verify_attestation(const hidl_vec<hidl_vec<uint8_t>> &cert_chain)
 {
     if (cert_chain.size() < 2) {
@@ -97,12 +108,17 @@ int transact_s_verify_attestation(const hidl_vec<hidl_vec<uint8_t>> &cert_chain)
 
     const int root_idx = static_cast<int>(cert_chain.size() - 1);
     hidl_vec<uint8_t> const& root_der = cert_chain[cert_chain.size() - 1];
+    hidl_vec<uint8_t> const& leaf_der = cert_chain[0];
 
     X509 *leaf = NULL;
     STACK_OF(X509) *intermediates = NULL;
     X509 *root = NULL;
     bool root_old = false;
     bool verify_ok = false;
+    FILE *out = NULL;
+
+    VECTOR(u8) leaf_vec = NULL;
+    struct KM_KeyDescription_v3 *km_desc = NULL;
 
     bool ok = false;
 
@@ -116,6 +132,10 @@ int transact_s_verify_attestation(const hidl_vec<hidl_vec<uint8_t>> &cert_chain)
         goto err;
     }
 
+    out = fopen("failed-leaf.der", "wb");
+    fwrite(leaf_der.data(), leaf_der.size(), 1, out);
+    fclose(out);
+
     if (verify_cert_chain(root_old, root_idx, leaf, intermediates, root, &verify_ok)) {
         std::cerr << "Unexpected failure while trying to verify the certificate chain"
             << std::endl;
@@ -125,9 +145,24 @@ int transact_s_verify_attestation(const hidl_vec<hidl_vec<uint8_t>> &cert_chain)
         goto err;
     }
 
+    leaf_vec = vector_new(u8);
+    vector_resize(&leaf_vec, leaf_der.size());
+    std::memcpy(leaf_vec, leaf_der.data(), leaf_der.size());
+
+    if (leaf_cert_parse(leaf_vec, NULL, NULL, &km_desc)) {
+        std::cerr << "Failed to parse the leaf certificate!" << std::endl;
+        vector_destroy(&leaf_vec);
+        goto err;
+    }
+
+    key_desc_dump(km_desc, pr_info);
+
     ok = true;
 
 err:
+    key_desc_destroy(&km_desc);
+    vector_destroy(&leaf_vec);
+
     destroy_certs(&leaf, &intermediates, &root);
 
     if (!ok) {
@@ -201,7 +236,6 @@ static int deserialize_cert_chain(hidl_vec<hidl_vec<uint8_t>> const& in_cert_cha
     *out_root = NULL;
 
     hidl_vec<uint8_t> const& leaf_hidl = in_cert_chain[0];
-    std::cout << "DEBUG: cert[0] - leaf" << std::endl;
     hidl_vec<uint8_t> const& root_hidl = in_cert_chain[in_cert_chain.size() - 1];
 
     /* De-serialize everything */
@@ -238,11 +272,7 @@ static int deserialize_cert_chain(hidl_vec<hidl_vec<uint8_t>> const& in_cert_cha
             X509_free(curr);
             return 1;
         }
-
-        std::cout << "DEBUG: cert[" << i << "] - intermediate" << std::endl;
     }
-
-    std::cout << "DEBUG: cert[" << in_cert_chain.size() - 1 << "] - root" << std::endl;
 
     return 0;
 }

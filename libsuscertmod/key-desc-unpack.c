@@ -47,7 +47,7 @@ struct KM_KeyDescription_v3 * key_desc_unpack(const ASN1_OCTET_STRING *desc)
 
     total_len = ASN1_STRING_length(desc);
     if (total_len <= 0)
-        goto_error("Invalid length of KM extension string: %d", total_len);
+        goto_error("Invalid length of KM extension string: %ld", total_len);
 
     if (!unwrap_asn1_sequence(&p, total_len, NULL, &seq_end, NULL))
         goto_error("Failed to unwrap the KeyDescription SEQUENCE!");
@@ -611,8 +611,8 @@ static bool parse_boolean(const unsigned char **p, long len, bool *out)
 static i32 validate_km_desc(const struct KM_KeyDescription_v3 *desc)
 {
     if (desc->attestationVersion != 3) {
-        s_log_error("Unsupported attestation version: %d",
-                desc->attestationVersion);
+        s_log_error("Unsupported attestation version: %lld",
+                (long long)desc->attestationVersion);
         return 1;
     }
     switch (desc->attestationSecurityLevel) {
@@ -626,8 +626,8 @@ static i32 validate_km_desc(const struct KM_KeyDescription_v3 *desc)
         return 1;
     }
     if (desc->keymasterVersion != 4) {
-        s_log_error("Unsupported keymaster version: %d",
-                desc->keymasterVersion);
+        s_log_error("Unsupported keymaster version: %lld",
+                (long long)desc->keymasterVersion);
     }
     switch (desc->attestationSecurityLevel) {
     case KM_SECURITY_LEVEL_SOFTWARE:

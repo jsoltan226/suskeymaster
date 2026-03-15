@@ -98,9 +98,12 @@ int main(int argc, char **argv)
 namespace suskeymaster {
     hidl_vec<uint8_t> const& get_sus_application_id(void)
     {
+        /*
         static const hidl_vec<uint8_t> application_id = hidl_vec<uint8_t>(
                 { 's', 'u', 's', 'k', 'e', 'y', 'm', 'a', 's', 't', 'e', 'r' }
         );
+        */
+        static const hidl_vec<uint8_t> application_id = {};
 
         return application_id;
     }

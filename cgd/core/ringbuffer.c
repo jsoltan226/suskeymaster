@@ -20,7 +20,8 @@ struct ringbuffer * ringbuffer_init(u64 buf_size)
 
     ret->buf = calloc(buf_size, 1);
     if (ret->buf == NULL) {
-        s_log_error("Failed to allocate a %llu-byte ringbuffer", buf_size);
+        s_log_error("Failed to allocate a %llu-byte ringbuffer",
+                (unsigned long long)buf_size);
         free (ret);
         return NULL;
     }

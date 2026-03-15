@@ -28,13 +28,19 @@ static i32 check_v1_header_data(const u8 *hdr_start, u64 data_size);
 static i32 check_v1_content(const u8 *data_start,
         const struct keybox_v1_header_data *hdr);
 
+static i32 check_v1_blob(const u8 *start, u64 total_size,
+        enum keybox_v1_blob_type expected_type);
+
 static i32 check_v1_cert_chain(const u8 *start,
         u64 total_size, u32 n_certs, enum sus_key_variant variant);
 static i32 check_v1_key(const u8 *start, u64 size,
         enum sus_key_variant variant);
-static i32 check_v1_serial(const u8 *start, u64 size,
+static i32 check_v1_issuer_title(const u8 *start, u64 size,
         enum sus_key_variant variant);
-static i32 check_v1_notafter(const u8 *start, enum sus_key_variant variant);
+static i32 check_v1_issuer_serial(const u8 *start, u64 size,
+        enum sus_key_variant variant);
+static i32 check_v1_issuer_notafter(const u8 *start,
+        enum sus_key_variant variant);
 
 
 /* `copy_*` functions */
@@ -48,8 +54,8 @@ static void copy_v1_simple_blob(VECTOR(u8) *out, const u8 *start);
 static void copy_v1_notafter(u64 *out, const u8 *start);
 
 /* functions used by `keybox_init` */
-static i32 extract_serial_and_notafter(VECTOR(u8 const) cert,
-        VECTOR(u8) *out_serial, u64 *out_notafter);
+static i32 extract_issuer_cert_info(VECTOR(u8 const) cert,
+        struct keybox_issuer_info *out);
 
 /* functions used by `keybox_store` */
 
@@ -154,19 +160,11 @@ struct keybox * keybox_init(
     if (new == NULL)
         goto_error("Couldn't allocate a new keybox struct");
 
-    if (extract_serial_and_notafter(ec_cert_chain[0],
-                &new->ec.serial, &new->ec.not_after))
-    {
-        goto_error("Failed to extract the EC batch key cert's "
-                "serial number & notAfter value");
-    }
+    if (extract_issuer_cert_info(ec_cert_chain[0], &new->ec.issuer_info))
+        goto_error("Failed to extract the EC issuer cert's info");
 
-    if (extract_serial_and_notafter(rsa_cert_chain[0],
-                &new->rsa.serial, &new->rsa.not_after))
-    {
-        goto_error("Failed to extract the RSA batch key cert's "
-                "serial number & notAfter value");
-    }
+    if (extract_issuer_cert_info(ec_cert_chain[0], &new->rsa.issuer_info))
+        goto_error("Failed to extract the RSA issuer cert's info");
 
     new->owns_buffers = should_own;
     if (!should_own) {
@@ -182,13 +180,13 @@ struct keybox * keybox_init(
             new->rsa.cert_chain[i] = vector_clone(rsa_cert_chain[i]);
         }
 
-        new->ec.wrapped_key = vector_clone(ec_key);
-        new->rsa.wrapped_key = vector_clone(rsa_key);
+        new->ec.keyblob = vector_clone(ec_key);
+        new->rsa.keyblob = vector_clone(rsa_key);
     } else {
         new->ec.cert_chain = ec_cert_chain;
         new->rsa.cert_chain = rsa_cert_chain;
-        new->ec.wrapped_key = ec_key;
-        new->rsa.wrapped_key = rsa_key;
+        new->ec.keyblob = ec_key;
+        new->rsa.keyblob = rsa_key;
     }
 
     return new;
@@ -228,25 +226,42 @@ VECTOR(u8) keybox_store(const struct keybox *kb)
 
     write_v1_cert_chain(out, B + hdr.ec.cert_arr_offset, hdr.ec.cert_arr_size,
             kb->ec.cert_chain, SUS_KEY_EC);
+
     write_v1_blob(out, B + hdr.ec.key_offset, hdr.ec.key_size,
-            kb->ec.wrapped_key, KEYBOX_V1_BLOB_TYPE_KEY_EC);
-    write_v1_blob(out, B + hdr.ec.serial_offset, hdr.ec.serial_size,
-            kb->ec.serial, KEYBOX_V1_BLOB_TYPE_SERIAL_EC);
-    memcpy(tmp, &kb->ec.not_after, KEYBOX_V1_NOTAFTER_SIZE);
-    write_v1_blob(out, B + hdr.ec.notafter_offset, KEYBOX_V1_NOTAFTER_BLOB_SIZE,
-            tmp, KEYBOX_V1_BLOB_TYPE_NOTAFTER_EC);
+            kb->ec.keyblob, KEYBOX_V1_BLOB_TYPE_KEY_EC);
+
+    write_v1_blob(out, B + hdr.ec.issuer_title_offset,
+            hdr.ec.issuer_title_size, kb->ec.issuer_info.title,
+            KEYBOX_V1_BLOB_TYPE_ISSUER_TITLE_EC);
+
+    write_v1_blob(out, B + hdr.ec.issuer_serial_offset,
+            hdr.ec.issuer_serial_size, kb->ec.issuer_info.serial,
+            KEYBOX_V1_BLOB_TYPE_ISSUER_SERIAL_EC);
+
+    memcpy(tmp, &kb->ec.issuer_info.not_after, KEYBOX_V1_ISSUER_NOTAFTER_SIZE);
+    write_v1_blob(out, B + hdr.ec.issuer_notafter_offset,
+            KEYBOX_V1_ISSUER_NOTAFTER_BLOB_SIZE, tmp,
+            KEYBOX_V1_BLOB_TYPE_ISSUER_NOTAFTER_EC);
+
 
     write_v1_cert_chain(out, B + hdr.rsa.cert_arr_offset, hdr.rsa.cert_arr_size,
             kb->rsa.cert_chain, SUS_KEY_RSA);
+
     write_v1_blob(out, B + hdr.rsa.key_offset, hdr.rsa.key_size,
-            kb->rsa.wrapped_key, KEYBOX_V1_BLOB_TYPE_KEY_RSA);
-    write_v1_blob(out, B + hdr.rsa.serial_offset, hdr.rsa.serial_size,
-            kb->rsa.serial, KEYBOX_V1_BLOB_TYPE_SERIAL_RSA);
-    memcpy(tmp, &kb->rsa.not_after, KEYBOX_V1_NOTAFTER_SIZE);
-    write_v1_blob(out, B + hdr.rsa.notafter_offset,
-            KEYBOX_V1_NOTAFTER_BLOB_SIZE, tmp,
-            KEYBOX_V1_BLOB_TYPE_NOTAFTER_RSA
-    );
+            kb->rsa.keyblob, KEYBOX_V1_BLOB_TYPE_KEY_RSA);
+
+    write_v1_blob(out, B + hdr.rsa.issuer_title_offset,
+            hdr.rsa.issuer_title_size, kb->rsa.issuer_info.title,
+            KEYBOX_V1_BLOB_TYPE_ISSUER_TITLE_RSA);
+
+    write_v1_blob(out, B + hdr.rsa.issuer_serial_offset,
+            hdr.rsa.issuer_serial_size, kb->rsa.issuer_info.serial,
+            KEYBOX_V1_BLOB_TYPE_ISSUER_SERIAL_RSA);
+
+    memcpy(tmp, &kb->rsa.issuer_info.not_after, KEYBOX_V1_ISSUER_NOTAFTER_SIZE);
+    write_v1_blob(out, B + hdr.rsa.issuer_notafter_offset,
+            KEYBOX_V1_ISSUER_NOTAFTER_BLOB_SIZE, tmp,
+            KEYBOX_V1_BLOB_TYPE_ISSUER_NOTAFTER_RSA);
 
     vector_destroy(&tmp);
 
@@ -275,19 +290,22 @@ void keybox_destroy(struct keybox **kb_p)
             vector_destroy(&kb->rsa.cert_chain);
         }
 
-        vector_destroy(&kb->ec.wrapped_key);
-        vector_destroy(&kb->rsa.wrapped_key);
+        vector_destroy(&kb->ec.keyblob);
+        vector_destroy(&kb->rsa.keyblob);
 
         kb->owns_buffers = false;
     } else {
         kb->ec.cert_chain = kb->rsa.cert_chain = NULL;
-        kb->ec.wrapped_key = kb->rsa.wrapped_key = NULL;
+        kb->ec.keyblob = kb->rsa.keyblob = NULL;
     }
 
-    vector_destroy(&kb->ec.serial);
-    kb->ec.not_after = 0;
-    vector_destroy(&kb->rsa.serial);
-    kb->rsa.not_after = 0;
+    vector_destroy(&kb->ec.issuer_info.title);
+    vector_destroy(&kb->ec.issuer_info.serial);
+    kb->ec.issuer_info.not_after = 0;
+
+    vector_destroy(&kb->rsa.issuer_info.title);
+    vector_destroy(&kb->rsa.issuer_info.serial);
+    kb->rsa.issuer_info.not_after = 0;
 
     free(kb);
     *kb_p = NULL;
@@ -348,39 +366,7 @@ keybox_get_cert_chain(const struct keybox *kb, enum sus_key_variant key_type)
     return (VECTOR(VECTOR(u8 const) const))ret;
 }
 
-VECTOR(u8 const) keybox_get_batch_key_serial(const struct keybox *kb,
-        enum sus_key_variant key_type)
-{
-    if (kb == NULL || !(key_type > SUS_KEY_INVALID_ && key_type < SUS_KEY_MAX_))
-    {
-        s_log_error("Invalid parameters!");
-        return NULL;
-    }
-
-    VECTOR(u8) ret = key_type == SUS_KEY_RSA ? kb->rsa.serial : kb->ec.serial;
-    if (ret == NULL) {
-        s_log_error("Cert serial is NULL (invalid keybox)!");
-        return NULL;
-    }
-
-    return (VECTOR(u8 const))ret;
-}
-
-i32 keybox_get_not_after(i64 *out, const struct keybox *kb,
-        enum sus_key_variant key_type)
-{
-    if (out == NULL || kb == NULL ||
-            !(key_type > SUS_KEY_INVALID_ && key_type < SUS_KEY_MAX_)
-    ) {
-        s_log_error("Invalid parameters!");
-        return 1;
-    }
-
-    *out = (key_type == SUS_KEY_RSA) ? kb->rsa.not_after : kb->ec.not_after;
-    return 0;
-}
-
-VECTOR(u8 const) keybox_get_wrapped_key(const struct keybox *kb,
+VECTOR(u8 const) keybox_get_issuer_title(const struct keybox *kb,
         enum sus_key_variant key_type)
 {
     if (kb == NULL || !(key_type > SUS_KEY_INVALID_ && key_type < SUS_KEY_MAX_))
@@ -390,7 +376,63 @@ VECTOR(u8 const) keybox_get_wrapped_key(const struct keybox *kb,
     }
 
     VECTOR(u8) ret = key_type == SUS_KEY_RSA ?
-        kb->rsa.wrapped_key : kb->ec.wrapped_key;
+        kb->rsa.issuer_info.title :
+        kb->ec.issuer_info.title;
+    if (ret == NULL) {
+        s_log_error("Cert title is NULL (invalid keybox)!");
+        return NULL;
+    }
+
+    return (VECTOR(u8 const))ret;
+}
+
+VECTOR(u8 const) keybox_get_issuer_serial(const struct keybox *kb,
+        enum sus_key_variant key_type)
+{
+    if (kb == NULL || !(key_type > SUS_KEY_INVALID_ && key_type < SUS_KEY_MAX_))
+    {
+        s_log_error("Invalid parameters!");
+        return NULL;
+    }
+
+    VECTOR(u8) ret = key_type == SUS_KEY_RSA ?
+        kb->rsa.issuer_info.serial :
+        kb->ec.issuer_info.serial;
+    if (ret == NULL) {
+        s_log_error("Cert serial is NULL (invalid keybox)!");
+        return NULL;
+    }
+
+    return (VECTOR(u8 const))ret;
+}
+
+i32 keybox_get_issuer_not_after(i64 *out, const struct keybox *kb,
+        enum sus_key_variant key_type)
+{
+    if (out == NULL || kb == NULL ||
+            !(key_type > SUS_KEY_INVALID_ && key_type < SUS_KEY_MAX_)
+    ) {
+        s_log_error("Invalid parameters!");
+        return 1;
+    }
+
+    *out = (key_type == SUS_KEY_RSA) ?
+        kb->rsa.issuer_info.not_after :
+        kb->ec.issuer_info.not_after;
+    return 0;
+}
+
+VECTOR(u8 const) keybox_get_keyblob(const struct keybox *kb,
+        enum sus_key_variant key_type)
+{
+    if (kb == NULL || !(key_type > SUS_KEY_INVALID_ && key_type < SUS_KEY_MAX_))
+    {
+        s_log_error("Invalid parameters!");
+        return NULL;
+    }
+
+    VECTOR(u8) ret = key_type == SUS_KEY_RSA ?
+        kb->rsa.keyblob : kb->ec.keyblob;
     if (ret == NULL) {
         s_log_error("Key is NULL (invalid keybox)!");
         return NULL;
@@ -451,22 +493,59 @@ static i32 check_v1_header_data(const u8 *hdr_start, u64 data_size)
         bool valid;
     };
     struct range ranges[] = {
-        { .start = hdr.ec.cert_arr_offset, .size = hdr.ec.cert_arr_size,
-            .name = "EC cert chain" },
-        { .start = hdr.ec.key_offset, .size = hdr.ec.key_size,
-            .name = "EC key" },
-        { .start = hdr.ec.serial_offset, .size = hdr.ec.serial_size,
-            .name = "EC cert serial" },
-        { .start = hdr.ec.notafter_offset, .size = KEYBOX_V1_NOTAFTER_SIZE,
-            .name = "EC cert notAfter" },
-        { .start = hdr.rsa.cert_arr_offset, .size = hdr.rsa.cert_arr_size,
-            .name = "RSA cert chain" },
-        { .start = hdr.rsa.key_offset, .size = hdr.rsa.key_size,
-            .name = "RSA key" },
-        { .start = hdr.rsa.serial_offset, .size = hdr.rsa.serial_size,
-            .name = "RSA cert serial" },
-        { .start = hdr.rsa.notafter_offset, .size = KEYBOX_V1_NOTAFTER_SIZE,
-            .name = "RSA cert notAfter" },
+        /* EC blobs */
+        {
+            .start = hdr.ec.cert_arr_offset,
+            .size = hdr.ec.cert_arr_size,
+            .name = "EC cert chain"
+        },
+        {
+            .start = hdr.ec.key_offset,
+            .size = hdr.ec.key_size,
+            .name = "EC key"
+        },
+        {
+            .start = hdr.ec.issuer_title_offset,
+            .size = hdr.ec.issuer_title_size,
+            .name = "EC issuer cert title"
+        },
+        {
+            .start = hdr.ec.issuer_serial_offset,
+            .size = hdr.ec.issuer_serial_size,
+            .name = "EC issuer cert serial"
+        },
+        {
+            .start = hdr.ec.issuer_notafter_offset,
+            .size = KEYBOX_V1_ISSUER_NOTAFTER_SIZE,
+            .name = "EC issuer cert notAfter"
+        },
+
+        /* RSA blobs */
+        {
+            .start = hdr.rsa.cert_arr_offset,
+            .size = hdr.rsa.cert_arr_size,
+            .name = "RSA cert chain"
+        },
+        {
+            .start = hdr.rsa.key_offset,
+            .size = hdr.rsa.key_size,
+            .name = "RSA key"
+        },
+        {
+            .start = hdr.rsa.issuer_title_offset,
+            .size = hdr.rsa.issuer_title_size,
+            .name = "RSA issuer cert title"
+        },
+        {
+            .start = hdr.rsa.issuer_serial_offset,
+            .size = hdr.rsa.issuer_serial_size,
+            .name = "RSA issuer cert serial"
+        },
+        {
+            .start = hdr.rsa.issuer_notafter_offset,
+            .size = KEYBOX_V1_ISSUER_NOTAFTER_SIZE,
+            .name = "RSA issuer cert notAfter"
+        },
     };
 
     for (u32 i = 0; i < u_arr_size(ranges); i++) {
@@ -538,22 +617,61 @@ static i32 check_v1_content(const u8 *data_start,
             else ok = false;
         }
 
-        r = check_v1_serial(data_start + b->serial_offset,
-                    b->serial_size, variants[i].value);
+        r = check_v1_issuer_title(data_start + b->issuer_title_offset,
+                    b->issuer_title_size, variants[i].value);
         if (r) {
-            s_log_error("Invalid %s batch key cert serial number",
+            s_log_error("Invalid %s issuer cert title",
                     variants[i].name);
             if (r < 0) return -1;
             else ok = false;
         }
 
-        r = check_v1_notafter(data_start + b->notafter_offset,
-                    variants[i].value);
+        r = check_v1_issuer_serial(data_start + b->issuer_serial_offset,
+                    b->issuer_serial_size, variants[i].value);
         if (r) {
-            set_error("Invalid %s notAfter value", variants[i].name);
+            s_log_error("Invalid %s issuer cert serial number",
+                    variants[i].name);
             if (r < 0) return -1;
             else ok = false;
         }
+
+        r = check_v1_issuer_notafter(data_start + b->issuer_notafter_offset,
+                    variants[i].value);
+        if (r) {
+            set_error("Invalid %s issuer cert notAfter value",
+                    variants[i].name);
+            if (r < 0) return -1;
+            else ok = false;
+        }
+    }
+
+    return ok ? 0 : 1;
+}
+
+static i32 check_v1_blob(const u8 *start, u64 total_size,
+        enum keybox_v1_blob_type expected_type)
+{
+    bool ok = true;
+
+    if (total_size < sizeof(struct keybox_v1_blob)) {
+        s_log_error("Blob header truncated!");
+        return -1;
+    }
+
+    struct keybox_v1_blob blob = { 0 };
+    memcpy(&blob, start, sizeof(struct keybox_v1_blob));
+
+    if (blob.type != expected_type)
+        set_error("Blob type invalid (%u, expected %u)",
+                blob.type, expected_type);
+
+    const u64 expected_data_size = total_size - sizeof(struct keybox_v1_blob);
+    if (blob.size != expected_data_size) {
+        s_log_error("Blob size invalid (%llu, expected %llu)",
+                (unsigned long long)blob.size,
+                (unsigned long long)expected_data_size
+        );
+        return -1;
     }
 
     return ok ? 0 : 1;
@@ -614,80 +732,40 @@ static i32 check_v1_cert_chain(const u8 *start,
 static i32 check_v1_key(const u8 *start, u64 total_size,
         enum sus_key_variant variant)
 {
-    bool ok = true;
-
-    if (total_size < sizeof(struct keybox_v1_blob)) {
-        s_log_error("Key blob header truncated!");
-        return -1;
-    }
-
-    struct keybox_v1_blob blob = { 0 };
-    memcpy(&blob, start, sizeof(struct keybox_v1_blob));
-
     const enum keybox_v1_blob_type expected_type = variant == SUS_KEY_EC ?
         KEYBOX_V1_BLOB_TYPE_KEY_EC : KEYBOX_V1_BLOB_TYPE_KEY_RSA;
-    if (blob.type != expected_type)
-        set_error("Key blob type invalid (%u, expected %u)",
-                blob.type, expected_type);
 
-    const u64 expected_data_size = total_size - sizeof(struct keybox_v1_blob);
-    if (blob.size != expected_data_size) {
-        s_log_error("Key blob size invalid (%llu, expected %llu)",
-                blob.size, expected_data_size);
-        return -1;
-    }
-
-    return ok ? 0 : 1;
+    return check_v1_blob(start, total_size, expected_type);
 }
 
-static i32 check_v1_serial(const u8 *start, u64 total_size,
+static i32 check_v1_issuer_title(const u8 *start, u64 total_size,
         enum sus_key_variant variant)
 {
-    bool ok = true;
-
-    if (total_size < sizeof(struct keybox_v1_blob)) {
-        s_log_error("Cert serial blob header truncated!");
-        return -1;
-    }
-
-    struct keybox_v1_blob blob = { 0 };
-    memcpy(&blob, start, sizeof(struct keybox_v1_blob));
-
     const enum keybox_v1_blob_type expected_type = variant == SUS_KEY_EC ?
-        KEYBOX_V1_BLOB_TYPE_SERIAL_EC : KEYBOX_V1_BLOB_TYPE_SERIAL_RSA;
-    if (blob.type != expected_type)
-        set_error("Cert serial blob type invalid (%u, expected %u)",
-                blob.type, expected_type);
+        KEYBOX_V1_BLOB_TYPE_ISSUER_TITLE_EC :
+        KEYBOX_V1_BLOB_TYPE_ISSUER_TITLE_RSA;
 
-    const u64 expected_data_size = total_size - sizeof(struct keybox_v1_blob);
-    if (blob.size != expected_data_size) {
-        s_log_error("Cert serial blob size invalid (%llu, expected %llu)",
-                blob.size, expected_data_size);
-        return -1;
-    }
-
-    return ok ? 0 : 1;
+    return check_v1_blob(start, total_size, expected_type);
 }
 
-static i32 check_v1_notafter(const u8 *start, enum sus_key_variant variant)
+static i32 check_v1_issuer_serial(const u8 *start, u64 total_size,
+        enum sus_key_variant variant)
 {
-    struct keybox_v1_blob blob = { 0 };
-    memcpy(&blob, start, sizeof(struct keybox_v1_blob));
-    bool ok = true;
-
     const enum keybox_v1_blob_type expected_type = variant == SUS_KEY_EC ?
-        KEYBOX_V1_BLOB_TYPE_NOTAFTER_EC : KEYBOX_V1_BLOB_TYPE_NOTAFTER_RSA;
-    if (blob.type != expected_type)
-        set_error("Cert notAfter blob type invalid (%u, expected %u)",
-                blob.type, expected_type);
+        KEYBOX_V1_BLOB_TYPE_ISSUER_SERIAL_EC :
+        KEYBOX_V1_BLOB_TYPE_ISSUER_SERIAL_RSA;
 
-    if (blob.size != KEYBOX_V1_NOTAFTER_SIZE) {
-        s_log_error("Cert notAfter blob size invalid (%llu, expected %llu)",
-                blob.size, KEYBOX_V1_NOTAFTER_SIZE);
-        return -1;
-    }
+    return check_v1_blob(start, total_size, expected_type);
+}
 
-    return ok ? 0 : 1;
+static i32 check_v1_issuer_notafter(const u8 *start, enum sus_key_variant variant)
+{
+    const enum keybox_v1_blob_type expected_type = variant == SUS_KEY_EC ?
+        KEYBOX_V1_BLOB_TYPE_ISSUER_NOTAFTER_EC :
+        KEYBOX_V1_BLOB_TYPE_ISSUER_NOTAFTER_RSA;
+
+    return check_v1_blob(start,
+            KEYBOX_V1_ISSUER_NOTAFTER_BLOB_SIZE, expected_type);
 }
 
 #undef set_error
@@ -711,12 +789,17 @@ static void copy_v1_content(struct keybox *out,
         copy_v1_cert_chain(&v->o->cert_chain,
                 v->i->number_of_certs, data_start + v->i->cert_arr_offset);
 
-        copy_v1_simple_blob(&v->o->wrapped_key,
+        copy_v1_simple_blob(&v->o->keyblob,
                 data_start + v->i->key_offset);
 
-        copy_v1_simple_blob(&v->o->serial, data_start + v->i->serial_offset);
+        copy_v1_simple_blob(&v->o->issuer_info.title,
+                data_start + v->i->issuer_title_offset);
 
-        copy_v1_notafter(&v->o->not_after, data_start + v->i->notafter_offset);
+        copy_v1_simple_blob(&v->o->issuer_info.serial,
+                data_start + v->i->issuer_serial_offset);
+
+        copy_v1_notafter(&v->o->issuer_info.not_after,
+                data_start + v->i->issuer_notafter_offset);
     }
 }
 
@@ -760,9 +843,10 @@ static void copy_v1_notafter(u64 *out, const u8 *start)
 
 /* functions used by `keybox_init` */
 
-static i32 extract_serial_and_notafter(VECTOR(u8 const) cert,
-        VECTOR(u8) *out_serial, u64 *out_notafter)
+static i32 extract_issuer_cert_info(VECTOR(u8 const) cert,
+        struct keybox_issuer_info *out)
 {
+    VECTOR(u8) ret_title = NULL;
     VECTOR(u8) ret_serial = NULL;
     X509* x509 = NULL;
 
@@ -771,13 +855,19 @@ static i32 extract_serial_and_notafter(VECTOR(u8 const) cert,
     time_t ret_notafter = 0;
 
     const X509_NAME *subject = NULL;
+
     int serial_idx = 0;
     const X509_NAME_ENTRY *serial_entry = NULL;
     const ASN1_STRING *serial_str = NULL;
     u64 serial_str_len = 0;
 
-    *out_serial = NULL;
-    *out_notafter = 0;
+    int title_idx = 0;
+    const X509_NAME_ENTRY *title_entry = NULL;
+    const ASN1_STRING *title_str = NULL;
+    u64 title_str_len = 0;
+
+    out->serial = out->title = NULL;
+    out->not_after = 0;
 
     const u8 *p = cert;
     bool ok = false;
@@ -799,11 +889,33 @@ static i32 extract_serial_and_notafter(VECTOR(u8 const) cert,
         goto_error("Couldn't convert the tm struct into time_t: %d (%s)",
                 errno, strerror(errno));
 
-    /* extract the serial number */
+    /* extract the title & serial number */
     subject = X509_get_subject_name(x509);
     if (subject == NULL)
         goto_error("Couldn't get the certificate's subject name");
 
+    /* title */
+    title_idx = X509_NAME_get_index_by_NID(subject, NID_title, -1);
+    if (title_idx < 0)
+        goto_error("Couldn't retrieve the title's index "
+                "from the subject sequence");
+
+    title_entry = X509_NAME_get_entry(subject, title_idx);
+    if (title_entry == NULL)
+        goto_error("Couldn't retrieve the title entry "
+                "from the subject sequence");
+
+    title_str = X509_NAME_ENTRY_get_data(title_entry);
+    if (title_str == NULL)
+        goto_error("Couldn't get the title string "
+                "from the subject name entry");
+
+    ret_title = vector_new(u8);
+    title_str_len = ASN1_STRING_length(title_str);
+    vector_resize(&ret_title, title_str_len);
+    memcpy(ret_title, ASN1_STRING_get0_data(title_str), title_str_len);
+
+    /* serial */
     serial_idx = X509_NAME_get_index_by_NID(subject, NID_serialNumber, -1);
     if (serial_idx < 0)
         goto_error("Couldn't retrieve the serial number's index "
@@ -818,6 +930,7 @@ static i32 extract_serial_and_notafter(VECTOR(u8 const) cert,
     if (serial_str == NULL)
         goto_error("Couldn't get the serial number string "
                 "from the subject name entry");
+
 
     ret_serial = vector_new(u8);
     serial_str_len = ASN1_STRING_length(serial_str);
@@ -846,9 +959,10 @@ err:
         ret_notafter = 0;
         return 1;
     } else {
-        *out_serial = ret_serial;
-        ret_serial = NULL;
-        *out_notafter = ret_notafter;
+        out->title = ret_title;
+        out->serial = ret_serial;
+        out->not_after = ret_notafter;
+        ret_title = ret_serial = NULL;
         ret_notafter = 0;
         return 0;
     }
@@ -890,20 +1004,25 @@ static u64 populate_v1_header(struct keybox_v1_header_data *out,
     add_v1_cert_chain(&o, &out->ec.cert_arr_offset, &out->ec.cert_arr_size,
             (void *)kb->ec.cert_chain);
     add_v1_blob(&o, &out->ec.key_offset, &out->ec.key_size,
-            kb->ec.wrapped_key);
-    add_v1_blob(&o, &out->ec.serial_offset, &out->ec.serial_size,
-            kb->ec.serial);
-    out->ec.notafter_offset = o;
-    o += KEYBOX_V1_NOTAFTER_BLOB_SIZE;
+            kb->ec.keyblob);
+    add_v1_blob(&o, &out->ec.issuer_title_offset, &out->ec.issuer_title_size,
+            kb->ec.issuer_info.title);
+    add_v1_blob(&o, &out->ec.issuer_serial_offset, &out->ec.issuer_serial_size,
+            kb->ec.issuer_info.serial);
+    out->ec.issuer_notafter_offset = o;
+    o += KEYBOX_V1_ISSUER_NOTAFTER_BLOB_SIZE;
 
     out->rsa.number_of_certs = vector_size(kb->rsa.cert_chain);
     add_v1_cert_chain(&o, &out->rsa.cert_arr_offset, &out->rsa.cert_arr_size,
             (void *)kb->rsa.cert_chain);
-    add_v1_blob(&o, &out->rsa.key_offset, &out->rsa.key_size, kb->rsa.wrapped_key);
-    add_v1_blob(&o, &out->rsa.serial_offset, &out->rsa.serial_size,
-            kb->rsa.serial);
-    out->rsa.notafter_offset = o;
-    o += KEYBOX_V1_NOTAFTER_BLOB_SIZE;
+    add_v1_blob(&o, &out->rsa.key_offset, &out->rsa.key_size,
+            kb->rsa.keyblob);
+    add_v1_blob(&o, &out->rsa.issuer_title_offset, &out->rsa.issuer_title_size,
+            kb->rsa.issuer_info.title);
+    add_v1_blob(&o, &out->rsa.issuer_serial_offset,
+            &out->rsa.issuer_serial_size, kb->rsa.issuer_info.serial);
+    out->rsa.issuer_notafter_offset = o;
+    o += KEYBOX_V1_ISSUER_NOTAFTER_BLOB_SIZE;
 
     return o;
 }

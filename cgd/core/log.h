@@ -143,6 +143,7 @@ enum s_log_level {
 /* The core function of the logging API.
  * Should not be called directly.
  * Use the below log level-specific macros instead. */
+__attribute__((format(printf, 3, 4)))
 void s_log(enum s_log_level level, const char *module_name,
     const char *fmt, ...);
 

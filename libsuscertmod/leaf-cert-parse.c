@@ -12,6 +12,7 @@
 #include <openssl/x509.h>
 #include <openssl/asn1.h>
 #include <openssl/asn1t.h>
+#include <openssl/x509v3.h>
 #include <openssl/crypto.h>
 #include <openssl/obj_mac.h>
 #include <openssl/objects.h>
@@ -75,6 +76,10 @@ i32 leaf_cert_parse(const VECTOR(u8) cert,
     ASN1_OCTET_STRING *km_ext_str = NULL;
     struct KM_KeyDescription_v3 *km_desc = NULL;
 
+    i32 keyusage_ext_index = 0;
+    /* const */ X509_EXTENSION *keyusage_ext = NULL;
+    ASN1_OCTET_STRING *keyusage_ext_data = NULL;
+
     p = cert;
     x509 = d2i_X509(NULL, &p, vector_size(cert));
     if (x509 == NULL)
@@ -84,7 +89,7 @@ i32 leaf_cert_parse(const VECTOR(u8) cert,
     x509_version = X509_get_version(x509);
     if (x509_version != X509_VERSION_3)
         goto_error("Unexpected X509 version in leaf cert: 0x%llx",
-                x509_version);
+                (unsigned long long)x509_version);
 
     /* As per the android spec, the serial number must always be set to `1` */
     x509_serial = X509_get0_serialNumber(x509);
@@ -96,7 +101,7 @@ i32 leaf_cert_parse(const VECTOR(u8) cert,
 
     if (x509_serial_val != 1)
         goto_error("Unexpected X509 serial number: 0x%llx (expected `1`)",
-                x509_serial_val);
+                (unsigned long long)x509_serial_val);
 
     /* Decide which cert chain we'll be using */
     sig_nid = X509_get_signature_nid(x509);
@@ -205,7 +210,7 @@ i32 leaf_cert_parse(const VECTOR(u8) cert,
     /* Get & deserialize the Android attestation extension */
     km_ext_index = X509_get_ext_by_OBJ(x509,
             OBJ_txt2obj(KM_kAttestionRecordOid, 1), -1);
-    if (km_ext_index == -1)
+    if (km_ext_index < 0)
         goto_error("The X509 attestation extension wasn't found!");
 
     km_ext = X509_get_ext(x509, km_ext_index);
@@ -221,16 +226,32 @@ i32 leaf_cert_parse(const VECTOR(u8) cert,
     if (km_desc == NULL)
         goto_error("Failed to parse the X509 attestation extension data!");
 
-    /* The following remaining fields:
-     *
-     * - extensions/KeyUsage
-     * - extensions/CRL distribution points
-     *
-     * are optional & left to be checked by later stages.
+    /* Check that the KeyUsage extension exists */
+    keyusage_ext_index = X509_get_ext_by_NID(x509, NID_key_usage, -1);
+    if (keyusage_ext_index < 0)
+        goto_error("Couldn't find the KeyUsage extension!");
+
+    keyusage_ext = X509_get_ext(x509, keyusage_ext_index);
+    if (keyusage_ext == NULL)
+        goto_error("Couldn't retrieve the KeyUsage extension!");
+
+    if (X509_EXTENSION_get_critical(keyusage_ext) != 1)
+        s_log_warn("The KeyUsage extension is not `critical`!");
+
+    keyusage_ext_data = X509_EXTENSION_get_data(keyusage_ext);
+    if (keyusage_ext_data == NULL)
+        goto_error("Couldn't get the KeyUsage extension data!");
+
+
+    /* The remaining field:
+     * `extensions/CRL distribution points`
+     * is "TBD", so we don't care about its value
      */
 
     s_log_info("Leaf cert signature algorithm is >%s<", sig_variant_str);
     ok = true;
+
+err:
 
     if (out_variant != NULL)
         *out_variant = key_variant;
@@ -246,8 +267,6 @@ i32 leaf_cert_parse(const VECTOR(u8) cert,
         *out_km_desc = km_desc;
     else
         key_desc_destroy(&km_desc);
-
-err:
 
     if (subj_pubkey_ctx != NULL) {
         EVP_PKEY_CTX_free(subj_pubkey_ctx);

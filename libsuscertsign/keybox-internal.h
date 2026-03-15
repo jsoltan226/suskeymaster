@@ -15,9 +15,13 @@ extern "C" {
 
 struct keybox_key {
     VECTOR(VECTOR(u8)) cert_chain;
-    VECTOR(u8) wrapped_key;
-    VECTOR(u8) serial;
-    u64 not_after;
+    VECTOR(u8) keyblob;
+
+    struct keybox_issuer_info {
+        VECTOR(u8) title;
+        VECTOR(u8) serial;
+        u64 not_after;
+    } issuer_info;
 };
 struct keybox {
     bool owns_buffers;
@@ -32,11 +36,12 @@ enum keybox_v1_blob_type {
     KEYBOX_V1_BLOB_TYPE_KEY_EC,
     KEYBOX_V1_BLOB_TYPE_KEY_RSA,
 
-    KEYBOX_V1_BLOB_TYPE_SERIAL_EC,
-    KEYBOX_V1_BLOB_TYPE_SERIAL_RSA,
-
-    KEYBOX_V1_BLOB_TYPE_NOTAFTER_EC,
-    KEYBOX_V1_BLOB_TYPE_NOTAFTER_RSA,
+    KEYBOX_V1_BLOB_TYPE_ISSUER_TITLE_EC,
+    KEYBOX_V1_BLOB_TYPE_ISSUER_TITLE_RSA,
+    KEYBOX_V1_BLOB_TYPE_ISSUER_SERIAL_EC,
+    KEYBOX_V1_BLOB_TYPE_ISSUER_SERIAL_RSA,
+    KEYBOX_V1_BLOB_TYPE_ISSUER_NOTAFTER_EC,
+    KEYBOX_V1_BLOB_TYPE_ISSUER_NOTAFTER_RSA,
 
     KEYBOX_V1_BLOB_TYPE_MAX_
 };
@@ -68,13 +73,17 @@ struct keybox_file_header {
             u64 key_offset;
             u64 key_size;
 
-            u64 serial_offset;
-            u64 serial_size;
 
-            u64 notafter_offset;
-#define KEYBOX_V1_NOTAFTER_SIZE (sizeof(u64))
-#define KEYBOX_V1_NOTAFTER_BLOB_SIZE \
-    (KEYBOX_V1_NOTAFTER_SIZE + sizeof(struct keybox_v1_blob))
+            u64 issuer_title_offset;
+            u64 issuer_title_size;
+
+            u64 issuer_serial_offset;
+            u64 issuer_serial_size;
+
+            u64 issuer_notafter_offset;
+#define KEYBOX_V1_ISSUER_NOTAFTER_SIZE (sizeof(u64))
+#define KEYBOX_V1_ISSUER_NOTAFTER_BLOB_SIZE \
+    (KEYBOX_V1_ISSUER_NOTAFTER_SIZE + sizeof(struct keybox_v1_blob))
 
         } ec, rsa;
     } data;

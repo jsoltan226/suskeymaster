@@ -82,7 +82,7 @@ extern "C" int sus_cert_sign(unsigned char *tbs_der, unsigned long tbs_der_len,
         return -1;
     }
     {
-        keyblob = keybox_get_wrapped_key(keybox, variant);
+        keyblob = keybox_get_keyblob(keybox, variant);
         if (keyblob == NULL) {
             keybox_unlock_current(&keybox);
             pr_err("Failed to retrieve the key blob from the current keybox");

@@ -124,6 +124,7 @@ int dump_keybox(
     VECTOR(u8) keybox_data = NULL;
     struct keybox *kb = NULL;
     char path_buf[128] = { 0 };
+    VECTOR(char) tmp_str = NULL;
     int ret = EXIT_FAILURE;
 
     keybox_data = read_file(keybox_path);
@@ -165,7 +166,7 @@ int dump_keybox(
         }
         tmp_cert_chain = NULL;
 
-        tmp_blob = keybox_get_wrapped_key(kb, variant);
+        tmp_blob = keybox_get_keyblob(kb, variant);
         if (tmp_blob == NULL) {
             std::cerr << "Failed to retrieve the " << name <<
                 " wrapped key blob from the keybox" << std::endl;
@@ -182,25 +183,35 @@ int dump_keybox(
         }
         tmp_blob = NULL;
 
-        tmp_blob = keybox_get_batch_key_serial(kb, variant);
+        tmp_blob = keybox_get_issuer_title(kb, variant);
         if (tmp_blob == NULL) {
             std::cerr << "Failed to retrieve the " << name <<
-                " batch key serial string from the keybox" << std::endl;
+                " issuer title string from the keybox" << std::endl;
             goto fail;
         }
-
-        VECTOR(char) tmp_str = (VECTOR(char))vector_clone((void *)tmp_blob);
+        tmp_str = (VECTOR(char))vector_clone((void *)tmp_blob);
         vector_push_back(&tmp_str, '\0');
-        std::cout << name << " serial number: \"" << tmp_str << "\"" << std::endl;
+        std::cout << name << " Issuer title: \"" << tmp_str << "\"" << std::endl;
+        vector_destroy(&tmp_str);
+
+        tmp_blob = keybox_get_issuer_serial(kb, variant);
+        if (tmp_blob == NULL) {
+            std::cerr << "Failed to retrieve the " << name <<
+                " issuer serial string from the keybox" << std::endl;
+            goto fail;
+        }
+        tmp_str = (VECTOR(char))vector_clone((void *)tmp_blob);
+        vector_push_back(&tmp_str, '\0');
+        std::cout << name << " issuer serial number: \"" << tmp_str << "\"" << std::endl;
         vector_destroy(&tmp_str);
 
         i64 notafter = 0;
-        if (keybox_get_not_after(&notafter, kb, variant)) {
+        if (keybox_get_issuer_not_after(&notafter, kb, variant)) {
             std::cerr << "Failed to retrieve the notAfter value from the "
-                << name << " certificate" << std::endl;
+                << name << " issuer certificate" << std::endl;
             goto fail;
         }
-        std::cout << name << " notAfter: " << notafter <<
+        std::cout << name << " issuer notAfter: " << notafter <<
             " (" << utc_to_string(notafter) << ")" << std::endl;
 
         tmp_cert_chain = NULL;

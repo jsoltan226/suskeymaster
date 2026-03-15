@@ -37,13 +37,16 @@ i32 keybox_set_current(const struct keybox *kb);
 VECTOR(VECTOR(u8 const) const)
 keybox_get_cert_chain(const struct keybox *kb, enum sus_key_variant key_type);
 
-VECTOR(u8 const) keybox_get_batch_key_serial(const struct keybox *kb,
+VECTOR(u8 const) keybox_get_issuer_title(const struct keybox *kb,
         enum sus_key_variant key_type);
 
-i32 keybox_get_not_after(i64 *out, const struct keybox *kb,
+VECTOR(u8 const) keybox_get_issuer_serial(const struct keybox *kb,
         enum sus_key_variant key_type);
 
-VECTOR(u8 const) keybox_get_wrapped_key(const struct keybox *kb,
+i32 keybox_get_issuer_not_after(i64 *out, const struct keybox *kb,
+        enum sus_key_variant key_type);
+
+VECTOR(u8 const) keybox_get_keyblob(const struct keybox *kb,
         enum sus_key_variant key_type);
 
 #ifdef __cplusplus
