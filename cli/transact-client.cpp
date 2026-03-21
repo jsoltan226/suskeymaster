@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdarg>
 #include <iostream>
+#include <unordered_map>
 #include <semaphore.h>
 #include <openssl/rand.h>
 
@@ -33,10 +34,7 @@ static void pr_err(const char *fmt, ...)
     va_end(vlist);
 }
 
-static void init_rsa_gen_params(hidl_vec<KeyParameter>& params);
 static void init_attest_key_params(hidl_vec<KeyParameter>& params);
-
-static void init_unwrapping_params(hidl_vec<KeyParameter>& params);
 
 static ErrorCode g_generate_key_error = ErrorCode::UNKNOWN_ERROR;
 static hidl_vec<uint8_t> g_generate_key_output = {};
@@ -109,13 +107,36 @@ static void import_wrapped_key_cb(
 
 int generate_and_attest_wrapping_key(sp<IKeymasterDevice> hal,
     hidl_vec<uint8_t>& out_wrapping_blob, hidl_vec<uint8_t>& out_wrapping_pubkey,
-    hidl_vec<hidl_vec<uint8_t>> * out_cert_chain)
+    hidl_vec<hidl_vec<uint8_t>> * out_cert_chain, hidl_vec<KeyParameter> const& in_gen_params
+)
 {
-    hidl_vec<KeyParameter> params;
-    init_rsa_gen_params(params);
-
     struct ::timespec ts;
     struct timespec *const tsp = reinterpret_cast<struct timespec *>(&ts);
+
+    bool is_rsa = true;
+    for (auto const& kp : in_gen_params) {
+        if (kp.tag == Tag::ALGORITHM) {
+            is_rsa = kp.f.algorithm == Algorithm::RSA;
+            break;
+        }
+    }
+    hidl_vec<KeyParameter> params(in_gen_params);
+    if (is_rsa) {
+        std::unordered_map<Tag, struct defaults_with_flags> defaults = {
+            { Tag::ALGORITHM, { { to_u32(Algorithm::RSA) }, 0 } },
+            { Tag::PURPOSE, { {
+                to_u32(KeyPurpose::WRAP_KEY),
+                to_u32(KeyPurpose::WRAP_KEY),
+                to_u32(KeyPurpose::WRAP_KEY)
+            }, 0 } },
+            { Tag::KEY_SIZE, { { 2048 }, 0 } },
+            { Tag::RSA_PUBLIC_EXPONENT, { { 65537 }, 0 } },
+            { Tag::DIGEST, { { to_u32(Digest::SHA_2_256) }, 0 } },
+            { Tag::PADDING, { { to_u32(PaddingMode::RSA_OAEP) }, 0 } },
+            { Tag::NO_AUTH_REQUIRED, { { 1 }, 0 } }
+        };
+        init_default_params(defaults, params);
+    }
 
     /* Generate the wrapping RSA-2048 key */
     bool ok = false;
@@ -205,12 +226,17 @@ out_attest:
     return 0;
 }
 
-int import_wrapped_key(sp<IKeymasterDevice> hal,
-        hidl_vec<uint8_t> const& in_wrapped_data, hidl_vec<uint8_t> const& in_masking_key,
-        hidl_vec<uint8_t> const& in_wrapping_blob, hidl_vec<uint8_t>& out_key_blob)
+int import_wrapped_key(sp<IKeymasterDevice> hal, hidl_vec<uint8_t> const& in_wrapped_data,
+        hidl_vec<uint8_t> const& in_masking_key, hidl_vec<uint8_t> const& in_wrapping_blob,
+        hidl_vec<KeyParameter> const& in_unwrapping_params, hidl_vec<uint8_t>& out_key_blob
+)
 {
-    hidl_vec<KeyParameter> params;
-    init_unwrapping_params(params);
+    hidl_vec<KeyParameter> params(in_unwrapping_params);
+    std::unordered_map<Tag, struct defaults_with_flags> defaults = {
+        { Tag::DIGEST, { { to_u32(Digest::SHA_2_256) }, 0 } },
+        { Tag::PADDING, { { to_u32(PaddingMode::RSA_OAEP) }, 0 } }
+    };
+    init_default_params(defaults, params);
 
     bool ok = false;
     struct ::timespec ts;
@@ -252,53 +278,10 @@ out:
     return 0;
 }
 
-static void init_rsa_gen_params(hidl_vec<KeyParameter>& params)
-{
-    enum {
-        PARAM_PURPOSE_WRAP, PARAM_PURPOSE_ENCRYPT, PARAM_PURPOSE_DECRYPT,
-        PARAM_ALGORITHM,
-        PARAM_KEY_SIZE,
-        PARAM_PUBLIC_EXPONENT,
-        PARAM_DIGEST,
-        PARAM_PADDING,
-        PARAM_NO_AUTH_REQUIRED,
-        PARAM_MAX_,
-        PARAM_APPLICATION_ID,
-    };
-    params.resize(PARAM_MAX_);
-
-    params[PARAM_PURPOSE_WRAP].tag = Tag::PURPOSE;
-    params[PARAM_PURPOSE_WRAP].f.purpose = KeyPurpose::WRAP_KEY;
-    params[PARAM_PURPOSE_ENCRYPT].tag = Tag::PURPOSE;
-    params[PARAM_PURPOSE_ENCRYPT].f.purpose = KeyPurpose::ENCRYPT;
-    params[PARAM_PURPOSE_DECRYPT].tag = Tag::PURPOSE;
-    params[PARAM_PURPOSE_DECRYPT].f.purpose = KeyPurpose::DECRYPT;
-
-    params[PARAM_ALGORITHM].tag = Tag::ALGORITHM;
-    params[PARAM_ALGORITHM].f.algorithm = Algorithm::RSA;
-    params[PARAM_KEY_SIZE].tag = Tag::KEY_SIZE;
-    params[PARAM_KEY_SIZE].f.longInteger = 2048;
-    params[PARAM_PUBLIC_EXPONENT].tag = Tag::RSA_PUBLIC_EXPONENT;
-    params[PARAM_PUBLIC_EXPONENT].f.longInteger = 65537;
-
-    params[PARAM_DIGEST].tag = Tag::DIGEST;
-    params[PARAM_DIGEST].f.digest = Digest::SHA_2_256;
-    params[PARAM_PADDING].tag = Tag::PADDING;
-    params[PARAM_PADDING].f.paddingMode = PaddingMode::RSA_OAEP;
-    params[PARAM_NO_AUTH_REQUIRED].tag = Tag::NO_AUTH_REQUIRED;
-    params[PARAM_NO_AUTH_REQUIRED].f.boolValue = true;
-
-    /*
-    params[PARAM_APPLICATION_ID].tag = Tag::APPLICATION_ID;
-    params[PARAM_APPLICATION_ID].blob = get_sus_application_id();
-    */
-}
-
 static void init_attest_key_params(hidl_vec<KeyParameter>& params)
 {
     enum {
         PARAM_ATTESTATION_CHALLENGE, PARAM_ATTESTATION_APPLICATION_ID,
-        PARAM_APPLICATION_ID,
         PARAM_MAX_
     };
     params.resize(PARAM_MAX_);
@@ -320,32 +303,6 @@ static void init_attest_key_params(hidl_vec<KeyParameter>& params)
     params[PARAM_ATTESTATION_APPLICATION_ID].blob = hidl_vec<uint8_t>(
             att_application_id, att_application_id + att_application_id_len
     );
-
-    params[PARAM_APPLICATION_ID].tag = Tag::APPLICATION_ID;
-    params[PARAM_APPLICATION_ID].blob = get_sus_application_id();
-}
-
-static void init_unwrapping_params(hidl_vec<KeyParameter>& params)
-{
-    enum {
-        PARAM_DIGEST,
-        PARAM_PADDING,
-        /*
-        PARAM_APPLICATION_ID,
-        */
-        PARAM_MAX_
-    };
-    params.resize(PARAM_MAX_);
-
-    params[PARAM_DIGEST].tag = Tag::DIGEST;
-    params[PARAM_DIGEST].f.digest = Digest::SHA_2_256;
-    params[PARAM_PADDING].tag = Tag::PADDING;
-    params[PARAM_PADDING].f.paddingMode = PaddingMode::RSA_OAEP;
-
-    /*
-    params[PARAM_APPLICATION_ID].tag = Tag::APPLICATION_ID;
-    params[PARAM_APPLICATION_ID].blob = get_sus_application_id();
-    */
 }
 
 } /* namespace client */

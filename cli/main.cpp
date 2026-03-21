@@ -68,15 +68,17 @@ static int read_and_deserialize_cert_chain(const char *path,
 static int serialize_and_write_cert_chain(const char *path,
         const hidl_vec<hidl_vec<uint8_t>>& cert_chain);
 
-static int handle_cmd_attest(const char *key_source, const char *key_spec);
+static int handle_cmd_attest(const char *key_source, const char *key_spec,
+        const char *key_params, const char *attest_params);
 static int handle_cmd_import(const char *algorithm_name,
-        const char *in_private_pkcs8_path, const char *out_km_keyblob_path);
+        const char *in_private_pkcs8_path, const char *out_km_keyblob_path,
+        const char *key_params);
 static int handle_cmd_export(const char *in_km_keyblob_path,
         const char *out_public_x509_path);
 static int handle_cmd_sign(const char *in_km_keyblob_path,
         const char *in_message_path, const char *out_signature_path);
 static int handle_cmd_generate(const char *algorithm_name,
-        const char *out_km_keyblob_path);
+        const char *out_km_keyblob_path, const char *key_params);
 static int handle_cmd_mkkeybox(const char *out,
         const char *cmdline1, const char *cmdline2);
 static int scan_keybox_arg(const char *cmdline,
@@ -85,17 +87,20 @@ static int scan_keybox_arg(const char *cmdline,
 static int handle_cmd_dumpkeybox(const char *in_keybox_path,
         const char *out_dir_path);
 static int handle_cmd_transact(const char *actor, const char *cmd,
-        const char *arg1, const char *arg2, const char *arg3, const char *arg4, const char *arg5);
+        const char *arg1, const char *arg2, const char *arg3,
+        const char *arg4, const char *arg5, const char *arg6);
 
 static int handle_cmd_transact_client_generate(const char *out_wrapping_keyblob_path,
-        const char *out_wrapping_pubkey_path, const char *out_attestation_path);
+        const char *out_wrapping_pubkey_path, const char *out_attestation_path,
+        const char *in_key_params);
 static int handle_cmd_transact_server_verify(const char *in_attestation_path);
 static int handle_cmd_transact_server_wrap(const char *in_private_pkcs8_path,
         const char *in_alg_str, const char *in_wrapping_key_path,
-        const char *out_wrapped_data_path, const char *out_masking_key_path);
+        const char *out_wrapped_data_path, const char *out_masking_key_path,
+        const char *in_key_params);
 static int handle_cmd_transact_client_import(const char *in_wrapped_data_path,
         const char *in_masking_key_path, const char *in_wrapping_keyblob_path,
-        const char *out_keyblob_path);
+        const char *out_keyblob_path, const char *in_unwrapping_params);
 
 namespace cli {
     hidl_vec<uint8_t> const& get_sus_application_id(void)
@@ -272,7 +277,8 @@ static int serialize_and_write_cert_chain(const char *path,
     return 0;
 }
 
-static int handle_cmd_attest(const char *key_source, const char *key_spec)
+static int handle_cmd_attest(const char *key_source, const char *key_spec,
+        const char *in_key_params, const char *in_attest_params)
 {
     hidl_vec<uint8_t> keyblob;
 
@@ -288,7 +294,15 @@ static int handle_cmd_attest(const char *key_source, const char *key_spec)
             return EXIT_FAILURE;
         }
 
-        if (cli::generate_key(g_hal, alg, keyblob)) {
+        hidl_vec<KeyParameter> gen_params;
+        if (in_key_params != NULL &&
+                cli::parse_km_tag_params(in_key_params, gen_params))
+        {
+            std::cerr << "Invalid generation key parameters" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        if (cli::generate_key(g_hal, alg, gen_params, keyblob)) {
             std::cerr << "Failed to generate an " << toString(alg) << " key" << std::endl;
             return EXIT_FAILURE;
         }
@@ -302,11 +316,20 @@ static int handle_cmd_attest(const char *key_source, const char *key_spec)
         return EXIT_FAILURE;
     }
 
-    return cli::attest_key(g_hal, keyblob);
+    hidl_vec<KeyParameter> attest_params;
+    if (in_attest_params != NULL &&
+            cli::parse_km_tag_params(in_attest_params, attest_params))
+    {
+        std::cerr << "Invalid attestation key parameters" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    return cli::attest_key(g_hal, keyblob, attest_params);
 }
 
 static int handle_cmd_import(const char *algorithm_name,
-        const char *in_private_pkcs8_path, const char *out_km_keyblob_path)
+        const char *in_private_pkcs8_path, const char *out_km_keyblob_path,
+        const char *key_params)
 {
     Algorithm alg;
     hidl_vec<uint8_t> priv_key_pkcs8;
@@ -326,7 +349,15 @@ static int handle_cmd_import(const char *algorithm_name,
         return EXIT_FAILURE;
     }
 
-    if (cli::import_key(g_hal, priv_key_pkcs8, alg, out_key_blob)) {
+    hidl_vec<KeyParameter> import_params;
+    if (key_params != NULL &&
+            cli::parse_km_tag_params(key_params, import_params))
+    {
+        std::cerr << "Invalid key parameters" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    if (cli::import_key(g_hal, priv_key_pkcs8, alg, import_params, out_key_blob)) {
         std::cerr << "Couldn't import private key!" << std::endl;
         return EXIT_FAILURE;
     }
@@ -393,7 +424,7 @@ static int handle_cmd_sign(const char *in_km_keyblob_path,
 }
 
 static int handle_cmd_generate(const char *algorithm_name,
-        const char *out_km_keyblob_path)
+        const char *out_km_keyblob_path, const char *key_params)
 {
     Algorithm alg;
     hidl_vec<uint8_t> keyblob;
@@ -407,7 +438,15 @@ static int handle_cmd_generate(const char *algorithm_name,
         return EXIT_FAILURE;
     }
 
-    if (cli::generate_key(g_hal, alg, keyblob)) {
+    hidl_vec<KeyParameter> gen_params;
+    if (key_params != NULL &&
+            cli::parse_km_tag_params(key_params, gen_params))
+    {
+        std::cerr << "Invalid key parameters" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    if (cli::generate_key(g_hal, alg, gen_params, keyblob)) {
         std::cerr << "Failed to generate key!" << std::endl;
         return EXIT_FAILURE;
     }
@@ -471,7 +510,8 @@ static int handle_cmd_dumpkeybox(const char *in_keybox_path,
 }
 
 static int handle_cmd_transact(const char *actor, const char *cmd,
-        const char *arg1, const char *arg2, const char *arg3, const char *arg4, const char *arg5)
+        const char *arg1, const char *arg2, const char *arg3,
+        const char *arg4, const char *arg5, const char *arg6)
 {
     (void) arg4;
 
@@ -481,7 +521,8 @@ static int handle_cmd_transact(const char *actor, const char *cmd,
 
         const char *const out_keyblob_path = arg1;
         const char *const out_pubkey_path = arg2;
-        const char *const out_attestation_path = arg3;
+        const char *const in_key_params = arg3;
+        const char *const out_attestation_path = arg4;
 
         if (out_keyblob_path == NULL || out_pubkey_path == NULL) {
             print_not_enough_args_for_cmd("transact client generate");
@@ -489,7 +530,7 @@ static int handle_cmd_transact(const char *actor, const char *cmd,
         }
 
         return handle_cmd_transact_client_generate(out_keyblob_path,
-                out_pubkey_path, out_attestation_path);
+                out_pubkey_path, out_attestation_path, in_key_params);
     } else if (!strcmp(actor, "server") && !strcmp(cmd, "verify")) {
         const char *const in_attestation_path = arg1;
 
@@ -506,6 +547,7 @@ static int handle_cmd_transact(const char *actor, const char *cmd,
         const char *const in_wrapping_key_path = arg3;
         const char *const out_wrapped_data_path = arg4;
         const char *const out_masking_key_path = arg5;
+        const char *const in_key_params = arg6;
 
         if (in_private_pkcs8_path == NULL || in_alg_str == NULL ||
                 in_wrapping_key_path == NULL || out_wrapped_data_path == NULL ||
@@ -516,7 +558,8 @@ static int handle_cmd_transact(const char *actor, const char *cmd,
         }
 
         return handle_cmd_transact_server_wrap(in_private_pkcs8_path, in_alg_str,
-                in_wrapping_key_path, out_wrapped_data_path, out_masking_key_path);
+                in_wrapping_key_path, out_wrapped_data_path, out_masking_key_path,
+                in_key_params);
 
     } else if (!strcmp(actor, "client") && !strcmp(cmd, "import")) {
         if (init_g_hal())
@@ -526,6 +569,7 @@ static int handle_cmd_transact(const char *actor, const char *cmd,
         const char *const in_masking_key_path = arg2;
         const char *const in_wrapping_keyblob_path = arg3;
         const char *const out_keyblob_path = arg4;
+        const char *const in_key_params = arg5;
 
         if (in_wrapped_data_path == NULL || in_masking_key_path == NULL ||
                 in_wrapping_keyblob_path == NULL || out_keyblob_path == NULL)
@@ -535,7 +579,7 @@ static int handle_cmd_transact(const char *actor, const char *cmd,
         }
 
         return handle_cmd_transact_client_import(in_wrapped_data_path, in_masking_key_path,
-                in_wrapping_keyblob_path, out_keyblob_path);
+                in_wrapping_keyblob_path, out_keyblob_path, in_key_params);
     }
 
     std::cerr << "transact: Invalid actor \"" << actor <<
@@ -545,14 +589,25 @@ static int handle_cmd_transact(const char *actor, const char *cmd,
 }
 
 static int handle_cmd_transact_client_generate(const char *out_wrapping_keyblob_path,
-        const char *out_wrapping_pubkey_path, const char *out_attestation_path)
+        const char *out_wrapping_pubkey_path, const char *out_attestation_path,
+        const char *in_key_params)
 {
     hidl_vec<uint8_t> out_keyblob;
     hidl_vec<uint8_t> out_pubkey;
     hidl_vec<hidl_vec<uint8_t>> out_attestation;
+
+    hidl_vec<KeyParameter> key_params;
+    if (in_key_params != NULL &&
+            cli::parse_km_tag_params(in_key_params, key_params))
+    {
+        std::cerr << "Invalid key parameters" << std::endl;
+        return 1;
+    }
+
     int r = cli::transact::client::generate_and_attest_wrapping_key(
             g_hal, out_keyblob, out_pubkey,
-            (out_attestation_path != NULL) ? &out_attestation : NULL
+            (out_attestation_path != NULL) ? &out_attestation : NULL,
+            key_params
     );
     if (r) {
         std::cerr << "Failed to generate and/or attest the transact wrapping key" << std::endl;
@@ -594,7 +649,8 @@ static int handle_cmd_transact_server_verify(const char *in_attestation_path)
 
 static int handle_cmd_transact_server_wrap(const char *in_private_pkcs8_path,
         const char *in_alg_str, const char *in_wrapping_key_path,
-        const char *out_wrapped_data_path, const char *out_masking_key_path)
+        const char *out_wrapped_data_path, const char *out_masking_key_path,
+        const char *in_key_params)
 {
     enum util::sus_key_variant variant;
     if (!strcasecmp(in_alg_str, "ec"))
@@ -617,11 +673,19 @@ static int handle_cmd_transact_server_wrap(const char *in_private_pkcs8_path,
         return 1;
     }
 
+    hidl_vec<KeyParameter> key_params;
+    if (in_key_params != NULL &&
+            cli::parse_km_tag_params(in_key_params, key_params))
+    {
+        std::cerr << "Invalid key parameters" << std::endl;
+        return 1;
+    }
+
     hidl_vec<uint8_t> out_wrapped_data;
     hidl_vec<uint8_t> out_masking_key;
 
     if (cli::transact::server::wrap_key(in_private_pkcs8, variant,
-            in_wrapping_key, out_wrapped_data, out_masking_key))
+            in_wrapping_key, key_params, out_wrapped_data, out_masking_key))
     {
         std::cerr << "Failed to wrap the private key for transact" << std::endl;
         return 1;
@@ -641,7 +705,7 @@ static int handle_cmd_transact_server_wrap(const char *in_private_pkcs8_path,
 
 static int handle_cmd_transact_client_import(const char *in_wrapped_data_path,
         const char *in_masking_key_path, const char *in_wrapping_keyblob_path,
-        const char *out_keyblob_path)
+        const char *out_keyblob_path, const char *in_unwrapping_params)
 {
     hidl_vec<uint8_t> in_wrapped_data;
     hidl_vec<uint8_t> in_masking_key;
@@ -659,9 +723,17 @@ static int handle_cmd_transact_client_import(const char *in_wrapped_data_path,
         return 1;
     }
 
+    hidl_vec<KeyParameter> unwrapping_params;
+    if (in_unwrapping_params != NULL &&
+            cli::parse_km_tag_params(in_unwrapping_params, unwrapping_params))
+    {
+        std::cerr << "Invalid key parameters" << std::endl;
+        return 1;
+    }
+
     hidl_vec<uint8_t> out_keyblob;
     if (cli::transact::client::import_wrapped_key(g_hal, in_wrapped_data,
-                in_masking_key, in_wrapping_keyblob, out_keyblob))
+                in_masking_key, in_wrapping_keyblob, unwrapping_params, out_keyblob))
     {
         std::cerr << "Failed to securely import wrapped key blob" << std::endl;
         return 1;
@@ -782,7 +854,9 @@ static int dispatch_cmd(int argc, const char **argv)
 
         const char *const key_source = argv[2];
         const char *const key_spec = argv[3];
-        return handle_cmd_attest(key_source, key_spec);
+        const char *const key_params = argc >= 5 ? argv[4] : NULL;
+        const char *const attest_params = argc >= 6 ? argv[5] : NULL;
+        return handle_cmd_attest(key_source, key_spec, key_params, attest_params);
 
     } else if (!strcmp(cmd, "import")) {
         if (argc < 5) {
@@ -795,7 +869,9 @@ static int dispatch_cmd(int argc, const char **argv)
         const char *const alg_name = argv[2];
         const char *const in_priv_pkcs8_path = argv[3];
         const char *const out_km_keyblob_path = argv[4];
-        return handle_cmd_import(alg_name, in_priv_pkcs8_path, out_km_keyblob_path);
+        const char *const key_params = argc >= 6 ? argv[5] : NULL;
+        return handle_cmd_import(alg_name, in_priv_pkcs8_path, out_km_keyblob_path,
+                key_params);
 
     } else if (!strcmp(cmd, "export")) {
         if (argc < 4) {
@@ -832,7 +908,8 @@ static int dispatch_cmd(int argc, const char **argv)
 
         const char *const alg_name = argv[2];
         const char *const out_km_keyblob_path = argv[3];
-        return handle_cmd_generate(alg_name, out_km_keyblob_path);
+        const char *const key_params = argc >= 5 ? argv[4] : NULL;
+        return handle_cmd_generate(alg_name, out_km_keyblob_path, key_params);
     } else if (!strcmp(cmd, "mkkeybox")) {
         if (argc < 5) {
             print_not_enough_args_for_cmd(cmd);
@@ -865,8 +942,9 @@ static int dispatch_cmd(int argc, const char **argv)
         const char *const arg3 = argc >= 7 ? argv[6] : NULL;
         const char *const arg4 = argc >= 8 ? argv[7] : NULL;
         const char *const arg5 = argc >= 9 ? argv[8] : NULL;
+        const char *const arg6 = argc >= 10 ? argv[9] : NULL;
 
-        return handle_cmd_transact(actor, subcmd, arg1, arg2, arg3, arg4, arg5);
+        return handle_cmd_transact(actor, subcmd, arg1, arg2, arg3, arg4, arg5, arg6);
     } else {
         return -1;
     }
@@ -893,20 +971,27 @@ static void print_usage()
         "       Generate a new keypair in KeyMaster and save the resulting key blob"
             "to <out_key_blob>\n"
         "\n"
-        "   attest <key_source> <key_spec>\n"
+        "   attest <key_source> <key_spec> [key_params] [attest_params]\n"
         "       Generate a KeyMaster attestation for a given key\n"
         "       <key_source> can be either \"generated\" or \"file\"\n"
         "       If <key_source> is \"generated\", then <key_spec> must be:\n"
         "           \"ec\" for an ECDSA key\n"
         "           \"rsa\" for an RSA key\n"
+        "           Additionally, in this case [key_params] may contain a space-separated list "
+                    "of key parameters that will be used for the generation "
+                    "of the ephemeral key.\n"
         "       If <key_source> is \"file\", then <key_spec> must be "
-                "the path to a keymaster key blob file.\n"
+                "the path to a keymaster key blob file and [key_params] are ignored.\n"
+        "       [attest_params] may also be specified to control the attestKey call parameters "
+        "themselves. In that case, [key_params] must at least be set to an empty string.\n"
         "\n"
-        "   import <in_private_pkcs8> <algorithm> <out_key_blob>\n"
+        "   import <in_private_pkcs8> <algorithm> <out_key_blob> [key_params]\n"
         "       Imports a PKCS#8 DER-encoded ECDSA or RSA private key <in_private_pkcs8> "
                 "into the device's keymaster, writing the resulting key blob to <out_key_blob>.\n"
         "       <algorithm> must be either \"ec\" or \"rsa\", "
                 "in accordance to the content of <in_private_pkcs8>.\n"
+        "       [key_params] may contain a space-separated list of key parameters that "
+                "<out_key_blob> will have after a successfull import.\n"
         "\n"
         "   export <in_keyblob> <out_public_x509>\n"
         "       Exports the given keymaster key blob <in_keyblob>'s public key "
@@ -935,17 +1020,22 @@ static void print_usage()
                 "to the directory <out_dir_path>\n"
         "       Note: The directory <out_dir_path> must already exist\n"
         "\n"
-        "   transact client generate <out_keyblob> <out_pubkey> [out_attestation]\n"
+        "   transact client generate <out_keyblob> <out_pubkey> [key_params] [out_attestation]\n"
         "       Generates the wrapping key for a secure import transaction, "
                 "writing the resulting keyblob to <out_keyblob> and exports the public part"
                 "to a DER-encoded X.509 certificate <out_pubkey>.\n"
+        "       [key_params] can contain a space-separated list of key parameters "
+        "for the generation of the wrapping key\n."
         "       Optionally also generates an attestation certificate chain for the wrapping key, "
-                "writing it to <out_attestation>\n"
+                "writing it to [out_attestation]\n"
+        "       Note: If [out_attestation] is to be specified, [key_params] must at least contain "
+                "an empty string.\n"
         "\n"
         "   transact server verify <attestation>\n"
         "       Verifies the KeyMaster attestation certificate chain <attestation>\n"
         "\n"
-        "   transact server wrap <in_private_key> <algorithm> <wrapping_key> <out_wrapped_data>\n"
+        "   transact server wrap <in_private_key> <algorithm> <wrapping_key> <out_wrapped_data> "
+        "[key_params]\n"
         "       Wraps the DER-encoded PKCS#8 private key <in_private_key> "
                 "for a secure import transaction.\n"
         "       <algorithm> must be either \"ec\" or \"rsa\", "
@@ -956,24 +1046,29 @@ static void print_usage()
                 "(which is supposed to be sent to the client) will be written.\n"
         "       <out_masking_key> is the path to the file to which "
                 "the ephemeral masking key will be written\n"
+        "       [key_params] can contain a space-separated list of key parameters that "
+                "the resulting keyblob will have after a successfull secure import.\n"
         "\n"
         "   transact client import <in_wrapped_data> <in_masking_key> "
-            "<in_wrapping_keyblob> <out_keyblob>\n"
+            "<in_wrapping_keyblob> <out_keyblob> [unwrapping_key_params]\n"
         "       Performs the secure import of <in_wrapped_data> (masked with `<in_masking_key>`) "
                 "using <in_wrapping_keyblob>.\n"
         "       This finalizes the secure import transaction, "
         "and the resulting keyblob is written to <out_keyblob>.\n"
+        "       [unwrapping_key_params] may contain a space-separated list of key parameters that "
+                "will be passed as the `unwrappingParams` for the `importWrappedKey` call.\n"
         "\n"
         "\n"
         "Examples:\n"
-        "   To generate an ECDSA key and attest it:\n"
-        "   $ " << progname << " attest generated ec\n"
+        "   To generate an ECDSA-384 key and attest it:\n"
+        "   $ " << progname << " attest generated ec \"EC_CURVE=P_384\"\n"
         "\n"
         "   To import an RSA private key:\n"
         "   $ " << progname << " import rsa rsa-private-pkcs8.der keyblob-rsa.bin\n"
         "\n"
-        "   To generate and save an ECDSA KeyMaster key:\n"
-        "   $ " << progname << " generate ec keyblob-ec.bin\n"
+        "   To generate and save an ECDSA KeyMaster key "
+            "with the ability to use it for encryption and decryption:\n"
+        "   $ " << progname << " generate ec keyblob-ec.bin \"PURPOSE=ENCRYPT PURPOSE=DECRYPT\"\n"
         "\n"
         "   To export the public part of an EC key:\n"
         "   $ " << progname << " export keyblob-ec.bin pubkey.x509\n"

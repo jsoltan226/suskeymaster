@@ -8,6 +8,7 @@
 #include <android/hardware/keymaster/4.0/types.h>
 #include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
 #include <hidl/HidlSupport.h>
+#include <unordered_map>
 #include <utils/StrongPointer.h>
 #include <ctime>
 #include <mutex>
@@ -40,9 +41,6 @@ static void pr_err(const char *fmt, ...)
     putchar('\n');
     va_end(vlist);
 }
-
-static void init_ec_gen_params(hidl_vec<KeyParameter>& params);
-static void init_rsa_gen_params(hidl_vec<KeyParameter>& params);
 
 static void init_attest_key_params(hidl_vec<KeyParameter>& params);
 
@@ -92,22 +90,42 @@ static void attest_key_cb(
     util::try_post_g_sem(&g_sem, &g_sem_inited, pr_err);
 }
 
-int generate_key(sp<IKeymasterDevice> hal, Algorithm alg, hidl_vec<uint8_t> &out)
+int generate_key(sp<IKeymasterDevice> hal, Algorithm alg,
+        hidl_vec<KeyParameter> const& in_key_params,
+        hidl_vec<uint8_t> &out)
 {
-    hidl_vec<KeyParameter> params;
-    if (alg == Algorithm::EC)
-        init_ec_gen_params(params);
-    else if (alg == Algorithm::RSA)
-        init_rsa_gen_params(params);
-    else {
+    hidl_vec<KeyParameter> params(in_key_params);
+    if (alg == Algorithm::EC) {
+        std::unordered_map<Tag, struct defaults_with_flags> ec_defaults = {
+            { Tag::ALGORITHM, { { to_u32(Algorithm::EC) }, 0 },  },
+            { Tag::DIGEST, { { to_u32(Digest::SHA_2_256) }, 0 } },
+            { Tag::EC_CURVE, { { to_u32(EcCurve::P_256) }, 0 } },
+            { Tag::PURPOSE, { { to_u32(KeyPurpose::SIGN), to_u32(KeyPurpose::VERIFY) }, 0 } },
+            { Tag::NO_AUTH_REQUIRED, { { 1 }, 0 } },
+        };
+        init_default_params(ec_defaults, params);
+    } else if (alg == Algorithm::RSA) {
+        std::unordered_map<Tag, struct defaults_with_flags> rsa_defaults = {
+            { Tag::ALGORITHM, { { to_u32(Algorithm::RSA) }, 0 } },
+            { Tag::DIGEST, { { to_u32(Digest::SHA_2_256) }, 0 } },
+            /* Only 2048-bit keys are guaranteed to be supported
+             * by both TEE and STRONGBOX devices */
+            { Tag::KEY_SIZE, { { 2048 }, 0 } },
+            { Tag::PADDING, { { to_u32(PaddingMode::RSA_PKCS1_1_5_SIGN) }, 0 } },
+            { Tag::RSA_PUBLIC_EXPONENT, { { 65537 }, 0 } },
+            { Tag::PURPOSE, { { to_u32(KeyPurpose::SIGN), to_u32(KeyPurpose::VERIFY) }, 0 } },
+            { Tag::NO_AUTH_REQUIRED, { { 1 }, 0 } },
+        };
+        init_default_params(rsa_defaults, params);
+    } else {
         std::cerr << "Unsupported algorithm: " << static_cast<int32_t>(alg) <<
             " (" << toString(alg) << ")" << std::endl;
         return -1;
     }
 
     struct ::timespec ts;
-    struct timespec *const tsp = reinterpret_cast<struct timespec *>(&ts);
-    if (util::prepare_timeout(tsp, 2, pr_err))
+    //struct timespec *const &tsp = reinterpret_cast<struct timespec *>(&ts);
+    if (util::prepare_timeout(&ts, 2, pr_err))
         return -1;
 
     bool ok = false;
@@ -121,7 +139,7 @@ int generate_key(sp<IKeymasterDevice> hal, Algorithm alg, hidl_vec<uint8_t> &out
 
         hal->generateKey(params, generate_key_cb);
 
-        if (util::wait_on_sem(&g_sem, "generateKey operation", tsp, pr_err)) goto out;
+        if (util::wait_on_sem(&g_sem, "generateKey operation", &ts, pr_err)) goto out;
 
         if (g_generate_key_error != ErrorCode::OK) {
             std::cerr << "generateKey operation failed: "
@@ -141,14 +159,14 @@ out:
     return ok ? 0 : 1;
 }
 
-int attest_key(sp<IKeymasterDevice> hal, const hidl_vec<uint8_t>& key)
+int attest_key(sp<IKeymasterDevice> hal, const hidl_vec<uint8_t>& key,
+        hidl_vec<KeyParameter> const& in_attest_params)
 {
-    hidl_vec<KeyParameter> params;
+    hidl_vec<KeyParameter> params = in_attest_params;
     init_attest_key_params(params);
 
-    struct ::timespec ts;
-    struct timespec *const tsp = reinterpret_cast<struct timespec *>(&ts);
-    if (util::prepare_timeout(tsp, 5, pr_err))
+    struct timespec ts;
+    if (util::prepare_timeout(&ts, 5, pr_err))
         return -1;
 
     VECTOR(u8) leaf_cert = vector_new(u8);
@@ -166,7 +184,7 @@ int attest_key(sp<IKeymasterDevice> hal, const hidl_vec<uint8_t>& key)
 
         hal->attestKey(key, params, attest_key_cb);
 
-        if (util::wait_on_sem(&g_sem, "attestKey operation", tsp, pr_err))
+        if (util::wait_on_sem(&g_sem, "attestKey operation", &ts, pr_err))
             goto out;
 
         if (g_attest_key_error != ErrorCode::OK) {
@@ -198,106 +216,40 @@ out:
     return transact::server::verify_attestation(cert_chain);
 }
 
-static void init_ec_gen_params(hidl_vec<KeyParameter>& params)
-{
-    enum {
-        PARAM_ALGOR, PARAM_DIGEST,
-        PARAM_EC_CURVE,
-        PARAM_PURPOSE_SIGN, PARAM_PURPOSE_VERIFY, PARAM_NO_AUTH_REQUIRED,
-        /*PARAM_APPLICATION_ID,*/
-        PARAM_MAX_
-    };
-    params.resize(PARAM_MAX_);
-
-    params[PARAM_ALGOR].tag = Tag::ALGORITHM;
-    params[PARAM_ALGOR].f.algorithm = Algorithm::EC;
-    params[PARAM_DIGEST].tag = Tag::DIGEST;
-    params[PARAM_DIGEST].f.digest = Digest::SHA_2_256;
-
-    params[PARAM_EC_CURVE].tag = Tag::EC_CURVE;
-    params[PARAM_EC_CURVE].f.ecCurve = EcCurve::P_256;
-
-    params[PARAM_PURPOSE_SIGN].tag = Tag::PURPOSE;
-    params[PARAM_PURPOSE_SIGN].f.purpose = KeyPurpose::SIGN;
-    params[PARAM_PURPOSE_VERIFY].tag = Tag::PURPOSE;
-    params[PARAM_PURPOSE_VERIFY].f.purpose = KeyPurpose::VERIFY;
-    params[PARAM_NO_AUTH_REQUIRED].tag = Tag::NO_AUTH_REQUIRED;
-    params[PARAM_NO_AUTH_REQUIRED].f.boolValue = true;
-
-    /*
-    params[PARAM_APPLICATION_ID].tag = Tag::APPLICATION_ID;
-    params[PARAM_APPLICATION_ID].blob = get_sus_application_id();
-    */
-}
-
-static void init_rsa_gen_params(hidl_vec<KeyParameter>& params)
-{
-    enum {
-        PARAM_ALGOR, PARAM_DIGEST,
-        PARAM_KEY_SIZE, PARAM_PADDING, PARAM_RSA_EXP,
-        PARAM_PURPOSE_SIGN, PARAM_PURPOSE_VERIFY, PARAM_NO_AUTH_REQUIRED,
-        /*PARAM_APPLICATION_ID,*/
-        PARAM_MAX_
-    };
-    params.resize(PARAM_MAX_);
-
-    params[PARAM_ALGOR].tag = Tag::ALGORITHM;
-    params[PARAM_ALGOR].f.algorithm = Algorithm::RSA;
-    params[PARAM_DIGEST].tag = Tag::DIGEST;
-    params[PARAM_DIGEST].f.digest = Digest::SHA_2_256;
-
-    params[PARAM_KEY_SIZE].tag = Tag::KEY_SIZE;
-    /* Only 2048-bit keys are guaranteed to be supported by both TEE and STRONGBOX devices */
-    params[PARAM_KEY_SIZE].f.integer = 2048;
-    params[PARAM_PADDING].tag = Tag::PADDING;
-    params[PARAM_PADDING].f.paddingMode = PaddingMode::RSA_PKCS1_1_5_SIGN;
-    params[PARAM_RSA_EXP].tag = Tag::RSA_PUBLIC_EXPONENT;
-    params[PARAM_RSA_EXP].f.longInteger = 65537;
-
-    params[PARAM_PURPOSE_SIGN].tag = Tag::PURPOSE;
-    params[PARAM_PURPOSE_SIGN].f.purpose = KeyPurpose::SIGN;
-    params[PARAM_PURPOSE_VERIFY].tag = Tag::PURPOSE;
-    params[PARAM_PURPOSE_VERIFY].f.purpose = KeyPurpose::VERIFY;
-    params[PARAM_NO_AUTH_REQUIRED].tag = Tag::NO_AUTH_REQUIRED;
-    params[PARAM_NO_AUTH_REQUIRED].f.boolValue = true;
-
-    /*
-    params[PARAM_APPLICATION_ID].tag = Tag::APPLICATION_ID;
-    params[PARAM_APPLICATION_ID].blob = get_sus_application_id();
-    */
-}
-
 static void init_attest_key_params(hidl_vec<KeyParameter>& params)
 {
-    enum {
-        PARAM_ATTESTATION_CHALLENGE, PARAM_ATTESTATION_APPLICATION_ID,
-        /*PARAM_APPLICATION_ID,*/
-        PARAM_MAX_
-    };
-    params.resize(PARAM_MAX_);
+    bool set_att_challenge = true, set_att_application_id = true;
 
-    static const uint8_t *const challenge = reinterpret_cast<const uint8_t *>
-        ("suskeymaster TEST ATTESTATION CHALLENGE");
-    static const size_t challenge_len = sizeof(challenge) - 1;
+    for (auto const& kp : params) {
+        if (kp.tag == Tag::ATTESTATION_CHALLENGE)
+            set_att_challenge = false;
+        else if (kp.tag == Tag::ATTESTATION_APPLICATION_ID)
+            set_att_application_id = false;
+    }
 
-    params[PARAM_ATTESTATION_CHALLENGE].tag = Tag::ATTESTATION_CHALLENGE;
-    params[PARAM_ATTESTATION_CHALLENGE].blob = hidl_vec<uint8_t>(
-            challenge, challenge + challenge_len
-    );
+    if (set_att_challenge) {
+        static const uint8_t *const challenge = reinterpret_cast<const uint8_t *>
+            ("suskeymaster TEST ATTESTATION CHALLENGE");
+        static const size_t challenge_len = sizeof(challenge) - 1;
 
-    static const uint8_t *const att_application_id = reinterpret_cast<const uint8_t *>
-        ("suskeymaster TEST APPLICATION ID");
-    static const size_t att_application_id_len = sizeof(att_application_id) - 1;
+        params.resize(params.size() + 1);
+        params[params.size() - 1].tag = Tag::ATTESTATION_CHALLENGE;
+        params[params.size() - 1].blob = hidl_vec<uint8_t>(
+                challenge, challenge + challenge_len
+        );
+    }
 
-    params[PARAM_ATTESTATION_APPLICATION_ID].tag = Tag::ATTESTATION_APPLICATION_ID;
-    params[PARAM_ATTESTATION_APPLICATION_ID].blob = hidl_vec<uint8_t>(
-            att_application_id, att_application_id + att_application_id_len
-    );
+    if (set_att_application_id) {
+        static const uint8_t *const att_application_id = reinterpret_cast<const uint8_t *>
+            ("suskeymaster TEST APPLICATION ID");
+        static const size_t att_application_id_len = sizeof(att_application_id) - 1;
 
-    /*
-    params[PARAM_APPLICATION_ID].tag = Tag::APPLICATION_ID;
-    params[PARAM_APPLICATION_ID].blob = get_sus_application_id();
-    */
+        params.resize(params.size() + 1);
+        params[params.size() - 1].tag = Tag::ATTESTATION_APPLICATION_ID;
+        params[params.size() - 1].blob = hidl_vec<uint8_t>(
+                att_application_id, att_application_id + att_application_id_len
+        );
+    }
 }
 
 } /* namespace cli */

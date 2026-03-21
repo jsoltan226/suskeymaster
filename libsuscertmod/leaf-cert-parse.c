@@ -176,7 +176,7 @@ i32 leaf_cert_parse(const VECTOR(u8) cert,
     if (subj_pubkey_ctx == NULL)
         goto_error("Failed to create the subject public key context!");
 
-    if (EVP_PKEY_public_check(subj_pubkey_ctx) <= 0)
+    if (EVP_PKEY_public_check(subj_pubkey_ctx) != 1)
         goto_error("Invalid subject public key (check failed)!");
 
     /* Check that the issuer field exists */
@@ -253,17 +253,17 @@ i32 leaf_cert_parse(const VECTOR(u8) cert,
 
 err:
 
-    if (out_variant != NULL)
+    if (out_variant != NULL && ok)
         *out_variant = key_variant;
 
-    if (out_subj_pubkey != NULL) {
+    if (out_subj_pubkey != NULL && ok) {
         *out_subj_pubkey = subj_pubkey;
     } else {
         EVP_PKEY_free(subj_pubkey);
         subj_pubkey = NULL;
     }
 
-    if (out_km_desc != NULL)
+    if (out_km_desc != NULL && ok)
         *out_km_desc = km_desc;
     else
         key_desc_destroy(&km_desc);
@@ -271,15 +271,6 @@ err:
     if (subj_pubkey_ctx != NULL) {
         EVP_PKEY_CTX_free(subj_pubkey_ctx);
         subj_pubkey_ctx = NULL;
-    }
-
-    if (!ok) {
-        /* `km_desc` doesn't have to be freed under any circumstances */
-
-        if (subj_pubkey != NULL) {
-            EVP_PKEY_free(subj_pubkey);
-            subj_pubkey = NULL;
-        }
     }
 
     if (x509 != NULL) {

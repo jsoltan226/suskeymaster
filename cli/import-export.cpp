@@ -3,6 +3,7 @@
 #include <libgenericutil/atomic-wrapper.h>
 #include <android/hardware/keymaster/4.0/types.h>
 #include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
+#include <unordered_map>
 #include <utils/StrongPointer.h>
 #include <ctime>
 #include <mutex>
@@ -75,9 +76,9 @@ static void export_key_cb(
 }
 
 
-int import_key(sp<IKeymasterDevice> hal,
-        const hidl_vec<uint8_t>& priv_pkcs8, Algorithm alg,
-        hidl_vec<uint8_t>& out
+int import_key(sp<IKeymasterDevice> hal, hidl_vec<uint8_t> const& priv_pkcs8,
+        Algorithm alg, hidl_vec<KeyParameter> const& in_import_params,
+        hidl_vec<uint8_t>& out_keyblob
 )
 {
     if (alg != Algorithm::EC && alg != Algorithm::RSA) {
@@ -92,11 +93,11 @@ int import_key(sp<IKeymasterDevice> hal,
     if (util::prepare_timeout(tsp, 2, pr_err))
         return -1;
 
-    hidl_vec<KeyParameter> params(2);
-    params[0].tag = Tag::APPLICATION_ID;
-    params[0].blob = get_sus_application_id();
-    params[1].tag = Tag::ALGORITHM;
-    params[1].f.algorithm = alg;
+    std::unordered_map<Tag, struct defaults_with_flags> defaults = {
+        { Tag::ALGORITHM, { { to_u32(alg) }, 0 } }
+    };
+    hidl_vec<KeyParameter> params(in_import_params);
+    init_default_params(defaults, params);
 
     bool ok = false;
     {
@@ -120,7 +121,7 @@ int import_key(sp<IKeymasterDevice> hal,
             goto out;
         }
 
-        out = g_import_key_output;
+        out_keyblob = g_import_key_output;
         std::cout << "Successfully imported an " << toString(alg)
             << " private key into KeyMaster" << std::endl;
         ok = true;

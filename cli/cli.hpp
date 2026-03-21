@@ -2,12 +2,13 @@
 #define CLI_SUSKEYMASTER_HPP_
 
 #include <libgenericutil/cert-types.h>
+#include <unordered_map>
 #include <vector>
 #include <string>
 #include <cstdint>
 #include <utils/StrongPointer.h>
-#include <android/hardware/keymaster/4.0/types.h>
-#include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
+#include "../aosp-headers/include-keymaster/android/hardware/keymaster/4.0/types.h"
+#include "../aosp-headers/include-keymaster/android/hardware/keymaster/4.0/IKeymasterDevice.h"
 
 namespace suskeymaster {
 namespace cli {
@@ -15,18 +16,24 @@ namespace cli {
 int generate_key(
     ::android::sp<::android::hardware::keymaster::V4_0::IKeymasterDevice>   hal,
     ::android::hardware::keymaster::V4_0::Algorithm                         alg,
+    ::android::hardware::hidl_vec
+        <::android::hardware::keymaster::V4_0::KeyParameter> const&         in_gen_params,
 
     ::android::hardware::hidl_vec<uint8_t>&                                 out_wrapped_blob
 );
 int attest_key(
     ::android::sp<::android::hardware::keymaster::V4_0::IKeymasterDevice>   hal,
-    ::android::hardware::hidl_vec<uint8_t> const&                           key
+    ::android::hardware::hidl_vec<uint8_t> const&                           key,
+    ::android::hardware::hidl_vec
+        <::android::hardware::keymaster::V4_0::KeyParameter> const&         in_attest_params
 );
 
 int import_key(
     ::android::sp<::android::hardware::keymaster::V4_0::IKeymasterDevice>   hal,
     ::android::hardware::hidl_vec<uint8_t> const&                           priv_pkcs8,
     ::android::hardware::keymaster::V4_0::Algorithm                         alg,
+    ::android::hardware::hidl_vec
+        <::android::hardware::keymaster::V4_0::KeyParameter> const&         in_import_params,
 
     ::android::hardware::hidl_vec<uint8_t>&                                 out_wrapped_blob
 );
@@ -71,7 +78,9 @@ namespace transact {
 
             ::android::hardware::hidl_vec<uint8_t>&                             out_wrapping_blob,
             ::android::hardware::hidl_vec<uint8_t>&                             out_wrapping_pubkey,
-            ::android::hardware::hidl_vec<::android::hardware::hidl_vec<uint8_t>> * out_cert_chain
+            ::android::hardware::hidl_vec<::android::hardware::hidl_vec<uint8_t>> * out_cert_chain,
+            ::android::hardware::hidl_vec
+                <::android::hardware::keymaster::V4_0::KeyParameter> const&     in_gen_params
         );
     }
 
@@ -84,6 +93,8 @@ namespace transact {
             ::android::hardware::hidl_vec<uint8_t> const&                       in_private_key,
             enum ::suskeymaster::util::sus_key_variant                          in_key_variant,
             ::android::hardware::hidl_vec<uint8_t> const&                       in_wrapping_key,
+            ::android::hardware::hidl_vec
+                <::android::hardware::keymaster::V4_0::KeyParameter> const&     in_key_params,
 
             ::android::hardware::hidl_vec<uint8_t>&                             out_wrapped_data,
             ::android::hardware::hidl_vec<uint8_t>&                             out_masking_key
@@ -97,12 +108,35 @@ namespace transact {
             ::android::hardware::hidl_vec<uint8_t> const&                       in_wrapped_data,
             ::android::hardware::hidl_vec<uint8_t> const&                       in_masking_key,
             ::android::hardware::hidl_vec<uint8_t> const&                       in_wrapping_blob,
+            ::android::hardware::hidl_vec
+                <::android::hardware::keymaster::V4_0::KeyParameter> const& in_unwrapping_params,
 
             ::android::hardware::hidl_vec<uint8_t>&                             out_key_blob
         );
     };
 
 } /* namespace transact */
+
+int parse_km_tag_params(
+        const char *                                                            arg,
+
+        ::android::hardware::hidl_vec<::android::hardware::keymaster::V4_0::KeyParameter>& out
+);
+
+template <typename E>
+constexpr uint32_t to_u32(E e) noexcept {
+    return static_cast<uint32_t>(e);
+}
+
+struct defaults_with_flags {
+    std::vector<uint32_t> vals;
+    bool found;
+};
+void init_default_params(
+    std::unordered_map<::android::hardware::keymaster::V4_0::Tag, struct defaults_with_flags>
+        & defaults,
+    ::android::hardware::hidl_vec<::android::hardware::keymaster::V4_0::KeyParameter>& params
+);
 
 } /* namespace cli */
 } /* namespace suskeymaster */

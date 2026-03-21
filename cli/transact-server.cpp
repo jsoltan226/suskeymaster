@@ -179,7 +179,7 @@ err:
 }
 
 int wrap_key(hidl_vec<uint8_t> const& in_private_key, enum util::sus_key_variant key_variant,
-        hidl_vec<uint8_t> const& in_wrapping_key,
+        hidl_vec<uint8_t> const& in_wrapping_key, hidl_vec<KeyParameter> const& in_key_params,
         hidl_vec<uint8_t>& out_wrapped_data, hidl_vec<uint8_t>& out_masking_key)
 {
     struct certmod::KM_AuthorizationList_v3 auth_list = {};
@@ -188,6 +188,8 @@ int wrap_key(hidl_vec<uint8_t> const& in_private_key, enum util::sus_key_variant
     hidl_vec<uint8_t> transport_iv;
     hidl_vec<uint8_t> transport_tag;
     hidl_vec<uint8_t> encrypted_key(in_private_key);
+
+    (void) in_key_params;
 
     if (key_variant != util::SUS_KEY_EC && key_variant != util::SUS_KEY_RSA) {
         std::cerr << "Invalid parameters (key_variant: " << key_variant << ")" << std::endl;

@@ -55,17 +55,13 @@ extern "C" void sus_attest_cb(
         void * _certChain
 )
 {
-    hidl_vec<hidl_vec<uint8_t>> tmp_cert_chain = { };
+    hidl_vec<hidl_vec<uint8_t>> tmp_cert_chain;
 
     const ErrorCode err = *(reinterpret_cast<ErrorCode *>(_err));
     const hidl_vec<hidl_vec<uint8_t>>& certChain =
         *reinterpret_cast<const hidl_vec<hidl_vec<uint8_t>> *>(_certChain);
 
     __android_log_print(ANDROID_LOG_INFO, "SUS", "Hello from %s!\n", __func__);
-    __android_log_print(ANDROID_LOG_INFO, "SUS", "err = 0x%.8x (%s), certChain = 0x%.8lx\n",
-            static_cast<int32_t>(err), toString(err).c_str(),
-            reinterpret_cast<unsigned long>(_certChain)
-    );
 
     if (err != ErrorCode::OK)
         goto failure;
@@ -92,9 +88,6 @@ int sus_keymaster_hack_cert_chain(hidl_vec<hidl_vec<uint8_t>>& cert_chain)
         __android_log_print(ANDROID_LOG_ERROR, "SUS", "Cert chain size is 0!");
         return -1;
     }
-
-    __android_log_print(ANDROID_LOG_INFO, "SUS", "cert0: size: 0x%lx, first 8 bytes: 0x%.8llx",
-            cert_chain[0].size(), *(unsigned long long *)(cert_chain[0].data()));
 
     VECTOR(u8) old_leaf = vector_new(u8);
     vector_resize(&old_leaf, cert_chain[0].size());

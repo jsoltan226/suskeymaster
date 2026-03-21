@@ -233,9 +233,10 @@ static void dump_auth_list(const struct KM_AuthorizationList_v3 *al,
         dump_hex("        .attestationIdProduct = {", "},",
                 al->attestationIdProduct, INDENT_3, log_proc);
 
-    if (al->__attestationIdSerial_present)
+    if (al->__attestationIdSerial_present) {
         dump_hex("        .attestationIdSerial = {", "},",
                 al->attestationIdSerial, INDENT_3, log_proc);
+    }
 
     if (al->__attestationIdImei_present)
         dump_hex("        .attestationIdImei = {", "},",

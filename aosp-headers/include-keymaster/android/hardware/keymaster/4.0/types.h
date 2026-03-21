@@ -5,6 +5,7 @@
 #include <hidl/MQDescriptor.h>
 #include <utils/NativeHandle.h>
 #include <utils/misc.h>
+#include <cstdint>
 
 namespace android {
 namespace hardware {
@@ -862,6 +863,267 @@ enum class Tag : uint32_t {
      * Must never appear in KeyCharacteristics.
      */
     CONFIRMATION_TOKEN = 2415920109u /* TagType:BYTES | 1005 */,
+
+    /** Values found in samsung keymaster **/
+};
+namespace SamsungTag {
+#define DECLARE_TAG(name, value) constexpr Tag name = static_cast<Tag>((uint32_t)value)
+
+    /** Tags missing from the core spec? **/
+
+    /* Stores a user authentication token for operations that require it */
+    DECLARE_TAG(AUTH_TOKEN, TagType::BYTES | 1002);
+
+    /* Used in the `computeSharedHmac` operation (stores the HMAC verification token SEQUENCE) */
+    DECLARE_TAG(VERIFICATION_TOKEN, TagType::BYTES | 5200);
+
+    /* Internal tag idicating that all users can use a given key.
+     * Treated similarly to Tag::NO_AUTH_REQUIRED. */
+    DECLARE_TAG(ALL_USERS, TagType::BOOL | 500);
+
+    DECLARE_TAG(ECIES_SINGLE_HASH_MODE, TagType::BOOL | 201 );
+
+    /* Stores a Key Derivation Function type (see `enum KeyDerivationFunction`). */
+    DECLARE_TAG(KDF, TagType::ENUM_REP | 9);
+
+    /* Tag indicating that the key is exportable. Valid only for symmetric keys. */
+    DECLARE_TAG(EXPORTABLE, TagType::BOOL | 602);
+
+    /** KM Operation tags **/
+
+    /* An internal parameter tag indicating that the key requires authentication.
+     * Set if any of the following tags are present in the key description:
+     *  SamsungTag::AUTH_TOKEN, Tag::AUTH_TIMEOUT, Tag::USER_AUTH_TYPE, Tag::USER_SECURE_ID */
+    DECLARE_TAG(KEY_AUTH, TagType::BOOL | 5013);
+
+    /* An internal parameter tag indicating that the operation requires authentication.
+     * Set if any of the following tags are present in the key description:
+     *  Tag::AUTH_TIMEOUT, Tag::USER_SECURE_ID */
+    DECLARE_TAG(OP_AUTH, TagType::BOOL | 5012);
+
+    /* An internal tag that represents the operation handle returned by `begin()`
+     * and used in `update()` and `finish()`. */
+    DECLARE_TAG(OPERATION_HANDLE, TagType::ULONG | 5011);
+
+    /* An internal tag indicating that an operation (`begin()`, `update()`, `finish()`)
+     * has failed and should be cleaned up. */
+    DECLARE_TAG(OPERATION_FAILED, TagType::BOOL | 5030);
+
+    /* Used to validate datetime requirements in `begin()` **/
+    DECLARE_TAG(INTERNAL_CURRENT_DATETIME, TagType::DATE | 800);
+
+    /** Encrypted key blob serialization/deserialization related tags **/
+
+    /* Initialization vector used for AES-256-GCM decryption,
+     * typically stored in the outer keyblob in plain text */
+    DECLARE_TAG(EKEY_BLOB_IV, TagType::BYTES | 5000);
+
+    /* AES-256-GCM authentication tag, stored in the outer keyblob in plain text */
+    DECLARE_TAG(EKEY_BLOB_AUTH_TAG, TagType::BYTES | 5001);
+
+    /* Usage count tag used to enforce Tag:MAX_USES_PER_BOOT */
+    DECLARE_TAG(EKEY_BLOB_CURRENT_USES_PER_BOOT, TagType::UINT | 5003);
+
+    /* Time of last operation, used to enforce tags such as
+     * Tag:MIN_SECONDS_BETWEEN_OPS and Tag:AUTH_TIMEOUT */
+    DECLARE_TAG(EKEY_BLOB_LAST_OP_TIMESTAMP, TagType::ULONG | 5004);
+
+    /* A flag indicating that the encrypted key blob should be upgraded to a new version */
+    DECLARE_TAG(EKEY_BLOB_DO_UPGRADE, TagType::UINT | 5005);
+
+    /* Both of these are HMAC'd to derive a key encryption key,
+     * which is what's actually used to wrap/unwrap the encrypted key blob.
+     * The resulting pkek is added as the key blob's APPLICATION_ID. */
+    DECLARE_TAG(EKEY_BLOB_PASSWORD, TagType::BYTES | 5006);
+    DECLARE_TAG(EKEY_BLOB_SALT, TagType::BYTES | 5007);
+
+    /* Encrypted key blob version, stored in the EKEY blob in plain text.
+     * Typically `40` for keymaster 4.0 blobs. */
+    DECLARE_TAG(EKEY_BLOB_ENC_VER, TagType::UINT | 5008);
+
+    /* A tag indicating that the inner encrypted key blob
+     * is not wrapped in an ASN.1 container */
+    DECLARE_TAG(EKEY_BLOB_RAW, TagType::UINT | 5009);
+
+    /* A per-encryption unique random value,
+     * added to the encryption salt & AES-256-GCM authentication tag.
+     * Typically stored in the outer encrypted key blob in plain text */
+    DECLARE_TAG(EKEY_BLOB_UNIQ_KDM, TagType::BYTES | 5010);
+
+    /* A flag indicating that the usage count
+     * (Tag:EKEY_BLOB_CURRENT_USES_PER_BOOT, Tag:MAX_USES_PER_BOOT)
+     * should be incremented */
+    DECLARE_TAG(EKEY_BLOB_INC_USE_COUNT, TagType::UINT | 5202);
+
+    /* Used to securely communitate the results between Trusted Applications
+     * inside the TEE - the output can only be `tz_unwrap()`ped by a given TA.
+     * In other words, binds the keymaster operation to a given TA identifier. */
+    DECLARE_TAG(SAMSUNG_REQUESTING_TA, TagType::BYTES | 2300);
+
+    /* Tag indicating that the root of trust value (Tag::ROOT_OF_TRUST)
+     * should be added to the key parameters before a `begin` operation. */
+    DECLARE_TAG(SAMSUNG_ROT_REQUIRED, TagType::BOOL | 2301);
+
+    /* Tag indicating that a "legacy" root of trust value should be used
+     * with the key (for unwrapping and attestations).
+     * Used for old encrypted key blobs in a kind of "compatibility mode".
+     * Only available in orange state. */
+    DECLARE_TAG(SAMSUNG_LEGACY_ROT, TagType::BOOL | 2304);
+
+    /* Tag indicating that a given key is stored in a StrongBox. */
+    DECLARE_TAG(USE_SECURE_PROCESSOR, TagType::BOOL | 3000);
+
+    /* Tag indicating that a given key is used for storage encryption (e.g. FBE).
+     * Results in special functions being used to manage that key. */
+    DECLARE_TAG(STORAGE_KEY, TagType::BOOL | 722);
+
+    /* An internal tag that contains a bitmask of:
+     * "oem flag" (0x01) - the result of an oem-specific check
+     *      (e.g. "SW fuse" blown on QC devices); set if not ok
+     * "trust boot" (0x02) - knox trust boot status; set if not ok
+     * "warranty" (0x04) - knox warranty status; set if void
+     * "eng build type" (0x10) - whether the current system is an engineering binary
+     *
+     * also some flags conditionally enabled at compile time,
+     * used to work around some issues with bootloader API failures
+     * causing the salt value to break (?):
+     *
+     * "default trust boot" (0x20) - knox trust boot status for "default" RoT; set if not OK
+     * "default knox warranty" (0x40) - knox warranty status for "default" RoT; set if void
+     *
+     * This value is added to the salt used for all key blob unwrapping operations,
+     * so any change in its value render all key blobs unusable. */
+    DECLARE_TAG(INTEGRITY_STATUS, TagType::UINT | 5031);
+
+    /** Used to configure keymaster root of trust (in the bootloader/early init) **/
+    DECLARE_TAG(INTERNAL_OS_VERSION, TagType::UINT | 705);
+    DECLARE_TAG(INTERNAL_OS_PATCHLEVEL, TagType::UINT | 706);
+    DECLARE_TAG(INTERNAL_VENDOR_PATCHLEVEL, TagType::UINT | 718);
+
+    /** Flags controlling Samsung Attestation Key (SAK) attestation **/
+
+    /* Set this tag to enable SAK */
+    DECLARE_TAG(IS_SAMSUNG_KEY, TagType::BOOL | 5029);
+
+    /* Also set this to the string "samsung" to enable ID attestation with SAK
+     * (ID attestation is disabled for non-SAK attestations) */
+    DECLARE_TAG(SAMSUNG_ATTESTATION_ROOT, TagType::BYTES | 2102);
+
+    /* Set this tag to enable SAK on warranty void ("compromised") devices.
+     * Makes the "INTEGRITY" SEQUENCE be added to the hardwareEnforced auth list. */
+    DECLARE_TAG(SAMSUNG_ATTEST_INTEGRITY, TagType::BOOL | 2302);
+
+    /* Used to enforce that the key can only be used on a device
+     * with a samsung-official system ("trust boot status").
+     * Also used to gate the `EXPORTABLE` tag, for some reason. */
+    DECLARE_TAG(KNOX_OBJECT_PROTECTION_REQUIRED, TagType::BOOL | 2000);
+
+    /** Parameters for SAK attestation,
+     * with a similar role to Tag::ATTESTATION_CHALLENGE & Tag::ATTESTATION_ID_* */
+    DECLARE_TAG(KNOX_CREATOR_ID, TagType::BYTES | 2001);
+    DECLARE_TAG(KNOX_ADMINISTRATOR_ID, TagType::BYTES | 2002);
+    DECLARE_TAG(KNOX_ACCESSOR_ID, TagType::BYTES | 2003);
+    DECLARE_TAG(SAMSUNG_AUTHENTICATE_PACKAGE, TagType::BYTES | 2303);
+
+    /* Used to supply an alternative value for the attestation leaf cert's subject
+     * other than the default "CN=Android Keystore Key".
+     * Multiple subject name entries may be supplied in the following format:
+     *  entry1=value1,entry2=value2, ...
+     * although note that the entries have to be valid X.509 NAMEs, such as CN, SN, OU, etc.
+     *
+     * Can be set both in the key and attestation parameters,
+     * where the one in the attestation params overrides the one in the key.
+     * Appears to also work for normal (non-SAK) attestations.
+     */
+    DECLARE_TAG(SAMSUNG_CERTIFICATE_SUBJECT, TagType::BYTES | 2103);
+
+    /* Used to set an alternative value for the X509v3 keyUsage
+     * critical extension in the attestation leaf cert.
+     * The value supplied is a mask of the keyUsage values, e.g.
+     *  0x90 for digitalSignature|dataEncipherment (0x80|0x10) */
+    DECLARE_TAG(SAMSUNG_KEY_USAGE, TagType::UINT | 2104);
+
+    /* Used to set an alternative value for the X509v3 extendedKeyUsage
+     * non-critical extension in the attestation leaf cert.
+     * Multiple keyUsage values may be supplied, either as a name or an OID,
+     * separated by a comma, like so:
+     *  `serverAuth,codeSigning, ...` OR `1.3.6.1.5.5.7.3.1,1.3.6.1.5.5.7.3.3, ...`
+     *
+     * Exclusive to SAK attestations. */
+    DECLARE_TAG(SAMSUNG_EXTENDED_KEY_USAGE, TagType::BYTES | 2105);
+
+    /* Used to set an alternative value for the X509v3 subjectAltName
+     * non-critical extension in the attestation leaf cert.
+     * Multiple subject name entries may be supplied in the following format:
+     *  entry1=value1,entry2=value2, ...
+     * although note that the entries can only be the following X.509 alt names:
+     *  "rfc822Name", "dNSName", "uniformResourceIdentifier", "iPAddress"
+     *
+     * Exclusive to SAK attestations. */
+    DECLARE_TAG(SAMSUNG_SUBJECT_ALTERNATIVE_NAME, TagType::BYTES | 2106);
+
+    /** Keybox provisioning tags **/
+
+    /* Used to label the first intermediate cert in the EC cert chain ("issuer" of the key) */
+    DECLARE_TAG(PROV_GAC_EC1, TagType::BYTES | 5123);
+
+    /* Used to label the second intermediate cert in the EC cert chain (the "OEM" cert) */
+    DECLARE_TAG(PROV_GAC_EC2, TagType::BYTES | 5124);
+
+    /* Used to label the root of the EC cert chain */
+    DECLARE_TAG(PROV_GAC_EC3, TagType::BYTES | 5125);
+
+    /* Used to label the EC attestation private key */
+    DECLARE_TAG(PROV_GAK_EC, TagType::BYTES | 5118);
+
+    /* Used to label a validation token of the EC attestation private key */
+    DECLARE_TAG(PROV_GAK_EC_VTOKEN, TagType::BYTES | 5115);
+
+    /* Used to label the first intermediate cert in the RSA cert chain ("issuer" of the key) */
+    DECLARE_TAG(PROV_GAC_RSA1, TagType::BYTES | 5120);
+
+    /* Used to label the second intermediate cert in the RSA cert chain (the "OEM" cert) */
+    DECLARE_TAG(PROV_GAC_RSA2, TagType::BYTES | 5121);
+
+    /* Used to label the root of the RSA cert chain */
+    DECLARE_TAG(PROV_GAC_RSA3, TagType::BYTES | 5122);
+
+    /* Used to label the RSA attestation private key */
+    DECLARE_TAG(PROV_GAK_RSA, TagType::BYTES | 5117);
+
+    /* Used to label a validation token of the RSA attestation private key */
+    DECLARE_TAG(PROV_GAK_RSA_VTOKEN, TagType::BYTES | 5114);
+
+    /* Used to label the SAK private key */
+    DECLARE_TAG(PROV_SAK_EC, TagType::BYTES | 5119);
+
+    /* Used to label a validation token of the SAK EC private key */
+    DECLARE_TAG(PROV_SAK_EC_VTOKEN, TagType::BYTES | 5116);
+
+    /** StrongBox tags' values are yet to be reverse-engineered. **/
+
+    /* Used to label the first intermediate cert in the StrongBox EC cert chain
+     * ("issuer" of the key) */
+    //DECLARE_TAG(PROV_SGAC_EC1, 0);
+
+    /* Used to label the second intermediate cert in the StrongBox EC cert chain
+     * (the "OEM" cert) */
+    //DECLARE_TAG(PROV_SGAC_EC2, 0);
+
+    /* Used to label the root of the StrongBox EC cert chain */
+    //DECLARE_TAG(PROV_SGAC_EC3, 0);
+
+    /* Used to label the first intermediate cert in the StrongBox RSA cert chain
+     * ("issuer" of the key) */
+    //DECLARE_TAG(PROV_SGAC_RSA1, 0);
+
+    /* Used to label the second intermediate cert in the StrongBox RSA cert chain
+     * (the "OEM" cert) */
+    //DECLARE_TAG(PROV_SGAC_RSA2, 0);
+
+    /* Used to label the root of the StrongBox RSA cert chain */
+    //DECLARE_TAG(PROV_SGAC_RSA3, 0);
+#undef DECLARE_TAG
 };
 
 /**
