@@ -151,7 +151,7 @@ int export_key(sp<IKeymasterDevice> hal,
         if (util::try_init_g_sem(&g_sem, &g_sem_inited, pr_err))
             goto out;
 
-        hal->exportKey(KeyFormat::X509, key, get_sus_application_id(), {}, export_key_cb);
+        hal->exportKey(KeyFormat::X509, key, {}, {}, export_key_cb);
 
         if (util::wait_on_sem(&g_sem, "exportKey operation", tsp, pr_err))
             goto out;

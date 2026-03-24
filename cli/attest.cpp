@@ -228,8 +228,7 @@ static void init_attest_key_params(hidl_vec<KeyParameter>& params)
     }
 
     if (set_att_challenge) {
-        static const uint8_t *const challenge = reinterpret_cast<const uint8_t *>
-            ("suskeymaster TEST ATTESTATION CHALLENGE");
+        static const uint8_t challenge[] = "suskeymaster TEST ATTESTATION CHALLENGE";
         static const size_t challenge_len = sizeof(challenge) - 1;
 
         params.resize(params.size() + 1);
@@ -240,8 +239,7 @@ static void init_attest_key_params(hidl_vec<KeyParameter>& params)
     }
 
     if (set_att_application_id) {
-        static const uint8_t *const att_application_id = reinterpret_cast<const uint8_t *>
-            ("suskeymaster TEST APPLICATION ID");
+        static const uint8_t att_application_id[] = "suskeymaster TEST APPLICATION ID";
         static const size_t att_application_id_len = sizeof(att_application_id) - 1;
 
         params.resize(params.size() + 1);

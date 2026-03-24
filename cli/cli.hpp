@@ -2,6 +2,7 @@
 #define CLI_SUSKEYMASTER_HPP_
 
 #include <libgenericutil/cert-types.h>
+#include <libsuscertmod/keymaster-types.h>
 #include <unordered_map>
 #include <vector>
 #include <string>
@@ -48,11 +49,19 @@ int sign(
     ::android::sp<::android::hardware::keymaster::V4_0::IKeymasterDevice>   hal,
     ::android::hardware::hidl_vec<uint8_t> const&                           message,
     ::android::hardware::hidl_vec<uint8_t> const&                           key,
+    ::android::hardware::hidl_vec
+        <::android::hardware::keymaster::V4_0::KeyParameter> const&         in_sign_params,
 
     ::android::hardware::hidl_vec<uint8_t>&                                 out_signature
 );
 
-::android::hardware::hidl_vec<uint8_t> const& get_sus_application_id(void);
+/* Implemented in `sign.cpp` for convenience */
+int get_key_characteristics(
+    ::android::sp<::android::hardware::keymaster::V4_0::IKeymasterDevice>   hal,
+    ::android::hardware::hidl_vec<uint8_t> const&                           key,
+    ::android::hardware::hidl_vec
+        <::android::hardware::keymaster::V4_0::KeyParameter> const&         in_application_id_data
+);
 
 namespace keybox {
     int make_kb(
@@ -136,6 +145,12 @@ void init_default_params(
     std::unordered_map<::android::hardware::keymaster::V4_0::Tag, struct defaults_with_flags>
         & defaults,
     ::android::hardware::hidl_vec<::android::hardware::keymaster::V4_0::KeyParameter>& params
+);
+
+void key_params_2_auth_list(
+        ::android::hardware::hidl_vec
+            <::android::hardware::keymaster::V4_0::KeyParameter> const& params,
+        struct certmod::KM_AuthorizationList_v3 *out
 );
 
 } /* namespace cli */

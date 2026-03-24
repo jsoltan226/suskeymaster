@@ -126,8 +126,8 @@ int generate_and_attest_wrapping_key(sp<IKeymasterDevice> hal,
             { Tag::ALGORITHM, { { to_u32(Algorithm::RSA) }, 0 } },
             { Tag::PURPOSE, { {
                 to_u32(KeyPurpose::WRAP_KEY),
-                to_u32(KeyPurpose::WRAP_KEY),
-                to_u32(KeyPurpose::WRAP_KEY)
+                to_u32(KeyPurpose::ENCRYPT),
+                to_u32(KeyPurpose::DECRYPT)
             }, 0 } },
             { Tag::KEY_SIZE, { { 2048 }, 0 } },
             { Tag::RSA_PUBLIC_EXPONENT, { { 65537 }, 0 } },
@@ -167,6 +167,10 @@ int generate_and_attest_wrapping_key(sp<IKeymasterDevice> hal,
 out_generate:
         util::destroy_g_sem(&g_sem, &g_sem_inited, pr_err);
     }
+    if (!ok) {
+        std::cerr << "Failed to generate the wrapping key" << std::endl;
+        return 1;
+    }
 
     /* Export the public part */
     if (::suskeymaster::cli::export_key(hal, out_wrapping_blob, out_wrapping_pubkey)) {
@@ -174,11 +178,6 @@ out_generate:
         return 1;
     }
     std::cout << "Successfully exported the wrapping public key" << std::endl;
-
-    if (!ok) {
-        std::cerr << "Failed to generate the wrapping key" << std::endl;
-        return 1;
-    }
 
     if (out_cert_chain == nullptr) {
         std::cerr << "WARNING: not attesting the generated wrapping key" << std::endl;
@@ -286,8 +285,7 @@ static void init_attest_key_params(hidl_vec<KeyParameter>& params)
     };
     params.resize(PARAM_MAX_);
 
-    static const uint8_t *const challenge = reinterpret_cast<const uint8_t *>
-        ("suskeymaster TEST ATTESTATION CHALLENGE");
+    static const uint8_t challenge[] = "suskeymaster TEST ATTESTATION CHALLENGE";
     static const size_t challenge_len = sizeof(challenge) - 1;
 
     params[PARAM_ATTESTATION_CHALLENGE].tag = Tag::ATTESTATION_CHALLENGE;
@@ -295,8 +293,7 @@ static void init_attest_key_params(hidl_vec<KeyParameter>& params)
             challenge, challenge + challenge_len
     );
 
-    static const uint8_t *const att_application_id = reinterpret_cast<const uint8_t *>
-        ("suskeymaster TEST APPLICATION ID");
+    static const uint8_t att_application_id[] = "suskeymaster TEST APPLICATION ID";
     static const size_t att_application_id_len = sizeof(att_application_id) - 1;
 
     params[PARAM_ATTESTATION_APPLICATION_ID].tag = Tag::ATTESTATION_APPLICATION_ID;

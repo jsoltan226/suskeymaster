@@ -22,6 +22,8 @@ static const char * get_digest_str(enum KM_Digest dig);
 static const char * get_paddingmode_str(enum KM_PaddingMode pm);
 static const char * get_eccurve_str(enum KM_EcCurve ec);
 static const char * get_keyorigin_str(enum KM_KeyOrigin ko);
+static const char * get_usage_req_str(enum KM_KeyBlobUsageRequirements kbur);
+static const char * get_kdf_str(enum KM_KeyDerivationFunction kdf);
 
 enum dump_hex_indendation {
     INDENT_0,
@@ -94,7 +96,7 @@ static void dump_auth_list(const struct KM_AuthorizationList_v3 *al,
                 al->algorithm, get_algorithm_str(al->algorithm));
 
     if (al->__keySize_present)
-        log_proc("        .keySize = 0x%016llx,", al->keySize);
+        log_proc("        .keySize = %llu,", al->keySize);
 
     if (al->__blockMode_present) {
         dump_enum_arr("        .blockMode = { ", " },",
@@ -131,8 +133,23 @@ static void dump_auth_list(const struct KM_AuthorizationList_v3 *al,
         log_proc("        .rsaPublicExponent = 0x%08x,",
                 al->rsaPublicExponent);
 
+    if (al->__includeUniqueId_present)
+        log_proc("        .includeUniqueId = %d,", al->includeUniqueId);
+
+    if (al->__keyBlobUsageRequirements_present)
+        log_proc("        .keyBlobUsageRequirements = 0x%08x, // %s",
+                al->keyBlobUsageRequirements,
+                get_usage_req_str(al->keyBlobUsageRequirements));
+
+    if (al->__bootloaderOnly_present)
+        log_proc("        .bootloaderOnly = %d,", al->bootloaderOnly);
+
+
     if (al->__rollbackResistance_present)
         log_proc("        .rollbackResistance = %d,", al->rollbackResistance);
+
+    if (al->__hardwareType_present)
+        log_proc("        .hardwareType = 0x%08x,", al->hardwareType);
 
     if (al->__activeDateTime_present) {
         datetime_to_str(date_time_buf, sizeof(date_time_buf),
@@ -154,6 +171,16 @@ static void dump_auth_list(const struct KM_AuthorizationList_v3 *al,
         log_proc("        .usageExpireDateTime = %llu, // %s",
                 al->usageExpireDateTime, date_time_buf);
     }
+
+    if (al->__minSecondsBetweenOps_present)
+        log_proc("        .minSecondsBetweenOps = %u,",
+                al->minSecondsBetweenOps);
+
+    if (al->__maxUsesPerBoot_present)
+        log_proc("        .maxUsesPerBoot = %u,", al->maxUsesPerBoot);
+
+    if (al->__userId_present)
+        log_proc("        .userId = 0x%08x,", al->userId);
 
     if (al->__userSecureId_present) {
         dump_u64_arr("        .userSecureId = { ", " },",
@@ -184,6 +211,14 @@ static void dump_auth_list(const struct KM_AuthorizationList_v3 *al,
     if (al->__unlockedDeviceReq_present)
         log_proc("        .unlockedDeviceReq = %d,", al->unlockedDeviceReq);
 
+    if (al->__applicationId_present)
+        dump_hex("        .applicationId = {", "},",
+                al->applicationId, INDENT_3, log_proc);
+
+    if (al->__applicationData_present)
+        dump_hex("        .applicationData = {", "},",
+                al->applicationData, INDENT_3, log_proc);
+
     if (al->__creationDateTime_present) {
         datetime_to_str(date_time_buf, sizeof(date_time_buf),
                 al->creationDateTime);
@@ -210,12 +245,23 @@ static void dump_auth_list(const struct KM_AuthorizationList_v3 *al,
         log_proc("        },");
     }
 
+    if (al->__rootOfTrustBytes_present)
+        dump_hex("        .rootOfTrust = {", "},",
+                al->rootOfTrustBytes, INDENT_3, log_proc);
 
     if (al->__osVersion_present)
         log_proc("        .osVersion = %llu,", al->osVersion);
 
     if (al->__osPatchLevel_present)
         log_proc("        .osPatchLevel = %llu,", al->osPatchLevel);
+
+    if (al->__uniqueId_present)
+        dump_hex("        .uniqueId = {", "},",
+                al->uniqueId, INDENT_3, log_proc);
+
+    if (al->__attestationChallenge_present)
+        dump_hex("        .attestationChallenge = {", "},",
+                al->attestationChallenge, INDENT_3, log_proc);
 
     if (al->__attestationApplicationId_present)
         dump_hex("        .attestationApplicationId = {", "},",
@@ -259,7 +305,237 @@ static void dump_auth_list(const struct KM_AuthorizationList_v3 *al,
                 al->vendorPatchLevel);
 
     if (al->__bootPatchLevel_present)
-        log_proc("        .bootPatchLevel = %llu", al->bootPatchLevel);
+        log_proc("        .bootPatchLevel = %llu,", al->bootPatchLevel);
+
+    if (al->__associatedData_present)
+        dump_hex("        .associatedData = {", "},",
+                al->associatedData, INDENT_3, log_proc);
+
+    if (al->__nonce_present)
+        dump_hex("        .nonce = {", "},", al->nonce, INDENT_3, log_proc);
+
+    if (al->__macLength_present)
+        log_proc("        .macLength = 0x%08x,", al->macLength);
+
+    if (al->__resetSinceIdRotation_present)
+        log_proc("        .resetSinceIdRotation = %d,",
+                al->resetSinceIdRotation);
+
+    if (al->__confirmationToken_present)
+        dump_hex("        .confirmationToken = {", "},",
+                al->confirmationToken, INDENT_3, log_proc);
+
+    log_proc("        .samsung = {");
+
+    if (al->samsung.__authToken_present)
+        dump_hex("             .authToken = {", "},",
+                al->samsung.authToken, INDENT_4, log_proc);
+
+    if (al->samsung.__verificationToken_present)
+        dump_hex("             .verificationToken = {", "},",
+                al->samsung.verificationToken, INDENT_4, log_proc);
+
+    if (al->samsung.__allUsers_present)
+        log_proc("             .allUsers = %d,", al->samsung.allUsers);
+
+    if (al->samsung.__eciesSingleHashMode_present)
+        log_proc("             .eciesSingleHashMode = %d,",
+                al->samsung.eciesSingleHashMode);
+
+    if (al->samsung.__kdf_present) {
+        dump_enum_arr("            .kdf = {", "},",
+                (VECTOR(i32))al->samsung.kdf,
+                (get_enum_str_proc_t)get_kdf_str,
+                log_proc
+        );
+    }
+
+    if (al->samsung.__exportable_present)
+        log_proc("            .exportable = %d,", al->samsung.exportable);
+
+    if (al->samsung.__keyAuth_present)
+        log_proc("            .keyAuth = %d,", al->samsung.keyAuth);
+
+    if (al->samsung.__opAuth_present)
+        log_proc("            .opAuth = %d,", al->samsung.opAuth);
+
+    if (al->samsung.__operationHandle_present)
+        log_proc("            .operationHandle = 0x%016llx,",
+                al->samsung.operationHandle);
+
+    if (al->samsung.__operationFailed_present)
+        log_proc("            .operationFailed = %d,",
+                al->samsung.operationFailed);
+
+    if (al->samsung.__internalCurrentDateTime_present) {
+        datetime_to_str(date_time_buf, sizeof(date_time_buf),
+                al->samsung.internalCurrentDateTime);
+        log_proc("            .internalCurrentDateTime = %llu, // %s",
+                al->samsung.internalCurrentDateTime, date_time_buf);
+    }
+
+    if (al->samsung.__ekeyBlobIV_present)
+        dump_hex("            .ekeyBlobIV = {", "},",
+                al->samsung.ekeyBlobIV, INDENT_4, log_proc);
+
+    if (al->samsung.__ekeyBlobAuthTag_present)
+        dump_hex("            .ekeyBlobAuthTag = {", "},",
+                al->samsung.ekeyBlobAuthTag, INDENT_4, log_proc);
+
+    if (al->samsung.__ekeyBlobCurrentUsesPerBoot_present)
+        log_proc("            .ekeyBlobCurrentUsesPerBoot = %u,",
+                al->samsung.ekeyBlobCurrentUsesPerBoot);
+
+    if (al->samsung.__ekeyBlobLastOpTimestamp_present)
+        log_proc("            .ekeyBlobLastOpTimestamp = %llu,",
+                al->samsung.ekeyBlobLastOpTimestamp);
+
+    if (al->samsung.__ekeyBlobDoUpgrade_present)
+        log_proc("            .ekeyBlobDoUpgrade = %u,",
+                al->samsung.ekeyBlobDoUpgrade);
+
+    if (al->samsung.__ekeyBlobPassword_present)
+        dump_hex("            .ekeyBlobPassword = {", "},",
+                al->samsung.ekeyBlobPassword, INDENT_4, log_proc);
+
+    if (al->samsung.__ekeyBlobSalt_present)
+        dump_hex("            .ekeyBlobSalt = {", "},",
+                al->samsung.ekeyBlobSalt, INDENT_4, log_proc);
+
+    if (al->samsung.__ekeyBlobEncVer_present)
+        log_proc("            .ekeyBlobEncVer = %u,",
+                al->samsung.ekeyBlobEncVer);
+
+    if (al->samsung.__ekeyBlobRaw_present)
+        log_proc("            .ekeyBlobRaw = %u,", al->samsung.ekeyBlobRaw);
+
+    if (al->samsung.__ekeyBlobUniqKDM_present)
+        dump_hex("            .ekeyBlobUniqKDM = {", "},",
+                al->samsung.ekeyBlobUniqKDM, INDENT_4, log_proc);
+
+    if (al->samsung.__ekeyBlobIncUseCount_present)
+        log_proc("            .ekeyBlobIncUseCount = %u,",
+                al->samsung.ekeyBlobIncUseCount);
+
+    if (al->samsung.__samsungRequestingTA_present)
+        dump_hex("            .samsungRequestingTA = {", "},",
+                al->samsung.samsungRequestingTA, INDENT_4, log_proc);
+
+    if (al->samsung.__samsungRotRequired_present)
+        log_proc("            .samsungRotRequired = %d,",
+                al->samsung.samsungRotRequired);
+
+    if (al->samsung.__samsungLegacyRot_present)
+        log_proc("            .samsungLegacyRot = %d,",
+                al->samsung.samsungLegacyRot);
+
+    if (al->samsung.__useSecureProcessor_present)
+        log_proc("            .useSecureProcessor = %d,",
+                al->samsung.useSecureProcessor);
+
+    if (al->samsung.__storageKey_present)
+        log_proc("            .storageKey = %d,", al->samsung.storageKey);
+
+    if (al->samsung.__integrityStatus_present)
+        log_proc("            .integrityStatus = 0x%08x,",
+                al->samsung.integrityStatus);
+
+    if (al->samsung.__isSamsungKey_present)
+        log_proc("            .isSamsungKey = %d,", al->samsung.isSamsungKey);
+
+    if (al->samsung.__samsungAttestationRoot_present)
+        dump_hex("            .samsungAttestationRoot = {", "},",
+                al->samsung.samsungAttestationRoot, INDENT_4, log_proc);
+
+    if (al->samsung.__samsungAttestIntegrity_present)
+        log_proc("            .samsungAttestIntegrity = %d,",
+                al->samsung.samsungAttestIntegrity);
+
+    if (al->samsung.__knoxObjectProtectionRequired_present)
+        log_proc("            .knoxObjectProtectionRequired = %d,",
+                al->samsung.knoxObjectProtectionRequired);
+
+    if (al->samsung.__knoxCreatorId_present)
+        dump_hex("            .knoxCreatorId = {", "},",
+                al->samsung.knoxCreatorId, INDENT_4, log_proc);
+
+    if (al->samsung.__knoxAdministratorId_present)
+        dump_hex("            .knoxAdministratorId = {", "},",
+                al->samsung.knoxAdministratorId, INDENT_4, log_proc);
+
+    if (al->samsung.__knoxAccessorId_present)
+        dump_hex("            .knoxAccessorId = {", "},",
+                al->samsung.knoxAccessorId, INDENT_4, log_proc);
+
+    if (al->samsung.__samsungAuthPackage_present)
+        dump_hex("            .samsungAuthPackage = {", "},",
+                al->samsung.samsungAuthPackage, INDENT_4, log_proc);
+
+    if (al->samsung.__samsungCertificateSubject_present)
+        dump_hex("            .samsungCertificateSubject = {", "},",
+                al->samsung.samsungCertificateSubject, INDENT_4, log_proc);
+
+    if (al->samsung.__samsungKeyUsage_present)
+        log_proc("            .samsungKeyUsage = 0x%08x,",
+                al->samsung.samsungKeyUsage);
+
+    if (al->samsung.__samsungExtendedKeyUsage_present)
+        dump_hex("            .extendedSamsungKeyUsage = {", "},",
+                al->samsung.samsungExtendedKeyUsage, INDENT_4, log_proc);
+
+    if (al->samsung.__samsungSubjectAlternativeName_present)
+        dump_hex("            .samsungSubjectAlternativeName = {", "},",
+                al->samsung.samsungSubjectAlternativeName, INDENT_4, log_proc);
+
+    if (al->samsung.__provGacEc1_present)
+        dump_hex("            .provGacEc1 = {", "},",
+                al->samsung.provGacEc1, INDENT_4, log_proc);
+
+    if (al->samsung.__provGacEc2_present)
+        dump_hex("            .provGacEc2 = {", "},",
+                al->samsung.provGacEc2, INDENT_4, log_proc);
+
+    if (al->samsung.__provGacEc3_present)
+        dump_hex("            .provGacEc3 = {", "},",
+                al->samsung.provGacEc3, INDENT_4, log_proc);
+
+    if (al->samsung.__provGakEc_present)
+        dump_hex("            .provGakEc = {", "},",
+                al->samsung.provGakEc, INDENT_4, log_proc);
+
+    if (al->samsung.__provGakEcVtoken_present)
+        dump_hex("            .provGakEcVtoken = {", "},",
+                al->samsung.provGakEcVtoken, INDENT_4, log_proc);
+
+    if (al->samsung.__provGacRsa1_present)
+        dump_hex("            .provGacRsa1 = {", "},",
+                al->samsung.provGacRsa1, INDENT_4, log_proc);
+
+    if (al->samsung.__provGacRsa2_present)
+        dump_hex("            .provGacRsa2 = {", "},",
+                al->samsung.provGacRsa2, INDENT_4, log_proc);
+
+    if (al->samsung.__provGacRsa3_present)
+        dump_hex("            .provGacRsa3 = {", "},",
+                al->samsung.provGacRsa3, INDENT_4, log_proc);
+
+    if (al->samsung.__provGakRsa_present)
+        dump_hex("            .provGakRsa = {", "},",
+                al->samsung.provGakRsa, INDENT_4, log_proc);
+
+    if (al->samsung.__provGakRsaVtoken_present)
+        dump_hex("            .provGakRsaVtoken = {", "},",
+                al->samsung.provGakRsaVtoken, INDENT_4, log_proc);
+
+    if (al->samsung.__provSakEc_present)
+        dump_hex("            .provSakEc = {", "},",
+                al->samsung.provSakEc, INDENT_4, log_proc);
+
+    if (al->samsung.__provSakEcVtoken_present)
+        dump_hex("            .provSakEcVtoken = {", "},",
+                al->samsung.provSakEcVtoken, INDENT_4, log_proc);
+
+    log_proc("        }");
 }
 
 static const char * get_security_level_str(enum KM_SecurityLevel sl)
@@ -270,7 +546,7 @@ static const char * get_security_level_str(enum KM_SecurityLevel sl)
             "KM_SECURITY_LEVEL_TRUSTED_ENVIRONMENT",
         [KM_SECURITY_LEVEL_STRONGBOX] = "KM_SECURITY_LEVEL_STRONGBOX",
     };
-    if (sl < 0 || sl > u_arr_size(security_level_strings))
+    if (sl < 0 || sl >= u_arr_size(security_level_strings))
         return "(unknown)";
 
     return security_level_strings[sl];
@@ -284,7 +560,7 @@ static const char * get_vbstate_str(enum KM_VerifiedBootState vb)
         [KM_VERIFIED_BOOT_UNVERIFIED] = "KM_VERIFIED_BOOT_UNVERIFIED",
         [KM_VERIFIED_BOOT_FAILED] = "KM_VERIFIED_BOOT_FAILED"
     };
-    if (vb < 0 || vb > u_arr_size(vbstate_strings))
+    if (vb < 0 || vb >= u_arr_size(vbstate_strings))
         return "(unknown)";
 
     return vbstate_strings[vb];
@@ -372,6 +648,32 @@ static const char * get_keyorigin_str(enum KM_KeyOrigin ko)
     case KM_ORIGIN_IMPORTED: return "KM_ORIGIN_IMPORTED";
     case KM_ORIGIN_UNKNOWN: return "KM_ORIGIN_UNKNOWN";
     case KM_ORIGIN_SECURELY_IMPORTED: return "KM_ORIGIN_SECURELY_IMPORTED";
+    default: return "(unknown)";
+    }
+}
+
+static const char * get_usage_req_str(enum KM_KeyBlobUsageRequirements kbur)
+{
+    switch (kbur) {
+    case KM_USAGE_STANDALONE: return "KM_USAGE_STANDALONE";
+    case KM_USAGE_REQUIRES_FILE_SYSTEM: return "KM_USAGE_REQUIRES_FILE_SYSTEM";
+    default: return "(unknown)";
+    }
+}
+
+static const char * get_kdf_str(enum KM_KeyDerivationFunction kdf)
+{
+    switch (kdf) {
+    case KM_DERIVATION_NONE: return "KM_DERIVATION_NONE";
+    case KM_DERIVATION_ISO18033_2_KDF1_SHA1:
+        return "KM_DERIVATION_ISO18033_2_KDF1_SHA1";
+    case KM_DERIVATION_ISO18033_2_KDF1_SHA256:
+        return "KM_DERIVATION_ISO18033_2_KDF1_SHA256";
+    case KM_DERIVATION_ISO18033_2_KDF2_SHA1:
+        return "KM_DERIVATION_ISO18033_2_KDF2_SHA1";
+    case KM_DERIVATION_ISO18033_2_KDF2_SHA256:
+        return "KM_DERIVATION_ISO18033_2_KDF2_SHA256";
+    case KM_DERIVATION_RFC5869_SHA256: return "KM_DERIVATION_RFC5869_SHA256";
     default: return "(unknown)";
     }
 }

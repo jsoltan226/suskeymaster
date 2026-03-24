@@ -276,6 +276,9 @@ enum class Tag : uint32_t {
      * Must be hardwared-enforced.
      */
     ROLLBACK_RESISTANCE = 1879048495u /* TagType:BOOL | 303 */,
+    /**
+     * Reserved for future use
+     */
     HARDWARE_TYPE = 268435760u /* TagType:ENUM | 304 */,
     /**
      * Tag::ACTIVE_DATETIME specifies the date and time at which the key becomes active, in
@@ -864,8 +867,8 @@ enum class Tag : uint32_t {
      */
     CONFIRMATION_TOKEN = 2415920109u /* TagType:BYTES | 1005 */,
 
-    /** Values found in samsung keymaster **/
 };
+/** Values found in samsung keymaster **/
 namespace SamsungTag {
 #define DECLARE_TAG(name, value) constexpr Tag name = static_cast<Tag>((uint32_t)value)
 
@@ -881,7 +884,7 @@ namespace SamsungTag {
      * Treated similarly to Tag::NO_AUTH_REQUIRED. */
     DECLARE_TAG(ALL_USERS, TagType::BOOL | 500);
 
-    DECLARE_TAG(ECIES_SINGLE_HASH_MODE, TagType::BOOL | 201 );
+    DECLARE_TAG(ECIES_SINGLE_HASH_MODE, TagType::BOOL | 201);
 
     /* Stores a Key Derivation Function type (see `enum KeyDerivationFunction`). */
     DECLARE_TAG(KDF, TagType::ENUM_REP | 9);
@@ -994,11 +997,6 @@ namespace SamsungTag {
      * This value is added to the salt used for all key blob unwrapping operations,
      * so any change in its value render all key blobs unusable. */
     DECLARE_TAG(INTEGRITY_STATUS, TagType::UINT | 5031);
-
-    /** Used to configure keymaster root of trust (in the bootloader/early init) **/
-    DECLARE_TAG(INTERNAL_OS_VERSION, TagType::UINT | 705);
-    DECLARE_TAG(INTERNAL_OS_PATCHLEVEL, TagType::UINT | 706);
-    DECLARE_TAG(INTERNAL_VENDOR_PATCHLEVEL, TagType::UINT | 718);
 
     /** Flags controlling Samsung Attestation Key (SAK) attestation **/
 

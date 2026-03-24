@@ -181,6 +181,43 @@ void key_desc_destroy_auth_list(struct KM_AuthorizationList_v3 *a)
     vector_destroy(&a->attestationIdMeid);
     vector_destroy(&a->attestationIdManufacturer);
     vector_destroy(&a->attestationIdModel);
+
+    vector_destroy(&a->applicationId);
+    vector_destroy(&a->applicationData);
+    vector_destroy(&a->uniqueId);
+    vector_destroy(&a->attestationChallenge);
+    vector_destroy(&a->associatedData);
+    vector_destroy(&a->nonce);
+    vector_destroy(&a->confirmationToken);
+    vector_destroy(&a->rootOfTrustBytes);
+
+    vector_destroy(&a->samsung.authToken);
+    vector_destroy(&a->samsung.verificationToken);
+    vector_destroy(&a->samsung.ekeyBlobIV);
+    vector_destroy(&a->samsung.ekeyBlobAuthTag);
+    vector_destroy(&a->samsung.ekeyBlobPassword);
+    vector_destroy(&a->samsung.ekeyBlobSalt);
+    vector_destroy(&a->samsung.ekeyBlobUniqKDM);
+    vector_destroy(&a->samsung.samsungRequestingTA);
+    vector_destroy(&a->samsung.samsungAttestationRoot);
+    vector_destroy(&a->samsung.knoxCreatorId);
+    vector_destroy(&a->samsung.knoxAdministratorId);
+    vector_destroy(&a->samsung.knoxAccessorId);
+    vector_destroy(&a->samsung.samsungAuthPackage);
+    vector_destroy(&a->samsung.samsungCertificateSubject);
+    vector_destroy(&a->samsung.samsungSubjectAlternativeName);
+    vector_destroy(&a->samsung.provGacEc1);
+    vector_destroy(&a->samsung.provGacEc2);
+    vector_destroy(&a->samsung.provGacEc3);
+    vector_destroy(&a->samsung.provGakEc);
+    vector_destroy(&a->samsung.provGakEcVtoken);
+    vector_destroy(&a->samsung.provGacRsa1);
+    vector_destroy(&a->samsung.provGacRsa2);
+    vector_destroy(&a->samsung.provGacRsa3);
+    vector_destroy(&a->samsung.provGakRsa);
+    vector_destroy(&a->samsung.provGakRsaVtoken);
+    vector_destroy(&a->samsung.provSakEc);
+    vector_destroy(&a->samsung.provSakEcVtoken);
 }
 
 void key_desc_destroy_root_of_trust(struct KM_RootOfTrust_v3 *rot)
@@ -363,14 +400,22 @@ i32 key_desc_measure_outer_auth_list(struct key_desc_measure_ctx *ctx,
     try_measure(minMacLength, KM_TAG_MIN_MAC_LENGTH, integer, u64);
     try_measure(ecCurve, KM_TAG_EC_CURVE, integer, i32);
     try_measure(rsaPublicExponent, KM_TAG_RSA_PUBLIC_EXPONENT, integer, u64);
-
+    try_measure(includeUniqueId, KM_TAG_INCLUDE_UNIQUE_ID, tagged_null, void *);
+    try_measure(keyBlobUsageRequirements, KM_TAG_BLOB_USAGE_REQUIREMENTS,
+            integer, i32);
+    try_measure(bootloaderOnly, KM_TAG_BOOTLOADER_ONLY, tagged_null, void *);
     try_measure(rollbackResistance, KM_TAG_ROLLBACK_RESISTANCE,
             tagged_null, void *);
+    try_measure(hardwareType, KM_TAG_HARDWARE_TYPE, integer, i32);
     try_measure(activeDateTime, KM_TAG_ACTIVE_DATETIME, integer, i64);
     try_measure(originationExpireDateTime, KM_TAG_ORIGINATION_EXPIRE_DATETIME,
             integer, i64);
     try_measure(usageExpireDateTime, KM_TAG_USAGE_EXPIRE_DATETIME,
             integer, i64);
+    try_measure(minSecondsBetweenOps, KM_TAG_MIN_SECONDS_BETWEEN_OPS,
+            integer, i32);
+    try_measure(maxUsesPerBoot, KM_TAG_MAX_USES_PER_BOOT, integer, i32);
+    try_measure(userId, KM_TAG_USER_ID, integer, i32);
     try_measure(userSecureId, KM_TAG_USER_SECURE_ID,
             set_of_integer_64, VECTOR(i64));
     try_measure(noAuthRequired, KM_TAG_NO_AUTH_REQUIRED, tagged_null, void *);
@@ -384,6 +429,9 @@ i32 key_desc_measure_outer_auth_list(struct key_desc_measure_ctx *ctx,
             tagged_null, void *);
     try_measure(unlockedDeviceReq, KM_TAG_UNLOCKED_DEVICE_REQUIRED,
             tagged_null, void *);
+    try_measure(applicationId, KM_TAG_APPLICATION_ID, octet_string, VECTOR(u8));
+    try_measure(applicationData, KM_TAG_APPLICATION_DATA,
+            octet_string, VECTOR(u8));
     try_measure(creationDateTime, KM_TAG_CREATION_DATETIME, integer, i64);
     try_measure(keyOrigin, KM_TAG_ORIGIN, integer, i32);
 
@@ -413,6 +461,9 @@ i32 key_desc_measure_outer_auth_list(struct key_desc_measure_ctx *ctx,
 
     try_measure(osVersion, KM_TAG_OS_VERSION, integer, u64);
     try_measure(osPatchLevel, KM_TAG_OS_PATCHLEVEL, integer, u64);
+    try_measure(uniqueId, KM_TAG_UNIQUE_ID, octet_string, VECTOR(u8));
+    try_measure(attestationChallenge, KM_TAG_ATTESTATION_CHALLENGE,
+            octet_string, VECTOR(u8));
     try_measure(attestationApplicationId, KM_TAG_ATTESTATION_APPLICATION_ID,
             octet_string, VECTOR(u8));
 
@@ -435,6 +486,110 @@ i32 key_desc_measure_outer_auth_list(struct key_desc_measure_ctx *ctx,
 
     try_measure(vendorPatchLevel, KM_TAG_VENDOR_PATCHLEVEL, integer, u64);
     try_measure(bootPatchLevel, KM_TAG_BOOT_PATCHLEVEL, integer, u64);
+
+    try_measure(associatedData, KM_TAG_ASSOCIATED_DATA,
+            octet_string, VECTOR(u8));
+    try_measure(nonce, KM_TAG_NONCE, octet_string, VECTOR(u8));
+    try_measure(macLength, KM_TAG_MAC_LENGTH, integer, u32);
+    try_measure(resetSinceIdRotation, KM_TAG_RESET_SINCE_ID_ROTATION,
+            tagged_null, void *);
+    try_measure(confirmationToken, KM_TAG_CONFIRMATION_TOKEN,
+            octet_string, VECTOR(u8));
+
+
+#undef try_measure
+/** SAMSUNG-SPECIFIC FIELDS **/
+#define try_measure(field_name, tag, fn_name, cast) do {                       \
+    if (al->samsung.__##field_name##_present) {                                \
+        tmp = measure_##fn_name##_size(ctx, (cast)al->samsung.field_name, tag);\
+        if (tmp < 0) {                                                         \
+            s_log_error("Couldn't measure the size of `samsung.%s`",           \
+                #field_name);                                                  \
+            return -1;                                                         \
+        }                                                                      \
+        ret += tmp;                                                            \
+    }                                                                          \
+} while (0)
+    try_measure(authToken, KM_TAG_AUTH_TOKEN, octet_string, VECTOR(u8));
+    try_measure(verificationToken, KM_TAG_VERIFICATION_TOKEN,
+            octet_string, VECTOR(u8));
+    try_measure(allUsers, KM_TAG_ALL_USERS, tagged_null, void *);
+    try_measure(eciesSingleHashMode, KM_TAG_ECIES_SINGLE_HASH_MODE,
+            tagged_null, void *);
+    try_measure(kdf, KM_TAG_KDF, integer, u32);
+    try_measure(exportable, KM_TAG_EXPORTABLE, tagged_null, void *);
+    try_measure(keyAuth, KM_TAG_KEY_AUTH, tagged_null, void *);
+    try_measure(opAuth, KM_TAG_OP_AUTH, tagged_null, void *);
+    try_measure(operationHandle, KM_TAG_OPERATION_HANDLE, integer, u64);
+    try_measure(operationFailed, KM_TAG_OPERATION_FAILED, tagged_null, void *);
+    try_measure(internalCurrentDateTime, KM_TAG_INTERNAL_CURRENT_DATETIME,
+            integer, i64);
+    try_measure(ekeyBlobIV, KM_TAG_EKEY_BLOB_IV, octet_string, VECTOR(u8));
+    try_measure(ekeyBlobAuthTag, KM_TAG_EKEY_BLOB_AUTH_TAG,
+            octet_string, VECTOR(u8));
+    try_measure(ekeyBlobCurrentUsesPerBoot,
+            KM_TAG_EKEY_BLOB_CURRENT_USES_PER_BOOT, integer, u32);
+    try_measure(ekeyBlobLastOpTimestamp,
+            KM_TAG_EKEY_BLOB_LAST_OP_TIMESTAMP, integer, u64);
+    try_measure(ekeyBlobDoUpgrade, KM_TAG_EKEY_BLOB_DO_UPGRADE, integer, u32);
+    try_measure(ekeyBlobPassword, KM_TAG_EKEY_BLOB_PASSWORD,
+            octet_string, VECTOR(u8));
+    try_measure(ekeyBlobSalt, KM_TAG_EKEY_BLOB_SALT, octet_string, VECTOR(u8));
+    try_measure(ekeyBlobEncVer, KM_TAG_EKEY_BLOB_ENC_VER, integer, u32);
+    try_measure(ekeyBlobRaw, KM_TAG_EKEY_BLOB_RAW, integer, u32);
+    try_measure(ekeyBlobUniqKDM, KM_TAG_EKEY_BLOB_UNIQ_KDM,
+            octet_string, VECTOR(u8));
+    try_measure(ekeyBlobIncUseCount, KM_TAG_EKEY_BLOB_INC_USE_COUNT,
+            integer, u32);
+    try_measure(samsungRequestingTA, KM_TAG_SAMSUNG_REQUESTING_TA,
+            octet_string, VECTOR(u8));
+    try_measure(samsungRotRequired, KM_TAG_SAMSUNG_ROT_REQUIRED,
+            tagged_null, void *);
+    try_measure(samsungLegacyRot, KM_TAG_SAMSUNG_LEGACY_ROT,
+            tagged_null, void *);
+    try_measure(useSecureProcessor, KM_TAG_USE_SECURE_PROCESSOR,
+            tagged_null, void *);
+    try_measure(storageKey, KM_TAG_STORAGE_KEY, tagged_null, void *);
+    try_measure(integrityStatus, KM_TAG_INTEGRITY_STATUS, integer, u32);
+    try_measure(isSamsungKey, KM_TAG_IS_SAMSUNG_KEY, tagged_null, void *);
+    try_measure(samsungAttestationRoot, KM_TAG_SAMSUNG_ATTESTATION_ROOT,
+            octet_string, VECTOR(u8));
+    try_measure(samsungAttestIntegrity, KM_TAG_SAMSUNG_ATTEST_INTEGRITY,
+            tagged_null, void *);
+    try_measure(knoxObjectProtectionRequired,
+            KM_TAG_KNOX_OBJECT_PROTECTION_REQUIRED, tagged_null, void *);
+    try_measure(knoxCreatorId, KM_TAG_KNOX_CREATOR_ID,
+            octet_string, VECTOR(u8));
+    try_measure(knoxAdministratorId, KM_TAG_KNOX_ADMINISTRATOR_ID,
+            octet_string, VECTOR(u8));
+    try_measure(knoxAccessorId, KM_TAG_KNOX_ACCESSOR_ID,
+            octet_string, VECTOR(u8));
+    try_measure(samsungAuthPackage, KM_TAG_SAMSUNG_AUTHENTICATE_PACKAGE,
+            octet_string, VECTOR(u8));
+    try_measure(samsungCertificateSubject, KM_TAG_SAMSUNG_CERTIFICATE_SUBJECT,
+            octet_string, VECTOR(u8));
+    try_measure(samsungKeyUsage, KM_TAG_SAMSUNG_KEY_USAGE, integer, u32);
+    try_measure(samsungExtendedKeyUsage, KM_TAG_SAMSUNG_EXTENDED_KEY_USAGE,
+            octet_string, VECTOR(u8));
+    try_measure(samsungSubjectAlternativeName,
+            KM_TAG_SAMSUNG_SUBJECT_ALTERNATIVE_NAME, octet_string, VECTOR(u8));
+    try_measure(provGacEc1, KM_TAG_PROV_GAC_EC1, octet_string, VECTOR(u8));
+    try_measure(provGacEc2, KM_TAG_PROV_GAC_EC2, octet_string, VECTOR(u8));
+    try_measure(provGacEc3, KM_TAG_PROV_GAC_EC3, octet_string, VECTOR(u8));
+    try_measure(provGakEc, KM_TAG_PROV_GAK_EC, octet_string, VECTOR(u8));
+    try_measure(provGakEcVtoken, KM_TAG_PROV_GAK_EC_VTOKEN,
+            octet_string, VECTOR(u8));
+    try_measure(provGacRsa1, KM_TAG_PROV_GAC_RSA1, octet_string, VECTOR(u8));
+    try_measure(provGacRsa2, KM_TAG_PROV_GAC_RSA2, octet_string, VECTOR(u8));
+    try_measure(provGacRsa3, KM_TAG_PROV_GAC_RSA3, octet_string, VECTOR(u8));
+    try_measure(provGakRsa, KM_TAG_PROV_GAK_RSA, octet_string, VECTOR(u8));
+    try_measure(provGakRsaVtoken, KM_TAG_PROV_GAK_RSA_VTOKEN,
+            octet_string, VECTOR(u8));
+    try_measure(provSakEc, KM_TAG_PROV_SAK_EC, octet_string, VECTOR(u8));
+    try_measure(provSakEcVtoken, KM_TAG_PROV_SAK_EC_VTOKEN,
+            octet_string, VECTOR(u8));
+
+#undef try_measure
 
     /* `mctx` should store the length of the sequence content,
      * without the header */
@@ -1055,9 +1210,29 @@ bool key_desc_write_auth_list(unsigned char **p, unsigned char *end,
             goto_error("Failed to write the RSA public exponent");
     }
 
+    if (al->__includeUniqueId_present && al->includeUniqueId &&
+            !write_tagged_null(p, end, KM_TAG_INCLUDE_UNIQUE_ID))
+        goto_error("Failed to write the includeUniqueId field");
+
+    if (al->__keyBlobUsageRequirements_present) {
+        if (!write_integer(p, end, mctx,
+                    al->keyBlobUsageRequirements, KM_TAG_BLOB_USAGE_REQUIREMENTS))
+            goto_error("Failed to write the key blob usage requirements");
+    }
+
+    if (al->__bootloaderOnly_present && al->bootloaderOnly &&
+            !write_tagged_null(p, end, KM_TAG_BOOTLOADER_ONLY))
+        goto_error("Failed to write the bootloaderOnly field");
+
     if (al->__rollbackResistance_present && al->rollbackResistance &&
             !write_tagged_null(p, end, KM_TAG_ROLLBACK_RESISTANCE))
         goto_error("Failed to write the rollback resistance field");
+
+    if (al->__hardwareType_present) {
+        if (!write_integer(p, end, mctx,
+                    al->hardwareType, KM_TAG_HARDWARE_TYPE))
+            goto_error("Failed to write the hardware type");
+    }
 
     if (al->__activeDateTime_present) {
         if (!write_integer(p, end, mctx,
@@ -1076,6 +1251,22 @@ bool key_desc_write_auth_list(unsigned char **p, unsigned char *end,
                     al->usageExpireDateTime, KM_TAG_USAGE_EXPIRE_DATETIME))
             goto_error("Failed to write the usage expire date time");
     }
+
+    if (al->__minSecondsBetweenOps_present) {
+        if (!write_integer(p, end, mctx,
+                    al->minSecondsBetweenOps, KM_TAG_MIN_SECONDS_BETWEEN_OPS))
+            goto_error("Failed to write the min seconds between ops field");
+    }
+
+    if (al->__maxUsesPerBoot_present) {
+        if (!write_integer(p, end, mctx,
+                    al->maxUsesPerBoot, KM_TAG_MAX_USES_PER_BOOT))
+            goto_error("Failed to write the max uses per boot field");
+    }
+
+    if (al->__userId_present &&
+            !write_integer(p, end, mctx, al->userId, KM_TAG_USER_ID))
+        goto_error("Failed to write the user id");
 
     if (al->__userSecureId_present) {
         if (!write_set_of_integer_64(p, end, mctx,
@@ -1113,6 +1304,18 @@ bool key_desc_write_auth_list(unsigned char **p, unsigned char *end,
             !write_tagged_null(p, end, KM_TAG_UNLOCKED_DEVICE_REQUIRED))
         goto_error("Failed to write the unlockedDeviceReq field");
 
+    if (al->__applicationId_present) {
+        if (!write_octet_string(p, end, mctx,
+                    al->applicationId, KM_TAG_APPLICATION_ID))
+            goto_error("Failed to write the APPLICATION_ID");
+    }
+
+    if (al->__applicationData_present) {
+        if (!write_octet_string(p, end, mctx,
+                    al->applicationData, KM_TAG_APPLICATION_DATA))
+            goto_error("Failed to write the APPLICATION_DATA");
+    }
+
     if (al->__creationDateTime_present) {
         if (!write_integer(p, end, mctx,
                     al->creationDateTime, KM_TAG_CREATION_DATETIME))
@@ -1137,6 +1340,16 @@ bool key_desc_write_auth_list(unsigned char **p, unsigned char *end,
         if (!write_integer(p, end, mctx,
                     al->osPatchLevel, KM_TAG_OS_PATCHLEVEL))
             goto_error("Failed to write the OS patch level");
+    }
+
+    if (al->__uniqueId_present &&
+            !write_octet_string(p, end, mctx, al->uniqueId, KM_TAG_UNIQUE_ID))
+        goto_error("Failed to write the unique id");
+
+    if (al->__attestationChallenge_present) {
+        if (!write_octet_string(p, end, mctx,
+                    al->attestationChallenge, KM_TAG_ATTESTATION_CHALLENGE))
+            goto_error("Failed to write the attestation challenge");
     }
 
     if (al->__attestationApplicationId_present) {
@@ -1205,6 +1418,303 @@ bool key_desc_write_auth_list(unsigned char **p, unsigned char *end,
             goto_error("Failed to write the boot patch level");
     }
 
+    if (al->__associatedData_present) {
+        if (!write_octet_string(p, end, mctx,
+                    al->associatedData, KM_TAG_ASSOCIATED_DATA))
+            goto_error("Failed to write the associated data");
+    }
+
+    if (al->__nonce_present &&
+            !write_octet_string(p, end, mctx, al->nonce, KM_TAG_NONCE))
+        goto_error("Failed to write the nonce");
+
+    if (al->__macLength_present &&
+            !write_integer(p, end, mctx, al->macLength, KM_TAG_MAC_LENGTH))
+        goto_error("Failed to write the MAC length");
+
+    if (al->__resetSinceIdRotation_present && al->resetSinceIdRotation &&
+            !write_tagged_null(p, end, KM_TAG_RESET_SINCE_ID_ROTATION))
+        goto_error("Failed to write the resetSinceIdRotation field");
+
+    if (al->__confirmationToken_present) {
+        if (write_octet_string(p, end, mctx,
+                    al->confirmationToken, KM_TAG_CONFIRMATION_TOKEN))
+            goto_error("Failed to write the confirmation token");
+    }
+
+    if (al->samsung.__authToken_present && !write_octet_string(p, end, mctx,
+            al->samsung.authToken, KM_TAG_AUTH_TOKEN))
+        goto_error("Failed to write the authToken field");
+
+    if (al->samsung.__verificationToken_present) {
+        if (!write_octet_string(p, end, mctx,
+                    al->samsung.verificationToken, KM_TAG_VERIFICATION_TOKEN))
+            goto_error("Failed to write the verificationToken field");
+    }
+
+    if (al->samsung.__allUsers_present && al->samsung.allUsers &&
+            !write_tagged_null(p, end, KM_TAG_ALL_USERS))
+        goto_error("Failed to write the allUsers field");
+
+    if (al->samsung.__eciesSingleHashMode_present &&
+            al->samsung.eciesSingleHashMode)
+    {
+        if (!write_tagged_null(p, end, KM_TAG_ECIES_SINGLE_HASH_MODE))
+            goto_error("Failed to write the eciesSingleHashMode field");
+    }
+
+    if (al->samsung.__kdf_present && !write_integer(p, end, mctx,
+            al->samsung.kdf, KM_TAG_KDF))
+        goto_error("Failed to write the kdf field");
+
+    if (al->samsung.__exportable_present && al->samsung.exportable &&
+            !write_tagged_null(p, end, KM_TAG_EXPORTABLE))
+        goto_error("Failed to write the exportable field");
+
+    if (al->samsung.__keyAuth_present && al->samsung.keyAuth &&
+            !write_tagged_null(p, end, KM_TAG_KEY_AUTH))
+        goto_error("Failed to write the keyAuth field");
+
+    if (al->samsung.__opAuth_present && al->samsung.opAuth &&
+            !write_tagged_null(p, end, KM_TAG_OP_AUTH))
+        goto_error("Failed to write the opAuth field");
+
+    if (al->samsung.__operationHandle_present && !write_integer(p, end, mctx,
+            al->samsung.operationHandle, KM_TAG_OPERATION_HANDLE))
+        goto_error("Failed to write the operationHandle field");
+
+    if (al->samsung.__operationFailed_present && al->samsung.operationFailed &&
+            !write_tagged_null(p, end, KM_TAG_OPERATION_FAILED))
+        goto_error("Failed to write the operationFailed field");
+
+    if (al->samsung.__internalCurrentDateTime_present) {
+        if (!write_integer(p, end, mctx, al->samsung.internalCurrentDateTime,
+                    KM_TAG_INTERNAL_CURRENT_DATETIME))
+            goto_error("Failed to write the internalCurrentDateTime field");
+    }
+
+    if (al->samsung.__ekeyBlobIV_present && !write_octet_string(p, end, mctx,
+            al->samsung.ekeyBlobIV, KM_TAG_EKEY_BLOB_IV))
+        goto_error("Failed to write the ekeyBlobIV field");
+
+    if (al->samsung.__ekeyBlobAuthTag_present) {
+        if (!write_octet_string(p, end, mctx,
+                    al->samsung.ekeyBlobAuthTag, KM_TAG_EKEY_BLOB_AUTH_TAG))
+            goto_error("Failed to write the ekeyBlobAuthTag field");
+    }
+
+    if (al->samsung.__ekeyBlobCurrentUsesPerBoot_present) {
+        if (!write_integer(p, end, mctx, al->samsung.ekeyBlobCurrentUsesPerBoot,
+                    KM_TAG_EKEY_BLOB_CURRENT_USES_PER_BOOT))
+            goto_error("Failed to write the ekeyBlobCurrentUsesPerBoot field");
+    }
+
+    if (al->samsung.__ekeyBlobLastOpTimestamp_present) {
+        if (!write_integer(p, end, mctx, al->samsung.ekeyBlobLastOpTimestamp,
+                    KM_TAG_EKEY_BLOB_LAST_OP_TIMESTAMP))
+            goto_error("Failed to write the ekeyBlobLastOpTimestamp field");
+    }
+
+    if (al->samsung.__ekeyBlobDoUpgrade_present && !write_integer(p, end, mctx,
+            al->samsung.ekeyBlobDoUpgrade, KM_TAG_EKEY_BLOB_DO_UPGRADE))
+        goto_error("Failed to write the ekeyBlobDoUpgrade field");
+
+    if (al->samsung.__ekeyBlobPassword_present) {
+        if (!write_octet_string(p, end, mctx,
+                    al->samsung.ekeyBlobPassword, KM_TAG_EKEY_BLOB_PASSWORD))
+            goto_error("Failed to write the ekeyBlobPassword field");
+    }
+
+    if (al->samsung.__ekeyBlobSalt_present && !write_octet_string(p, end, mctx,
+            al->samsung.ekeyBlobSalt, KM_TAG_EKEY_BLOB_SALT))
+        goto_error("Failed to write the ekeyBlobSalt field");
+
+    if (al->samsung.__ekeyBlobEncVer_present && !write_integer(p, end, mctx,
+            al->samsung.ekeyBlobEncVer, KM_TAG_EKEY_BLOB_ENC_VER))
+        goto_error("Failed to write the ekeyBlobEncVer field");
+
+    if (al->samsung.__ekeyBlobRaw_present && !write_integer(p, end, mctx,
+            al->samsung.ekeyBlobRaw, KM_TAG_EKEY_BLOB_RAW))
+        goto_error("Failed to write the ekeyBlobRaw field");
+
+    if (al->samsung.__ekeyBlobUniqKDM_present) {
+        if (!write_octet_string(p, end, mctx,
+                    al->samsung.ekeyBlobUniqKDM, KM_TAG_EKEY_BLOB_UNIQ_KDM))
+            goto_error("Failed to write the ekeyBlobUniqKDM field");
+    }
+
+    if (al->samsung.__ekeyBlobIncUseCount_present) {
+        if (!write_integer(p, end, mctx,
+                    al->samsung.ekeyBlobIncUseCount,
+                    KM_TAG_EKEY_BLOB_INC_USE_COUNT))
+            goto_error("Failed to write the ekeyBlobIncUseCount field");
+    }
+
+    if (al->samsung.__samsungRequestingTA_present) {
+        if (!write_octet_string(p, end, mctx,
+                    al->samsung.samsungRequestingTA,
+                    KM_TAG_SAMSUNG_REQUESTING_TA))
+            goto_error("Failed to write the samsungRequestingTA field");
+    }
+
+    if (al->samsung.__samsungRotRequired_present &&
+            al->samsung.samsungRotRequired)
+    {
+        if (!write_tagged_null(p, end, KM_TAG_SAMSUNG_ROT_REQUIRED))
+            goto_error("Failed to write the samsungRotRequired field");
+    }
+
+    if (al->samsung.__samsungLegacyRot_present && al->samsung.samsungLegacyRot)
+        if (!write_tagged_null(p, end, KM_TAG_SAMSUNG_LEGACY_ROT))
+            goto_error("Failed to write the samsungLegacyRot field");
+
+    if (al->samsung.__useSecureProcessor_present &&
+            al->samsung.useSecureProcessor)
+    {
+        if (!write_tagged_null(p, end, KM_TAG_USE_SECURE_PROCESSOR))
+            goto_error("Failed to write the useSecureProcessor field");
+    }
+
+    if (al->samsung.__storageKey_present && al->samsung.storageKey &&
+            !write_tagged_null(p, end, KM_TAG_STORAGE_KEY))
+        goto_error("Failed to write the storageKey field");
+
+    if (al->samsung.__integrityStatus_present && !write_integer(p, end, mctx,
+            al->samsung.integrityStatus, KM_TAG_INTEGRITY_STATUS))
+        goto_error("Failed to write the integrityStatus field");
+
+    if (al->samsung.__isSamsungKey_present && al->samsung.isSamsungKey &&
+            !write_tagged_null(p, end, KM_TAG_IS_SAMSUNG_KEY))
+        goto_error("Failed to write the isSamsungKey field");
+
+    if (al->samsung.__samsungAttestationRoot_present) {
+        if (!write_octet_string(p, end, mctx,
+                    al->samsung.samsungAttestationRoot,
+                    KM_TAG_SAMSUNG_ATTESTATION_ROOT))
+            goto_error("Failed to write the samsungAttestationRoot field");
+    }
+
+    if (al->samsung.__samsungAttestIntegrity_present &&
+            al->samsung.samsungAttestIntegrity)
+    {
+        if (!write_tagged_null(p, end, KM_TAG_SAMSUNG_ATTEST_INTEGRITY))
+            goto_error("Failed to write the samsungAttestIntegrity field");
+    }
+
+    if (al->samsung.__knoxObjectProtectionRequired_present &&
+            al->samsung.knoxObjectProtectionRequired)
+    {
+        if (!write_tagged_null(p, end, KM_TAG_KNOX_OBJECT_PROTECTION_REQUIRED))
+            goto_error("Failed to write the knoxObjectProtectionRequired "
+                    "field");
+    }
+
+    if (al->samsung.__knoxCreatorId_present) {
+        if (!write_octet_string(p, end, mctx,
+                    al->samsung.knoxCreatorId, KM_TAG_KNOX_CREATOR_ID))
+            goto_error("Failed to write the knoxCreatorId field");
+    }
+
+    if (al->samsung.__knoxAdministratorId_present) {
+        if (!write_octet_string(p, end, mctx,
+                    al->samsung.knoxAdministratorId,
+                    KM_TAG_KNOX_ADMINISTRATOR_ID))
+            goto_error("Failed to write the knoxAdministratorId field");
+    }
+
+    if (al->samsung.__knoxAccessorId_present) {
+        if (!write_octet_string(p, end, mctx,
+                    al->samsung.knoxAccessorId, KM_TAG_KNOX_ACCESSOR_ID))
+            goto_error("Failed to write the knoxAccessorId field");
+    }
+
+    if (al->samsung.__samsungAuthPackage_present) {
+        if (!write_octet_string(p, end, mctx,
+                    al->samsung.samsungAuthPackage,
+                    KM_TAG_SAMSUNG_AUTHENTICATE_PACKAGE))
+            goto_error("Failed to write the samsungAuthPackage field");
+    }
+
+    if (al->samsung.__samsungCertificateSubject_present) {
+        if (!write_octet_string(p, end, mctx,
+                    al->samsung.samsungCertificateSubject,
+                    KM_TAG_SAMSUNG_CERTIFICATE_SUBJECT))
+            goto_error("Failed to write the samsungCertificateSubject field");
+    }
+
+    if (al->samsung.__samsungKeyUsage_present && !write_integer(p, end, mctx,
+            al->samsung.samsungKeyUsage, KM_TAG_SAMSUNG_KEY_USAGE))
+        goto_error("Failed to write the samsungKeyUsage field");
+
+    if (al->samsung.__samsungExtendedKeyUsage_present) {
+        if (!write_octet_string(p, end, mctx,
+                    al->samsung.samsungExtendedKeyUsage,
+                    KM_TAG_SAMSUNG_EXTENDED_KEY_USAGE))
+            goto_error("Failed to write the samsungExtendedKeyUsage field");
+    }
+
+    if (al->samsung.__samsungSubjectAlternativeName_present) {
+        if (!write_octet_string(p, end, mctx,
+                    al->samsung.samsungSubjectAlternativeName,
+                    KM_TAG_SAMSUNG_SUBJECT_ALTERNATIVE_NAME))
+            goto_error("Failed to write the samsungSubjectAlternativeName "
+                    "field");
+
+    }
+
+    if (al->samsung.__provGacEc1_present && !write_octet_string(p, end, mctx,
+            al->samsung.provGacEc1, KM_TAG_PROV_GAC_EC1))
+        goto_error("Failed to write the provGacEc1 field");
+
+    if (al->samsung.__provGacEc2_present && !write_octet_string(p, end, mctx,
+            al->samsung.provGacEc2, KM_TAG_PROV_GAC_EC2))
+        goto_error("Failed to write the provGacEc2 field");
+
+    if (al->samsung.__provGacEc3_present && !write_octet_string(p, end, mctx,
+            al->samsung.provGacEc3, KM_TAG_PROV_GAC_EC3))
+        goto_error("Failed to write the provGacEc3 field");
+
+    if (al->samsung.__provGakEc_present && !write_octet_string(p, end, mctx,
+            al->samsung.provGakEc, KM_TAG_PROV_GAK_EC))
+        goto_error("Failed to write the provGakEc field");
+
+    if (al->samsung.__provGakEcVtoken_present) {
+        if (!write_octet_string(p, end, mctx,
+                    al->samsung.provGakEcVtoken, KM_TAG_PROV_GAK_EC_VTOKEN))
+            goto_error("Failed to write the provGakEcVtoken field");
+    }
+
+    if (al->samsung.__provGacRsa1_present && !write_octet_string(p, end, mctx,
+            al->samsung.provGacRsa1, KM_TAG_PROV_GAC_RSA1))
+        goto_error("Failed to write the provGacRsa1 field");
+
+    if (al->samsung.__provGacRsa2_present && !write_octet_string(p, end, mctx,
+            al->samsung.provGacRsa2, KM_TAG_PROV_GAC_RSA2))
+        goto_error("Failed to write the provGacRsa2 field");
+
+    if (al->samsung.__provGacRsa3_present && !write_octet_string(p, end, mctx,
+            al->samsung.provGacRsa3, KM_TAG_PROV_GAC_RSA3))
+        goto_error("Failed to write the provGacRsa3 field");
+
+    if (al->samsung.__provGakRsa_present && !write_octet_string(p, end, mctx,
+            al->samsung.provGakRsa, KM_TAG_PROV_GAK_RSA))
+        goto_error("Failed to write the provGakRsa field");
+
+    if (al->samsung.__provGakRsaVtoken_present) {
+        if (!write_octet_string(p, end, mctx,
+                    al->samsung.provGakRsaVtoken, KM_TAG_PROV_GAK_RSA_VTOKEN))
+            goto_error("Failed to write the provGakRsaVtoken field");
+    }
+
+    if (al->samsung.__provSakEc_present && !write_octet_string(p, end, mctx,
+            al->samsung.provSakEc, KM_TAG_PROV_SAK_EC))
+        goto_error("Failed to write the provSakEc field");
+
+    if (al->samsung.__provSakEcVtoken_present) {
+        if (!write_octet_string(p, end, mctx,
+                    al->samsung.provSakEcVtoken, KM_TAG_PROV_SAK_EC_VTOKEN))
+            goto_error("Failed to write the provSakEcVtoken field");
+    }
 
     if ((*p) > end)
         goto_error("Buffer overrun while writing authorization list!");

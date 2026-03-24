@@ -844,6 +844,257 @@ enum KM_Tag {
      */
     KM_TAG_CONFIRMATION_TOKEN = 2415920109u /* TagType:BYTES | 1005 */,
 
+    /*** SAMSUNG-SPECIFIC KEYMASTER TAGS ***/
+
+    /** Tags missing from the core spec? **/
+
+    /* Stores a user authentication token for operations that require it */
+    KM_TAG_AUTH_TOKEN = KM_TAG_TYPE_BYTES | 1002u,
+
+    /* Used in the `computeSharedHmac` operation (stores the HMAC verification token SEQUENCE) */
+    KM_TAG_VERIFICATION_TOKEN = KM_TAG_TYPE_BYTES | 5200u,
+
+    /* Internal tag idicating that all users can use a given key.
+     * Treated similarly to Tag::NO_AUTH_REQUIRED. */
+    KM_TAG_ALL_USERS = KM_TAG_TYPE_BOOL | 500u,
+
+    KM_TAG_ECIES_SINGLE_HASH_MODE = KM_TAG_TYPE_BOOL | 201u,
+
+    /* Stores a Key Derivation Function type (see `enum KeyDerivationFunction`). */
+    KM_TAG_KDF = KM_TAG_TYPE_ENUM_REP | 9u,
+
+    /* Tag indicating that the key is exportable. Valid only for symmetric keys. */
+    KM_TAG_EXPORTABLE = KM_TAG_TYPE_BOOL | 602u,
+
+    /** KM Operation tags **/
+
+    /* An internal parameter tag indicating that the key requires authentication.
+     * Set if any of the following tags are present in the key description:
+     *  SamsungTag::AUTH_TOKEN, Tag::AUTH_TIMEOUT, Tag::USER_AUTH_TYPE, Tag::USER_SECURE_ID */
+    KM_TAG_KEY_AUTH = KM_TAG_TYPE_BOOL | 5013u,
+
+    /* An internal parameter tag indicating that the operation requires authentication.
+     * Set if any of the following tags are present in the key description:
+     *  Tag::AUTH_TIMEOUT, Tag::USER_SECURE_ID */
+    KM_TAG_OP_AUTH = KM_TAG_TYPE_BOOL | 5012u,
+
+    /* An internal tag that represents the operation handle returned by `begin()`
+     * and used in `update()` and `finish()`. */
+    KM_TAG_OPERATION_HANDLE = KM_TAG_TYPE_ULONG | 5011u,
+
+    /* An internal tag indicating that an operation (`begin()`, `update()`, `finish()`)
+     * has failed and should be cleaned up. */
+    KM_TAG_OPERATION_FAILED = KM_TAG_TYPE_BOOL | 5030u,
+
+    /* Used to validate datetime requirements in `begin()` **/
+    KM_TAG_INTERNAL_CURRENT_DATETIME = KM_TAG_TYPE_DATE | 800u,
+
+    /** Encrypted key blob serialization/deserialization related tags **/
+
+    /* Initialization vector used for AES-256-GCM decryption,
+     * typically stored in the outer keyblob in plain text */
+    KM_TAG_EKEY_BLOB_IV = KM_TAG_TYPE_BYTES | 5000u,
+
+    /* AES-256-GCM authentication tag, stored in the outer keyblob in plain text */
+    KM_TAG_EKEY_BLOB_AUTH_TAG = KM_TAG_TYPE_BYTES | 5001u,
+
+    /* Usage count tag used to enforce Tag:MAX_USES_PER_BOOT */
+    KM_TAG_EKEY_BLOB_CURRENT_USES_PER_BOOT = KM_TAG_TYPE_UINT | 5003u,
+
+    /* Time of last operation, used to enforce tags such as
+     * Tag:MIN_SECONDS_BETWEEN_OPS and Tag:AUTH_TIMEOUT */
+    KM_TAG_EKEY_BLOB_LAST_OP_TIMESTAMP = KM_TAG_TYPE_ULONG | 5004u,
+
+    /* A flag indicating that the encrypted key blob should be upgraded to a new version */
+    KM_TAG_EKEY_BLOB_DO_UPGRADE = KM_TAG_TYPE_UINT | 5005u,
+
+    /* Both of these are HMAC'd to derive a key encryption key,
+     * which is what's actually used to wrap/unwrap the encrypted key blob.
+     * The resulting pkek is added as the key blob's APPLICATION_ID. */
+    KM_TAG_EKEY_BLOB_PASSWORD = KM_TAG_TYPE_BYTES | 5006u,
+    KM_TAG_EKEY_BLOB_SALT = KM_TAG_TYPE_BYTES | 5007u,
+
+    /* Encrypted key blob version, stored in the EKEY blob in plain text.
+     * Typically `40` for keymaster 4.0 blobs. */
+    KM_TAG_EKEY_BLOB_ENC_VER = KM_TAG_TYPE_UINT | 5008u,
+
+    /* A tag indicating that the inner encrypted key blob
+     * is not wrapped in an ASN.1 container */
+    KM_TAG_EKEY_BLOB_RAW = KM_TAG_TYPE_UINT | 5009u,
+
+    /* A per-encryption unique random value,
+     * added to the encryption salt & AES-256-GCM authentication tag.
+     * Typically stored in the outer encrypted key blob in plain text */
+    KM_TAG_EKEY_BLOB_UNIQ_KDM = KM_TAG_TYPE_BYTES | 5010u,
+
+    /* A flag indicating that the usage count
+     * (Tag:EKEY_BLOB_CURRENT_USES_PER_BOOT, Tag:MAX_USES_PER_BOOT)
+     * should be incremented */
+    KM_TAG_EKEY_BLOB_INC_USE_COUNT = KM_TAG_TYPE_UINT | 5202u,
+
+    /* Used to securely communitate the results between Trusted Applications
+     * inside the TEE - the output can only be `tz_unwrap()`ped by a given TA.
+     * In other words, binds the keymaster operation to a given TA identifier. */
+    KM_TAG_SAMSUNG_REQUESTING_TA = KM_TAG_TYPE_BYTES | 2300u,
+
+    /* Tag indicating that the root of trust value (Tag::ROOT_OF_TRUST)
+     * should be added to the key parameters before a `begin` operation. */
+    KM_TAG_SAMSUNG_ROT_REQUIRED = KM_TAG_TYPE_BOOL | 2301u,
+
+    /* Tag indicating that a "legacy" root of trust value should be used
+     * with the key (for unwrapping and attestations).
+     * Used for old encrypted key blobs in a kind of "compatibility mode".
+     * Only available in orange state. */
+    KM_TAG_SAMSUNG_LEGACY_ROT = KM_TAG_TYPE_BOOL | 2304u,
+
+    /* Tag indicating that a given key is stored in a StrongBox. */
+    KM_TAG_USE_SECURE_PROCESSOR = KM_TAG_TYPE_BOOL | 3000u,
+
+    /* Tag indicating that a given key is used for storage encryption (e.g. FBE).
+     * Results in special functions being used to manage that key. */
+    KM_TAG_STORAGE_KEY = KM_TAG_TYPE_BOOL | 722u,
+
+    /* An internal tag that contains a bitmask of:
+     * "oem flag" (0x01) - the result of an oem-specific check
+     *      (e.g. "SW fuse" blown on QC devices); set if not ok
+     * "trust boot" (0x02) - knox trust boot status; set if not ok
+     * "warranty" (0x04) - knox warranty status; set if void
+     * "eng build type" (0x10) - whether the current system is an engineering binary
+     *
+     * also some flags conditionally enabled at compile time,
+     * used to work around some issues with bootloader API failures
+     * causing the salt value to break (?):
+     *
+     * "default trust boot" (0x20) - knox trust boot status for "default" RoT; set if not OK
+     * "default knox warranty" (0x40) - knox warranty status for "default" RoT; set if void
+     *
+     * This value is added to the salt used for all key blob unwrapping operations,
+     * so any change in its value render all key blobs unusable. */
+    KM_TAG_INTEGRITY_STATUS = KM_TAG_TYPE_UINT | 5031u,
+
+    /** Flags controlling Samsung Attestation Key (SAK) attestation **/
+
+    /* Set this tag to enable SAK */
+    KM_TAG_IS_SAMSUNG_KEY = KM_TAG_TYPE_BOOL | 5029u,
+
+    /* Also set this to the string "samsung" to enable ID attestation with SAK
+     * (ID attestation is disabled for non-SAK attestations) */
+    KM_TAG_SAMSUNG_ATTESTATION_ROOT = KM_TAG_TYPE_BYTES | 2102u,
+
+    /* Set this tag to enable SAK on warranty void ("compromised") devices.
+     * Makes the "INTEGRITY" SEQUENCE be added to the hardwareEnforced auth list. */
+    KM_TAG_SAMSUNG_ATTEST_INTEGRITY = KM_TAG_TYPE_BOOL | 2302u,
+
+    /* Used to enforce that the key can only be used on a device
+     * with a samsung-official system ("trust boot status").
+     * Also used to gate the `EXPORTABLE` tag, for some reason. */
+    KM_TAG_KNOX_OBJECT_PROTECTION_REQUIRED = KM_TAG_TYPE_BOOL | 2000u,
+
+    /** Parameters for SAK attestation,
+     * with a similar role to Tag::ATTESTATION_CHALLENGE & Tag::ATTESTATION_ID_* */
+    KM_TAG_KNOX_CREATOR_ID = KM_TAG_TYPE_BYTES | 2001u,
+    KM_TAG_KNOX_ADMINISTRATOR_ID = KM_TAG_TYPE_BYTES | 2002u,
+    KM_TAG_KNOX_ACCESSOR_ID = KM_TAG_TYPE_BYTES | 2003u,
+    KM_TAG_SAMSUNG_AUTHENTICATE_PACKAGE = KM_TAG_TYPE_BYTES | 2303u,
+
+    /* Used to supply an alternative value for the attestation leaf cert's subject
+     * other than the default "CN=Android Keystore Key".
+     * Multiple subject name entries may be supplied in the following format:
+     *  entry1=value1,entry2=value2, ...
+     * although note that the entries have to be valid X.509 NAMEs, such as CN, SN, OU, etc.
+     *
+     * Can be set both in the key and attestation parameters,
+     * where the one in the attestation params overrides the one in the key.
+     * Appears to also work for normal (non-SAK) attestations.
+     */
+    KM_TAG_SAMSUNG_CERTIFICATE_SUBJECT = KM_TAG_TYPE_BYTES | 2103u,
+
+    /* Used to set an alternative value for the X509v3 keyUsage
+     * critical extension in the attestation leaf cert.
+     * The value supplied is a mask of the keyUsage values, e.g.
+     *  0x90 for digitalSignature|dataEncipherment (0x80|0x10) */
+    KM_TAG_SAMSUNG_KEY_USAGE = KM_TAG_TYPE_UINT | 2104u,
+
+    /* Used to set an alternative value for the X509v3 extendedKeyUsage
+     * non-critical extension in the attestation leaf cert.
+     * Multiple keyUsage values may be supplied, either as a name or an OID,
+     * separated by a comma, like so:
+     *  `serverAuth,codeSigning, ...` OR `1.3.6.1.5.5.7.3.1,1.3.6.1.5.5.7.3.3, ...`
+     *
+     * Exclusive to SAK attestations. */
+    KM_TAG_SAMSUNG_EXTENDED_KEY_USAGE = KM_TAG_TYPE_BYTES | 2105u,
+
+    /* Used to set an alternative value for the X509v3 subjectAltName
+     * non-critical extension in the attestation leaf cert.
+     * Multiple subject name entries may be supplied in the following format:
+     *  entry1=value1,entry2=value2, ...
+     * although note that the entries can only be the following X.509 alt names:
+     *  "rfc822Name", "dNSName", "uniformResourceIdentifier", "iPAddress"
+     *
+     * Exclusive to SAK attestations. */
+    KM_TAG_SAMSUNG_SUBJECT_ALTERNATIVE_NAME = KM_TAG_TYPE_BYTES | 2106u,
+
+    /** Keybox provisioning tags **/
+
+    /* Used to label the first intermediate cert in the EC cert chain ("issuer" of the key) */
+    KM_TAG_PROV_GAC_EC1 = KM_TAG_TYPE_BYTES | 5123u,
+
+    /* Used to label the second intermediate cert in the EC cert chain (the "OEM" cert) */
+    KM_TAG_PROV_GAC_EC2 = KM_TAG_TYPE_BYTES | 5124u,
+
+    /* Used to label the root of the EC cert chain */
+    KM_TAG_PROV_GAC_EC3 = KM_TAG_TYPE_BYTES | 5125u,
+
+    /* Used to label the EC attestation private key */
+    KM_TAG_PROV_GAK_EC = KM_TAG_TYPE_BYTES | 5118u,
+
+    /* Used to label a validation token of the EC attestation private key */
+    KM_TAG_PROV_GAK_EC_VTOKEN = KM_TAG_TYPE_BYTES | 5115u,
+
+    /* Used to label the first intermediate cert in the RSA cert chain ("issuer" of the key) */
+    KM_TAG_PROV_GAC_RSA1 = KM_TAG_TYPE_BYTES | 5120u,
+
+    /* Used to label the second intermediate cert in the RSA cert chain (the "OEM" cert) */
+    KM_TAG_PROV_GAC_RSA2 = KM_TAG_TYPE_BYTES | 5121u,
+
+    /* Used to label the root of the RSA cert chain */
+    KM_TAG_PROV_GAC_RSA3 = KM_TAG_TYPE_BYTES | 5122u,
+
+    /* Used to label the RSA attestation private key */
+    KM_TAG_PROV_GAK_RSA = KM_TAG_TYPE_BYTES | 5117u,
+
+    /* Used to label a validation token of the RSA attestation private key */
+    KM_TAG_PROV_GAK_RSA_VTOKEN = KM_TAG_TYPE_BYTES | 5114u,
+
+    /* Used to label the SAK private key */
+    KM_TAG_PROV_SAK_EC = KM_TAG_TYPE_BYTES | 5119u,
+
+    /* Used to label a validation token of the SAK EC private key */
+    KM_TAG_PROV_SAK_EC_VTOKEN = KM_TAG_TYPE_BYTES | 5116u,
+
+    /** StrongBox tags' values are yet to be reverse-engineered. **/
+
+    /* Used to label the first intermediate cert in the StrongBox EC cert chain
+     * ("issuer" of the key) */
+    //KM_TAG_PROV_SGAC_EC1 = 0,
+
+    /* Used to label the second intermediate cert in the StrongBox EC cert chain
+     * (the "OEM" cert) */
+    //KM_TAG_PROV_SGAC_EC2 = 0,
+
+    /* Used to label the root of the StrongBox EC cert chain */
+    //KM_TAG_PROV_SGAC_EC3 = 0,
+
+    /* Used to label the first intermediate cert in the StrongBox RSA cert chain
+     * ("issuer" of the key) */
+    //KM_TAG_PROV_SGAC_RSA1 = 0,
+
+    /* Used to label the second intermediate cert in the StrongBox RSA cert chain
+     * (the "OEM" cert) */
+    //KM_TAG_PROV_SGAC_RSA2 = 0,
+
+    /* Used to label the root of the StrongBox RSA cert chain */
+    //KM_TAG_PROV_SGAC_RSA3 = 0,
 };
 
 /**
@@ -1248,7 +1499,7 @@ struct KM_AuthorizationList_v3 {
     KM_DateTime_t                   __KM_OPTIONAL(usageExpireDateTime);
     VECTOR(uint64_t)                __KM_OPTIONAL(userSecureId);
     bool                            __KM_OPTIONAL(noAuthRequired);
-    int64_t                         __KM_OPTIONAL(userAuthType);
+    int64_t /* mask of hw auth types */ __KM_OPTIONAL(userAuthType);
     uint64_t                        __KM_OPTIONAL(authTimeout);
     bool                            __KM_OPTIONAL(allowWhileOnBody);
     bool                            __KM_OPTIONAL(trustedUserPresenceReq);
@@ -1257,6 +1508,7 @@ struct KM_AuthorizationList_v3 {
     KM_DateTime_t                   __KM_OPTIONAL(creationDateTime);
     enum KM_KeyOrigin               __KM_OPTIONAL(keyOrigin);
     struct KM_RootOfTrust_v3        __KM_OPTIONAL(rootOfTrust);
+    VECTOR(u8)                      __KM_OPTIONAL(rootOfTrustBytes);
     uint64_t                        __KM_OPTIONAL(osVersion);
     uint64_t                        __KM_OPTIONAL(osPatchLevel);
     VECTOR(u8)                      __KM_OPTIONAL(attestationApplicationId);
@@ -1270,6 +1522,81 @@ struct KM_AuthorizationList_v3 {
     VECTOR(u8)                      __KM_OPTIONAL(attestationIdModel);
     uint64_t                        __KM_OPTIONAL(vendorPatchLevel);
     uint64_t                        __KM_OPTIONAL(bootPatchLevel);
+
+    /* These ones here are not in the AuthorizationList SEQUENCE,
+     * but declared here for completeness */
+    bool                            __KM_OPTIONAL(includeUniqueId);
+    enum KM_KeyBlobUsageRequirements __KM_OPTIONAL(keyBlobUsageRequirements);
+    bool                            __KM_OPTIONAL(bootloaderOnly);
+    uint32_t                        __KM_OPTIONAL(hardwareType);
+    uint32_t                        __KM_OPTIONAL(minSecondsBetweenOps);
+    uint32_t                        __KM_OPTIONAL(maxUsesPerBoot);
+    uint32_t                        __KM_OPTIONAL(userId);
+    VECTOR(u8)                      __KM_OPTIONAL(applicationId);
+    VECTOR(u8)                      __KM_OPTIONAL(applicationData);
+    VECTOR(u8)                      __KM_OPTIONAL(uniqueId);
+    VECTOR(u8)                      __KM_OPTIONAL(attestationChallenge);
+    VECTOR(u8)                      __KM_OPTIONAL(associatedData);
+    VECTOR(u8)                      __KM_OPTIONAL(nonce);
+    uint32_t                        __KM_OPTIONAL(macLength);
+    bool                            __KM_OPTIONAL(resetSinceIdRotation);
+    VECTOR(u8)                      __KM_OPTIONAL(confirmationToken);
+
+    /* Samsung-specific tags */
+    struct KM_SamsungAuthorizations_v3 {
+        VECTOR(u8)                  __KM_OPTIONAL(authToken);
+        VECTOR(u8)                  __KM_OPTIONAL(verificationToken);
+        bool                        __KM_OPTIONAL(allUsers);
+        bool                        __KM_OPTIONAL(eciesSingleHashMode);
+        enum KM_KeyDerivationFunction __KM_OPTIONAL(kdf);
+        bool                        __KM_OPTIONAL(exportable);
+        bool                        __KM_OPTIONAL(keyAuth);
+        bool                        __KM_OPTIONAL(opAuth);
+        uint64_t                    __KM_OPTIONAL(operationHandle);
+        bool                        __KM_OPTIONAL(operationFailed);
+        KM_DateTime_t               __KM_OPTIONAL(internalCurrentDateTime);
+        VECTOR(u8)                  __KM_OPTIONAL(ekeyBlobIV);
+        VECTOR(u8)                  __KM_OPTIONAL(ekeyBlobAuthTag);
+        uint32_t                    __KM_OPTIONAL(ekeyBlobCurrentUsesPerBoot);
+        uint64_t                    __KM_OPTIONAL(ekeyBlobLastOpTimestamp);
+        uint32_t                    __KM_OPTIONAL(ekeyBlobDoUpgrade);
+        VECTOR(u8)                  __KM_OPTIONAL(ekeyBlobPassword);
+        VECTOR(u8)                  __KM_OPTIONAL(ekeyBlobSalt);
+        uint32_t                    __KM_OPTIONAL(ekeyBlobEncVer);
+        uint32_t                    __KM_OPTIONAL(ekeyBlobRaw);
+        VECTOR(u8)                  __KM_OPTIONAL(ekeyBlobUniqKDM);
+        uint32_t                    __KM_OPTIONAL(ekeyBlobIncUseCount);
+        VECTOR(u8)                  __KM_OPTIONAL(samsungRequestingTA);
+        bool                        __KM_OPTIONAL(samsungRotRequired);
+        bool                        __KM_OPTIONAL(samsungLegacyRot);
+        bool                        __KM_OPTIONAL(useSecureProcessor);
+        bool                        __KM_OPTIONAL(storageKey);
+        uint32_t                    __KM_OPTIONAL(integrityStatus);
+        bool                        __KM_OPTIONAL(isSamsungKey);
+        VECTOR(u8)                  __KM_OPTIONAL(samsungAttestationRoot);
+        bool                        __KM_OPTIONAL(samsungAttestIntegrity);
+        bool                        __KM_OPTIONAL(knoxObjectProtectionRequired);
+        VECTOR(u8)                  __KM_OPTIONAL(knoxCreatorId);
+        VECTOR(u8)                  __KM_OPTIONAL(knoxAdministratorId);
+        VECTOR(u8)                  __KM_OPTIONAL(knoxAccessorId);
+        VECTOR(u8)                  __KM_OPTIONAL(samsungAuthPackage);
+        VECTOR(u8)                  __KM_OPTIONAL(samsungCertificateSubject);
+        uint32_t                    __KM_OPTIONAL(samsungKeyUsage);
+        VECTOR(u8)                  __KM_OPTIONAL(samsungExtendedKeyUsage);
+        VECTOR(u8)                  __KM_OPTIONAL(samsungSubjectAlternativeName);
+        VECTOR(u8)                  __KM_OPTIONAL(provGacEc1);
+        VECTOR(u8)                  __KM_OPTIONAL(provGacEc2);
+        VECTOR(u8)                  __KM_OPTIONAL(provGacEc3);
+        VECTOR(u8)                  __KM_OPTIONAL(provGakEc);
+        VECTOR(u8)                  __KM_OPTIONAL(provGakEcVtoken);
+        VECTOR(u8)                  __KM_OPTIONAL(provGacRsa1);
+        VECTOR(u8)                  __KM_OPTIONAL(provGacRsa2);
+        VECTOR(u8)                  __KM_OPTIONAL(provGacRsa3);
+        VECTOR(u8)                  __KM_OPTIONAL(provGakRsa);
+        VECTOR(u8)                  __KM_OPTIONAL(provGakRsaVtoken);
+        VECTOR(u8)                  __KM_OPTIONAL(provSakEc);
+        VECTOR(u8)                  __KM_OPTIONAL(provSakEcVtoken);
+    } samsung;
 };
 
 /* The C struct representation of the `KeyDescription` ASN.1 sequence

@@ -18,6 +18,7 @@
 #include <openssl/x509.h>
 #include <openssl/x509_vfy.h>
 #include <stdio.h>
+#include <unordered_map>
 
 namespace suskeymaster {
 namespace cli {
@@ -70,9 +71,6 @@ static int do_transport_encryption(
         hidl_vec<uint8_t>& out_iv, hidl_vec<uint8_t>& out_tag, hidl_vec<uint8_t>& out_masking_key
 );
 
-static void init_ec_auth_list(struct certmod::KM_AuthorizationList_v3 *al);
-static void init_rsa_auth_list(struct certmod::KM_AuthorizationList_v3 *al);
-
 static int encode_iwk_key_description_der(hidl_vec<uint8_t>& der,
         const struct certmod::KM_AuthorizationList_v3 *auth_list);
 
@@ -118,7 +116,6 @@ int verify_attestation(const hidl_vec<hidl_vec<uint8_t>> &cert_chain)
     X509 *root = NULL;
     bool root_old = false;
     bool verify_ok = false;
-    FILE *out = NULL;
 
     VECTOR(u8) leaf_vec = NULL;
     struct certmod::KM_KeyDescription_v3 *km_desc = NULL;
@@ -130,14 +127,22 @@ int verify_attestation(const hidl_vec<hidl_vec<uint8_t>> &cert_chain)
         goto err;
     }
 
+    leaf_vec = vector_new(u8);
+    vector_resize(&leaf_vec, leaf_der.size());
+    std::memcpy(leaf_vec, leaf_der.data(), leaf_der.size());
+
+    if (certmod::leaf_cert_parse(leaf_vec, NULL, NULL, &km_desc)) {
+        std::cerr << "Failed to parse the leaf certificate!" << std::endl;
+        vector_destroy(&leaf_vec);
+        goto err;
+    }
+
+    certmod::key_desc_dump(km_desc, pr_info);
+
     if (check_google_root(root_der, &root_old)) {
         std::cerr << "The root cert is not a Google Attestation Root certificate!" << std::endl;
         goto err;
     }
-
-    out = fopen("failed-leaf.der", "wb");
-    fwrite(leaf_der.data(), leaf_der.size(), 1, out);
-    fclose(out);
 
     if (verify_cert_chain(root_old, root_idx, leaf, intermediates, root, &verify_ok)) {
         std::cerr << "Unexpected failure while trying to verify the certificate chain"
@@ -148,22 +153,10 @@ int verify_attestation(const hidl_vec<hidl_vec<uint8_t>> &cert_chain)
         goto err;
     }
 
-    leaf_vec = vector_new(u8);
-    vector_resize(&leaf_vec, leaf_der.size());
-    std::memcpy(leaf_vec, leaf_der.data(), leaf_der.size());
-
-    if (leaf_cert_parse(leaf_vec, NULL, NULL, &km_desc)) {
-        std::cerr << "Failed to parse the leaf certificate!" << std::endl;
-        vector_destroy(&leaf_vec);
-        goto err;
-    }
-
-    key_desc_dump(km_desc, pr_info);
-
     ok = true;
 
 err:
-    key_desc_destroy(&km_desc);
+    certmod::key_desc_destroy(&km_desc);
     vector_destroy(&leaf_vec);
 
     destroy_certs(&leaf, &intermediates, &root);
@@ -182,14 +175,14 @@ int wrap_key(hidl_vec<uint8_t> const& in_private_key, enum util::sus_key_variant
         hidl_vec<uint8_t> const& in_wrapping_key, hidl_vec<KeyParameter> const& in_key_params,
         hidl_vec<uint8_t>& out_wrapped_data, hidl_vec<uint8_t>& out_masking_key)
 {
+    hidl_vec<KeyParameter> params(in_key_params);
     struct certmod::KM_AuthorizationList_v3 auth_list = {};
+
     hidl_vec<uint8_t> iwk_key_description_der = {};
     hidl_vec<uint8_t> encrypted_transport_key;
     hidl_vec<uint8_t> transport_iv;
     hidl_vec<uint8_t> transport_tag;
     hidl_vec<uint8_t> encrypted_key(in_private_key);
-
-    (void) in_key_params;
 
     if (key_variant != util::SUS_KEY_EC && key_variant != util::SUS_KEY_RSA) {
         std::cerr << "Invalid parameters (key_variant: " << key_variant << ")" << std::endl;
@@ -200,16 +193,36 @@ int wrap_key(hidl_vec<uint8_t> const& in_private_key, enum util::sus_key_variant
             << std::endl;
     }
 
-    if (key_variant == util::SUS_KEY_RSA)
-        init_rsa_auth_list(&auth_list);
-    else /* if (key_variant == SUS_KEY_EC) */
-        init_ec_auth_list(&auth_list);
+    if (key_variant == util::SUS_KEY_RSA) {
+        std::unordered_map<Tag, struct defaults_with_flags> rsa_defaults = {
+            { Tag::ALGORITHM, { { to_u32(Algorithm::RSA) }, 0 } },
+            { Tag::DIGEST, { { to_u32(Digest::SHA_2_256) }, 0 } },
+            { Tag::PADDING, { { to_u32(PaddingMode::RSA_PKCS1_1_5_SIGN) }, 0 } },
+            { Tag::KEY_SIZE, { { 2048 }, 0 } },
+            { Tag::RSA_PUBLIC_EXPONENT, { { 65537 }, 0 } },
+            { Tag::PURPOSE, { { to_u32(KeyPurpose::SIGN), to_u32(KeyPurpose::VERIFY) }, 0 } },
+            { Tag::NO_AUTH_REQUIRED, { { 1 }, 0 } },
+        };
+        init_default_params(rsa_defaults, params);
+    } else /* if (key_variant == SUS_KEY_EC) */ {
+        std::unordered_map<Tag, struct defaults_with_flags> ec_defaults = {
+            { Tag::ALGORITHM, { { to_u32(Algorithm::EC) }, 0 } },
+            { Tag::DIGEST, { { to_u32(Digest::SHA_2_256) }, 0 } },
+            { Tag::EC_CURVE, { { to_u32(EcCurve::P_256) }, 0 } },
+            { Tag::PURPOSE, { { to_u32(KeyPurpose::SIGN), to_u32(KeyPurpose::VERIFY) }, 0 } },
+            { Tag::NO_AUTH_REQUIRED, { { 1 }, 0 } },
+        };
+        init_default_params(ec_defaults, params);
+    }
+
+    key_params_2_auth_list(params, &auth_list);
 
     if (encode_iwk_key_description_der(iwk_key_description_der, &auth_list)) {
         std::cerr << "Failed to encode the importWrappedKey KeyDescription" << std::endl;
         key_desc_destroy_auth_list(&auth_list);
         return 1;
     }
+    key_desc_destroy_auth_list(&auth_list);
 
     if (do_transport_encryption(in_wrapping_key, iwk_key_description_der, encrypted_key,
                 encrypted_transport_key, transport_iv, transport_tag, out_masking_key))
@@ -728,59 +741,6 @@ err:
     return ok ? 0 : 1;
 }
 
-static void init_ec_auth_list(struct certmod::KM_AuthorizationList_v3 *al)
-{
-    using namespace certmod;
-
-    al->__algorithm_present = true;
-    al->algorithm = KM_ALG_EC;
-
-    al->__digest_present = true;
-    al->digest = vector_new(enum KM_Digest);
-    vector_push_back(&al->digest, KM_DIGEST_SHA_2_256);
-
-    al->__ecCurve_present = true;
-    al->ecCurve = KM_EC_CURVE_P_256;
-
-    al->__purpose_present = true;
-    al->purpose = vector_new(enum KM_KeyPurpose);
-    vector_push_back(&al->purpose, KM_PURPOSE_SIGN);
-    vector_push_back(&al->purpose, KM_PURPOSE_VERIFY);
-
-    al->__noAuthRequired_present = true;
-    al->noAuthRequired = true;
-}
-
-static void init_rsa_auth_list(struct certmod::KM_AuthorizationList_v3 *al)
-{
-    using namespace certmod;
-
-    al->__algorithm_present = true;
-    al->algorithm = KM_ALG_RSA;
-
-    al->__digest_present = true;
-    al->digest = vector_new(enum KM_Digest);
-    vector_push_back(&al->digest, KM_DIGEST_SHA_2_256);
-
-    al->__keySize_present = true;
-    al->keySize = 2048;
-
-    al->__padding_present = true;
-    al->padding = vector_new(enum KM_PaddingMode);
-    vector_push_back(&al->padding, KM_PADDING_RSA_PKCS1_1_5_SIGN);
-
-    al->__rsaPublicExponent_present = true;
-    al->rsaPublicExponent = 65537;
-
-    al->__purpose_present = true;
-    al->purpose = vector_new(enum KM_KeyPurpose);
-    vector_push_back(&al->purpose, KM_PURPOSE_SIGN);
-    vector_push_back(&al->purpose, KM_PURPOSE_VERIFY);
-
-    al->__noAuthRequired_present = true;
-    al->noAuthRequired = true;
-}
-
 static int encode_iwk_key_description_der(hidl_vec<uint8_t>& der,
         const struct certmod::KM_AuthorizationList_v3 *auth_list)
 {
@@ -955,6 +915,7 @@ err:
 
     return ok ? 0 : 1;
 }
+
 
 static i32 measure_integer_size(struct certmod::key_desc_measure_ctx *ctx, i64 val)
 {

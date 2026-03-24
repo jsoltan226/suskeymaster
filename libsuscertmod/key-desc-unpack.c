@@ -6,6 +6,7 @@
 #include <openssl/asn1.h>
 #include <openssl/crypto.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 
 #define MODULE_NAME "key-desc"
@@ -29,7 +30,16 @@ static i32 validate_km_desc(const struct KM_KeyDescription_v3 *desc);
 
 struct KM_KeyDescription_v3 * key_desc_new(void)
 {
-    return calloc(1, sizeof(struct KM_KeyDescription_v3));
+    struct KM_KeyDescription_v3 *ret = calloc(1, sizeof(struct KM_KeyDescription_v3));
+    if (ret == NULL) {
+        s_log_error("Couldn't allocate a new KM_KeyDescription_v3 struct");
+        return NULL;
+    }
+
+    ret->attestationChallenge = vector_new(u8);
+    ret->uniqueId = vector_new(u8);
+
+    return ret;
 }
 
 struct KM_KeyDescription_v3 * key_desc_unpack(const ASN1_OCTET_STRING *desc)
@@ -170,9 +180,25 @@ bool key_desc_parse_auth_list(struct KM_AuthorizationList_v3 *out,
             out->__rsaPublicExponent_present = parse_integer_64(p, field_len,
                     (int64_t *)&out->rsaPublicExponent);
             break;
+        case __KM_TAG_MASK(KM_TAG_INCLUDE_UNIQUE_ID):
+            out->__includeUniqueId_present = out->includeUniqueId = true;
+            *p += field_len;
+            break;
+        case __KM_TAG_MASK(KM_TAG_BLOB_USAGE_REQUIREMENTS):
+            out->__keyBlobUsageRequirements_present = parse_integer_32(p,
+                    field_len, (int32_t *)&out->keyBlobUsageRequirements);
+            break;
+        case __KM_TAG_MASK(KM_TAG_BOOTLOADER_ONLY):
+            out->__bootloaderOnly_present = out->bootloaderOnly = true;
+            *p += field_len;
+            break;
         case __KM_TAG_MASK(KM_TAG_ROLLBACK_RESISTANCE):
             out->__rollbackResistance_present = out->rollbackResistance = true;
             *p += field_len;
+            break;
+        case __KM_TAG_MASK(KM_TAG_HARDWARE_TYPE):
+            out->__hardwareType_present = parse_integer_32(p, field_len,
+                    (int32_t *)&out->hardwareType);
             break;
         case __KM_TAG_MASK(KM_TAG_ACTIVE_DATETIME):
             out->__activeDateTime_present = parse_integer_64(p, field_len,
@@ -186,6 +212,18 @@ bool key_desc_parse_auth_list(struct KM_AuthorizationList_v3 *out,
             out->__usageExpireDateTime_present = parse_integer_64(p, field_len,
                     &out->usageExpireDateTime);
             break;
+        case __KM_TAG_MASK(KM_TAG_MIN_SECONDS_BETWEEN_OPS):
+            out->__minSecondsBetweenOps_present = parse_integer_32(p, field_len,
+                    (int32_t *)&out->minSecondsBetweenOps);
+            break;
+        case __KM_TAG_MASK(KM_TAG_MAX_USES_PER_BOOT):
+            out->__maxUsesPerBoot_present = parse_integer_32(p, field_len,
+                    (int32_t *)&out->maxUsesPerBoot);
+            break;
+        case __KM_TAG_MASK(KM_TAG_USER_ID):
+            out->__userId_present = parse_integer_32(p, field_len,
+                    (int32_t *)&out->userId);
+            break;
         case __KM_TAG_MASK(KM_TAG_USER_SECURE_ID):
             out->__userSecureId_present = parse_set_of_int64(p, field_len,
                     (VECTOR(int64_t) *)&out->userSecureId);
@@ -197,6 +235,10 @@ bool key_desc_parse_auth_list(struct KM_AuthorizationList_v3 *out,
         case __KM_TAG_MASK(KM_TAG_USER_AUTH_TYPE):
             out->__userAuthType_present = parse_integer_32(p, field_len,
                     (int32_t *)&out->userAuthType);
+            break;
+        case __KM_TAG_MASK(KM_TAG_AUTH_TIMEOUT):
+            out->__authTimeout_present = parse_integer_32(p, field_len,
+                    (int32_t *)&out->authTimeout);
             break;
         case __KM_TAG_MASK(KM_TAG_ALLOW_WHILE_ON_BODY):
             out->__allowWhileOnBody_present = out->allowWhileOnBody = true;
@@ -215,6 +257,14 @@ bool key_desc_parse_auth_list(struct KM_AuthorizationList_v3 *out,
         case __KM_TAG_MASK(KM_TAG_UNLOCKED_DEVICE_REQUIRED):
             out->__unlockedDeviceReq_present = out->unlockedDeviceReq = true;
             *p += field_len;
+            break;
+        case __KM_TAG_MASK(KM_TAG_APPLICATION_ID):
+            out->__applicationId_present = parse_octet_string(p, field_len,
+                    &out->applicationId);
+            break;
+        case __KM_TAG_MASK(KM_TAG_APPLICATION_DATA):
+            out->__applicationData_present = parse_octet_string(p, field_len,
+                    &out->applicationData);
             break;
         case __KM_TAG_MASK(KM_TAG_CREATION_DATETIME):
             out->__creationDateTime_present = parse_integer_64(p, field_len,
@@ -236,6 +286,14 @@ bool key_desc_parse_auth_list(struct KM_AuthorizationList_v3 *out,
         case __KM_TAG_MASK(KM_TAG_OS_PATCHLEVEL):
             out->__osPatchLevel_present = parse_integer_64(p, field_len,
                     (int64_t *)&out->osPatchLevel);
+            break;
+        case __KM_TAG_MASK(KM_TAG_UNIQUE_ID):
+            out->__uniqueId_present = parse_octet_string(p, field_len,
+                    &out->uniqueId);
+            break;
+        case __KM_TAG_MASK(KM_TAG_ATTESTATION_CHALLENGE):
+            out->__attestationChallenge_present =
+                parse_octet_string(p, field_len, &out->attestationChallenge);
             break;
         case __KM_TAG_MASK(KM_TAG_ATTESTATION_APPLICATION_ID):
             out->__attestationApplicationId_present =
@@ -285,6 +343,245 @@ bool key_desc_parse_auth_list(struct KM_AuthorizationList_v3 *out,
             out->__bootPatchLevel_present = parse_integer_64(p, field_len,
                     (int64_t *)&out->bootPatchLevel);
             break;
+        case __KM_TAG_MASK(KM_TAG_ASSOCIATED_DATA):
+            out->__associatedData_present = parse_octet_string(p, field_len,
+                    &out->associatedData);
+            break;
+        case __KM_TAG_MASK(KM_TAG_NONCE):
+            out->__nonce_present = parse_octet_string(p, field_len,
+                    &out->nonce);
+            break;
+        case __KM_TAG_MASK(KM_TAG_MAC_LENGTH):
+            out->__macLength_present = parse_integer_32(p, field_len,
+                    (int32_t *)&out->macLength);
+            break;
+        case __KM_TAG_MASK(KM_TAG_RESET_SINCE_ID_ROTATION):
+            out->__resetSinceIdRotation_present = true;
+            out->resetSinceIdRotation = true;
+            *p += field_len;
+            break;
+        case __KM_TAG_MASK(KM_TAG_CONFIRMATION_TOKEN):
+            out->__confirmationToken_present = parse_octet_string(p, field_len,
+                    &out->confirmationToken);
+            break;
+
+
+        case __KM_TAG_MASK(KM_TAG_AUTH_TOKEN):
+            out->samsung.__authToken_present = parse_octet_string(p, field_len,
+                    &out->samsung.authToken);
+            break;
+        case __KM_TAG_MASK(KM_TAG_VERIFICATION_TOKEN):
+            out->samsung.__verificationToken_present = parse_octet_string(p,
+                    field_len, &out->samsung.verificationToken);
+            break;
+        case __KM_TAG_MASK(KM_TAG_ALL_USERS):
+            out->samsung.__allUsers_present = out->samsung.allUsers = true;
+            *p += field_len;
+            break;
+        case __KM_TAG_MASK(KM_TAG_ECIES_SINGLE_HASH_MODE):
+            out->samsung.__eciesSingleHashMode_present = true;
+            out->samsung.eciesSingleHashMode = true;
+            *p += field_len;
+            break;
+        case __KM_TAG_MASK(KM_TAG_KDF):
+            out->samsung.__kdf_present = parse_set_of_int32(p, field_len,
+                    (VECTOR(int32_t) *)&out->samsung.kdf);
+            break;
+        case __KM_TAG_MASK(KM_TAG_EXPORTABLE):
+            out->samsung.__exportable_present = out->samsung.exportable = true;
+            *p += field_len;
+            break;
+        case __KM_TAG_MASK(KM_TAG_KEY_AUTH):
+            out->samsung.__keyAuth_present = out->samsung.keyAuth = true;
+            *p += field_len;
+            break;
+        case __KM_TAG_MASK(KM_TAG_OP_AUTH):
+            out->samsung.__opAuth_present = out->samsung.opAuth = true;
+            *p += field_len;
+            break;
+        case __KM_TAG_MASK(KM_TAG_OPERATION_HANDLE):
+            out->samsung.__operationHandle_present = parse_integer_64(p,
+                    field_len, (int64_t *)&out->samsung.operationHandle);
+            break;
+        case __KM_TAG_MASK(KM_TAG_OPERATION_FAILED):
+            out->samsung.__operationFailed_present = true;
+            out->samsung.operationFailed = true;
+            *p += field_len;
+            break;
+        case __KM_TAG_MASK(KM_TAG_INTERNAL_CURRENT_DATETIME):
+            out->samsung.__internalCurrentDateTime_present = parse_integer_64(
+                    p, field_len,
+                    (int64_t*)&out->samsung.internalCurrentDateTime
+            );
+            break;
+        case __KM_TAG_MASK(KM_TAG_EKEY_BLOB_IV):
+            out->samsung.__ekeyBlobIV_present = parse_octet_string(p, field_len,
+                    &out->samsung.ekeyBlobIV);
+            break;
+        case __KM_TAG_MASK(KM_TAG_EKEY_BLOB_AUTH_TAG):
+            out->samsung.__ekeyBlobAuthTag_present = parse_octet_string(p,
+                    field_len, &out->samsung.ekeyBlobAuthTag);
+            break;
+        case __KM_TAG_MASK(KM_TAG_EKEY_BLOB_CURRENT_USES_PER_BOOT):
+            out->samsung.__ekeyBlobCurrentUsesPerBoot_present =
+                parse_integer_32(p, field_len,
+                        (int32_t *)&out->samsung.ekeyBlobCurrentUsesPerBoot
+                );
+            break;
+        case __KM_TAG_MASK(KM_TAG_EKEY_BLOB_LAST_OP_TIMESTAMP):
+            out->samsung.__ekeyBlobLastOpTimestamp_present = parse_integer_32(
+                    p, field_len,
+                    (int32_t *)&out->samsung.ekeyBlobLastOpTimestamp
+            );
+            break;
+        case __KM_TAG_MASK(KM_TAG_EKEY_BLOB_DO_UPGRADE):
+            out->samsung.__ekeyBlobDoUpgrade_present = parse_integer_32(p,
+                    field_len, (int32_t *)&out->samsung.ekeyBlobDoUpgrade);
+            break;
+        case __KM_TAG_MASK(KM_TAG_EKEY_BLOB_PASSWORD):
+            out->samsung.__ekeyBlobPassword_present = parse_octet_string(p,
+                    field_len, &out->samsung.ekeyBlobPassword);
+            break;
+        case __KM_TAG_MASK(KM_TAG_EKEY_BLOB_SALT):
+            out->samsung.__ekeyBlobSalt_present = parse_octet_string(p,
+                    field_len, &out->samsung.ekeyBlobSalt);
+            break;
+        case __KM_TAG_MASK(KM_TAG_EKEY_BLOB_ENC_VER):
+            out->samsung.__ekeyBlobEncVer_present = parse_integer_32(p,
+                    field_len, (int32_t *)&out->samsung.ekeyBlobEncVer);
+            break;
+        case __KM_TAG_MASK(KM_TAG_EKEY_BLOB_RAW):
+            out->samsung.__ekeyBlobRaw_present = parse_integer_32(p, field_len,
+                    (int32_t *)&out->samsung.ekeyBlobRaw);
+            break;
+        case __KM_TAG_MASK(KM_TAG_EKEY_BLOB_UNIQ_KDM):
+            out->samsung.__ekeyBlobUniqKDM_present = parse_octet_string(p,
+                    field_len, &out->samsung.ekeyBlobUniqKDM);
+            break;
+        case __KM_TAG_MASK(KM_TAG_EKEY_BLOB_INC_USE_COUNT):
+            out->samsung.__ekeyBlobIncUseCount_present = parse_integer_32(p,
+                    field_len, (int32_t *)&out->samsung.ekeyBlobIncUseCount);
+            break;
+        case __KM_TAG_MASK(KM_TAG_SAMSUNG_REQUESTING_TA):
+            out->samsung.__samsungRequestingTA_present = parse_octet_string(p,
+                    field_len, &out->samsung.samsungRequestingTA);
+            break;
+        case __KM_TAG_MASK(KM_TAG_SAMSUNG_ROT_REQUIRED):
+            out->samsung.__samsungRotRequired_present = true;
+            out->samsung.samsungRotRequired = true;
+            *p += field_len;
+            break;
+        case __KM_TAG_MASK(KM_TAG_USE_SECURE_PROCESSOR):
+            out->samsung.__useSecureProcessor_present = true;
+            out->samsung.useSecureProcessor = true;
+            *p += field_len;
+            break;
+        case __KM_TAG_MASK(KM_TAG_STORAGE_KEY):
+            out->samsung.__storageKey_present = out->samsung.storageKey = true;
+            *p += field_len;
+            break;
+        case __KM_TAG_MASK(KM_TAG_INTEGRITY_STATUS):
+            out->samsung.__integrityStatus_present = parse_integer_32(p,
+                    field_len, (int32_t *)&out->samsung.integrityStatus);
+            break;
+        case __KM_TAG_MASK(KM_TAG_IS_SAMSUNG_KEY):
+            out->samsung.__isSamsungKey_present =
+                out->samsung.isSamsungKey = true;
+            *p += field_len;
+        case __KM_TAG_MASK(KM_TAG_SAMSUNG_ATTESTATION_ROOT):
+            out->samsung.__samsungAttestationRoot_present = parse_octet_string(
+                    p, field_len, &out->samsung.samsungAttestationRoot
+            );
+            break;
+        case __KM_TAG_MASK(KM_TAG_SAMSUNG_ATTEST_INTEGRITY):
+            out->samsung.__samsungAttestationRoot_present = true;
+            out->samsung.samsungAttestIntegrity = true;
+            *p += field_len;
+        case __KM_TAG_MASK(KM_TAG_KNOX_OBJECT_PROTECTION_REQUIRED):
+            out->samsung.__knoxObjectProtectionRequired_present = true;
+            out->samsung.knoxObjectProtectionRequired = true;
+            *p += field_len;
+        case __KM_TAG_MASK(KM_TAG_KNOX_CREATOR_ID):
+            out->samsung.__knoxCreatorId_present = parse_octet_string(p,
+                    field_len, &out->samsung.knoxCreatorId);
+            break;
+        case __KM_TAG_MASK(KM_TAG_KNOX_ADMINISTRATOR_ID):
+            out->samsung.__knoxAdministratorId_present = parse_octet_string(p,
+                    field_len, &out->samsung.knoxAdministratorId);
+            break;
+        case __KM_TAG_MASK(KM_TAG_KNOX_ACCESSOR_ID):
+            out->samsung.__knoxAccessorId_present = parse_octet_string(p,
+                    field_len, &out->samsung.knoxAccessorId);
+            break;
+        case __KM_TAG_MASK(KM_TAG_SAMSUNG_AUTHENTICATE_PACKAGE):
+            out->samsung.__samsungAuthPackage_present = parse_octet_string(p,
+                    field_len, &out->samsung.samsungAuthPackage);
+            break;
+        case __KM_TAG_MASK(KM_TAG_SAMSUNG_CERTIFICATE_SUBJECT):
+            out->samsung.__samsungCertificateSubject_present =
+                parse_octet_string(p, field_len,
+                        &out->samsung.samsungCertificateSubject);
+            break;
+        case __KM_TAG_MASK(KM_TAG_SAMSUNG_KEY_USAGE):
+            out->samsung.__samsungKeyUsage_present = parse_integer_32(p,
+                    field_len, (int32_t *)&out->samsung.samsungKeyUsage);
+            break;
+        case __KM_TAG_MASK(KM_TAG_SAMSUNG_EXTENDED_KEY_USAGE):
+            out->samsung.__samsungExtendedKeyUsage_present = parse_octet_string(
+                    p, field_len, &out->samsung.samsungExtendedKeyUsage
+            );
+            break;
+        case __KM_TAG_MASK(KM_TAG_SAMSUNG_SUBJECT_ALTERNATIVE_NAME):
+            out->samsung.__samsungSubjectAlternativeName_present =
+                parse_octet_string(p, field_len,
+                        &out->samsung.samsungSubjectAlternativeName);
+            break;
+        case __KM_TAG_MASK(KM_TAG_PROV_GAC_EC1):
+            out->samsung.__provGacEc1_present = parse_octet_string(p, field_len,
+                    &out->samsung.provGacEc1);
+            break;
+        case __KM_TAG_MASK(KM_TAG_PROV_GAC_EC2):
+            out->samsung.__provGacEc2_present = parse_octet_string(p, field_len,
+                    &out->samsung.provGacEc2);
+            break;
+        case __KM_TAG_MASK(KM_TAG_PROV_GAC_EC3):
+            out->samsung.__provGacEc3_present = parse_octet_string(p, field_len,
+                    &out->samsung.provGacEc3);
+        case __KM_TAG_MASK(KM_TAG_PROV_GAK_EC):
+            out->samsung.__provGakEc_present = parse_octet_string(p, field_len,
+                    &out->samsung.provGakEc);
+            break;
+        case __KM_TAG_MASK(KM_TAG_PROV_GAK_EC_VTOKEN):
+            out->samsung.__provGakEcVtoken_present = parse_octet_string(p,
+                    field_len, &out->samsung.provGakEcVtoken);
+            break;
+        case __KM_TAG_MASK(KM_TAG_PROV_GAC_RSA1):
+            out->samsung.__provGacRsa1_present = parse_octet_string(p,
+                    field_len, &out->samsung.provGacRsa1);
+            break;
+        case __KM_TAG_MASK(KM_TAG_PROV_GAC_RSA2):
+            out->samsung.__provGacRsa2_present = parse_octet_string(p,
+                    field_len, &out->samsung.provGacRsa2);
+            break;
+        case __KM_TAG_MASK(KM_TAG_PROV_GAC_RSA3):
+            out->samsung.__provGacRsa3_present = parse_octet_string(p,
+                    field_len, &out->samsung.provGacRsa3);
+        case __KM_TAG_MASK(KM_TAG_PROV_GAK_RSA):
+            out->samsung.__provGakRsa_present = parse_octet_string(p, field_len,
+                    &out->samsung.provGakRsa);
+            break;
+        case __KM_TAG_MASK(KM_TAG_PROV_GAK_RSA_VTOKEN):
+            out->samsung.__provGakRsaVtoken_present = parse_octet_string(p,
+                    field_len, &out->samsung.provGakRsaVtoken);
+            break;
+        case __KM_TAG_MASK(KM_TAG_PROV_SAK_EC):
+            out->samsung.__provSakEc_present = parse_octet_string(p, field_len,
+                    &out->samsung.provSakEc);
+            break;
+        case __KM_TAG_MASK(KM_TAG_PROV_SAK_EC_VTOKEN):
+            out->samsung.__provSakEcVtoken_present = parse_octet_string(p,
+                    field_len, &out->samsung.provSakEcVtoken);
+            break;
         default:
             /* Unknown field; skip */
             *p += field_len;
@@ -301,7 +598,7 @@ bool key_desc_parse_auth_list(struct KM_AuthorizationList_v3 *out,
 }
 
 bool key_desc_parse_root_of_trust(struct KM_RootOfTrust_v3 *out,
-        const unsigned  char **p, long len)
+        const unsigned char **p, long len)
 {
     const unsigned char *seq_end = NULL;
 

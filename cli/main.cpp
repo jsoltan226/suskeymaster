@@ -68,6 +68,7 @@ static int read_and_deserialize_cert_chain(const char *path,
 static int serialize_and_write_cert_chain(const char *path,
         const hidl_vec<hidl_vec<uint8_t>>& cert_chain);
 
+static int handle_cmd_get_characteristics(const char *key_path, const char *deserialization_params);
 static int handle_cmd_attest(const char *key_source, const char *key_spec,
         const char *key_params, const char *attest_params);
 static int handle_cmd_import(const char *algorithm_name,
@@ -75,8 +76,8 @@ static int handle_cmd_import(const char *algorithm_name,
         const char *key_params);
 static int handle_cmd_export(const char *in_km_keyblob_path,
         const char *out_public_x509_path);
-static int handle_cmd_sign(const char *in_km_keyblob_path,
-        const char *in_message_path, const char *out_signature_path);
+static int handle_cmd_sign(const char *in_km_keyblob_path, const char *in_message_path,
+        const char *out_signature_path, const char *in_sign_params);
 static int handle_cmd_generate(const char *algorithm_name,
         const char *out_km_keyblob_path, const char *key_params);
 static int handle_cmd_mkkeybox(const char *out,
@@ -101,20 +102,6 @@ static int handle_cmd_transact_server_wrap(const char *in_private_pkcs8_path,
 static int handle_cmd_transact_client_import(const char *in_wrapped_data_path,
         const char *in_masking_key_path, const char *in_wrapping_keyblob_path,
         const char *out_keyblob_path, const char *in_unwrapping_params);
-
-namespace cli {
-    hidl_vec<uint8_t> const& get_sus_application_id(void)
-    {
-        /*
-        static const hidl_vec<uint8_t> application_id = hidl_vec<uint8_t>(
-                { 's', 'u', 's', 'k', 'e', 'y', 'm', 'a', 's', 't', 'e', 'r' }
-        );
-        */
-        static const hidl_vec<uint8_t> application_id = {};
-
-        return application_id;
-    }
-} /* namespace cli */
 
 static int read_file(const char *path, hidl_vec<uint8_t>& out, const char *name)
 {
@@ -277,6 +264,26 @@ static int serialize_and_write_cert_chain(const char *path,
     return 0;
 }
 
+static int handle_cmd_get_characteristics(const char *key_path, const char *deserialization_params)
+{
+    hidl_vec<uint8_t> keyblob;
+    hidl_vec<KeyParameter> params;
+
+    if (deserialization_params != NULL &&
+            cli::parse_km_tag_params(deserialization_params, params))
+    {
+        std::cerr << "Invalid key parameters" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    if (read_file(key_path, keyblob, "KeyMaster key blob")) {
+        std::cerr << "Failed to read the key blob" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    return cli::get_key_characteristics(g_hal, keyblob, params);
+}
+
 static int handle_cmd_attest(const char *key_source, const char *key_spec,
         const char *in_key_params, const char *in_attest_params)
 {
@@ -394,12 +401,13 @@ static int handle_cmd_export(const char *in_km_keyblob_path,
     return EXIT_SUCCESS;
 }
 
-static int handle_cmd_sign(const char *in_km_keyblob_path,
-        const char *in_message_path, const char *out_signature_path)
+static int handle_cmd_sign(const char *in_km_keyblob_path, const char *in_message_path,
+        const char *out_signature_path, const char *in_sign_params)
 {
     hidl_vec<uint8_t> keyblob;
     hidl_vec<uint8_t> message;
-    hidl_vec<uint8_t> signature;
+    hidl_vec<KeyParameter> params;
+    hidl_vec<uint8_t> out_signature;
 
     if (read_file(in_message_path, message, "message file")) {
         std::cerr << "Failed to read the message!" << std::endl;
@@ -409,13 +417,19 @@ static int handle_cmd_sign(const char *in_km_keyblob_path,
         std::cerr << "Failed to read the keymaster key blob!" << std::endl;
         return EXIT_FAILURE;
     }
+    if (in_sign_params != NULL &&
+            cli::parse_km_tag_params(in_sign_params, params))
+    {
+        std::cerr << "Invalid key parameters" << std::endl;
+        return EXIT_FAILURE;
+    }
 
-    if (cli::sign(g_hal, message, keyblob, signature)) {
+    if (cli::sign(g_hal, message, keyblob, params, out_signature)) {
         std::cerr << "Signing operation failed!" << std::endl;
         return EXIT_FAILURE;
     }
 
-    if (write_file(out_signature_path, signature, "signature file")) {
+    if (write_file(out_signature_path, out_signature, "signature file")) {
         std::cerr << "Failed to write the signature!" << std::endl;
         return EXIT_FAILURE;
     }
@@ -844,7 +858,19 @@ static int dispatch_cmd(int argc, const char **argv)
 {
     const char *const cmd = argv[1];
 
-    if (!strcmp(cmd, "attest")) {
+    if (!strcmp(cmd, "get-characteristics")) {
+        if (argc < 3) {
+            print_not_enough_args_for_cmd(cmd);
+            return EXIT_FAILURE;
+        }
+        if (init_g_hal())
+            return EXIT_FAILURE;
+
+        const char *const key_path = argv[2];
+        const char *const deserialization_params = argc >= 4 ? argv[3] : NULL;
+        return handle_cmd_get_characteristics(key_path, deserialization_params);
+
+    } else if (!strcmp(cmd, "attest")) {
         if (argc < 4) {
             print_not_enough_args_for_cmd(cmd);
             return EXIT_FAILURE;
@@ -896,7 +922,9 @@ static int dispatch_cmd(int argc, const char **argv)
         const char *const in_km_keyblob_path = argv[2];
         const char *const in_message_path = argv[3];
         const char *const out_signature_path = argv[4];
-        return handle_cmd_sign(in_km_keyblob_path, in_message_path, out_signature_path);
+        const char *const in_sign_params = argc >= 6 ? argv[5] : NULL;
+        return handle_cmd_sign(in_km_keyblob_path, in_message_path,
+                out_signature_path, in_sign_params);
 
     } else if (!strcmp(cmd, "generate")) {
         if (argc < 4) {
@@ -967,9 +995,16 @@ static void print_usage()
 
     std::cout << "Usage: " << progname << " <command> <args...>\n"
         "Available commands:\n"
-        "   generate <algorithm> <out_key_blob>\n"
+        "   generate <algorithm> <out_key_blob> [params]\n"
         "       Generate a new keypair in KeyMaster and save the resulting key blob"
             "to <out_key_blob>\n"
+        "   Optionally, additional generation parameters can be specified in [params].\n"
+        "\n"
+        "   get-characteristics <key_blob> [deserialization_parms]\n"
+        "       Print the characteristics (properties) of <key_blob>.\n"
+        "       Optionally, [deserialization_params] may contain `APPLICATION_ID` and/or "
+        "`APPLICATION_DATA` if the keyblob was created with them.\n"
+        "           Any other tags passed here will be ignored.\n"
         "\n"
         "   attest <key_source> <key_spec> [key_params] [attest_params]\n"
         "       Generate a KeyMaster attestation for a given key\n"
@@ -1034,18 +1069,18 @@ static void print_usage()
         "   transact server verify <attestation>\n"
         "       Verifies the KeyMaster attestation certificate chain <attestation>\n"
         "\n"
-        "   transact server wrap <in_private_key> <algorithm> <wrapping_key> <out_wrapped_data> "
-        "[key_params]\n"
+        "   transact server wrap <in_private_key> <algorithm> <wrapping_key> "
+            "<out_wrapped_data> <out_masking_key> [key_params]\n"
         "       Wraps the DER-encoded PKCS#8 private key <in_private_key> "
                 "for a secure import transaction.\n"
         "       <algorithm> must be either \"ec\" or \"rsa\", "
                 "depending on the content of <in_private_key>.\n"
         "       <wrapping_key> is the DER-encoded X.509 public wrapping key "
                 "received from the client.\n"
-        "       <out_wrapped_data> is the path to the file to which the wrapped data "
-                "(which is supposed to be sent to the client) will be written.\n"
         "       <out_masking_key> is the path to the file to which "
                 "the ephemeral masking key will be written\n"
+        "       <out_wrapped_data> is the path to the file to which the wrapped data "
+                "(which is supposed to be sent to the client) will be written.\n"
         "       [key_params] can contain a space-separated list of key parameters that "
                 "the resulting keyblob will have after a successfull secure import.\n"
         "\n"
@@ -1060,8 +1095,14 @@ static void print_usage()
         "\n"
         "\n"
         "Examples:\n"
-        "   To generate an ECDSA-384 key and attest it:\n"
-        "   $ " << progname << " attest generated ec \"EC_CURVE=P_384\"\n"
+        "   To print out the characteristics of a key generated with APPLICATION_ID='test':\n"
+        "   $ " << progname << " get-characteristics keyblob.bin "
+        "\"APPLICATION_ID=$(printf 'test' | base64)\"\n"
+        "\n"
+        "   To generate an ECDSA-384 key and attest it, with just a 0x00 byte "
+            "as the attestation challenge:\n"
+        "   $ " << progname << " attest generated ec \"EC_CURVE=P_384\" "
+                                "\"ATTESTATION_CHALLENGE=''\"\n"
         "\n"
         "   To import an RSA private key:\n"
         "   $ " << progname << " import rsa rsa-private-pkcs8.der keyblob-rsa.bin\n"
@@ -1073,8 +1114,9 @@ static void print_usage()
         "   To export the public part of an EC key:\n"
         "   $ " << progname << " export keyblob-ec.bin pubkey.x509\n"
         "\n"
-        "   To sign a message with a KeyMaster key:\n"
-        "   $ " << progname << " sign keyblob.bin message.txt signature.bin\n"
+        "   To sign a message with a KeyMaster key created with APPLICATION_ID='1234':\n"
+        "   $ " << progname << " sign keyblob.bin message.txt "
+            "signature.bin \"APPLICATION_ID=$(printf '1234' | base64)\"\n"
         "\n"
         "   To generate a binary suskeymaster keybox file from certificates and key blobs:\n"
         "   $ " << progname << " mkkeybox keybox.bin \\\n"
@@ -1084,14 +1126,15 @@ static void print_usage()
         "   To dump a binary keybox file to the current working directory:\n"
         "   $ " << progname << " dumpkeybox keybox.bin .\n"
         "\n"
-        "   To securely provision an EC key from a server to the KeyMaster of the client:\n"
+        "   To securely provision an EC key (`private-ec.der`) "
+            "from a server to the KeyMaster of the client (`keyblob-ec.bin`):\n"
         "   (client) $ " << progname << " transact client generate "
-                                        "wrapping-key.bin wrapping-pub.x509 attestation.bin\n"
+                                        "wrapping-key.bin wrapping-pub.x509 ' ' attestation.bin\n"
         "   (server) $ " << progname << " transact server verify attestation.bin\n"
-        "   (server) $ " << progname << " transact server wrap private-ec-key-pkcs8.der ec "
-                                        "wrapping-pub.x509 wrapped-data.bin\n"
-        "   (client) $ " << progname << " transact client import "
-                                        "wrapped-data.bin wrapping-key.bin keyblob-ec.bin\n"
+        "   (server) $ " << progname << " transact server wrap private-ec.der ec "
+                                        "wrapping-pub.x509 wrapped-data.bin masking-key.bin\n"
+        "   (client) $ " << progname << " transact client import wrapped-data.bin masking-key.bin "
+                                        "wrapping-key.bin keyblob-ec.bin\n"
         "\n"
         << std::endl;
 }
