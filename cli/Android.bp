@@ -41,7 +41,7 @@ cc_binary {
             enabled: false,
         },
         android_x86_64: {
-            enabled: true,
+            enabled: false,
         },
         android_x86: {
             enabled: false,

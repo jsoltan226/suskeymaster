@@ -1,6 +1,7 @@
 #ifndef CLI_SUSKEYMASTER_HPP_
 #define CLI_SUSKEYMASTER_HPP_
 
+#include "hidl-hal.hpp"
 #include <libgenericutil/cert-types.h>
 #include <libsuscertmod/keymaster-types.h>
 #include <unordered_map>
@@ -15,7 +16,7 @@ namespace suskeymaster {
 namespace cli {
 
 int generate_key(
-    ::android::sp<::android::hardware::keymaster::V4_0::IKeymasterDevice>   hal,
+    HidlSusKeymaster4&                                                      hal,
     ::android::hardware::keymaster::V4_0::Algorithm                         alg,
     ::android::hardware::hidl_vec
         <::android::hardware::keymaster::V4_0::KeyParameter> const&         in_gen_params,
@@ -23,14 +24,14 @@ int generate_key(
     ::android::hardware::hidl_vec<uint8_t>&                                 out_wrapped_blob
 );
 int attest_key(
-    ::android::sp<::android::hardware::keymaster::V4_0::IKeymasterDevice>   hal,
+    HidlSusKeymaster4&                                                      hal,
     ::android::hardware::hidl_vec<uint8_t> const&                           key,
     ::android::hardware::hidl_vec
         <::android::hardware::keymaster::V4_0::KeyParameter> const&         in_attest_params
 );
 
 int import_key(
-    ::android::sp<::android::hardware::keymaster::V4_0::IKeymasterDevice>   hal,
+    HidlSusKeymaster4&                                                      hal,
     ::android::hardware::hidl_vec<uint8_t> const&                           priv_pkcs8,
     ::android::hardware::keymaster::V4_0::Algorithm                         alg,
     ::android::hardware::hidl_vec
@@ -39,14 +40,14 @@ int import_key(
     ::android::hardware::hidl_vec<uint8_t>&                                 out_wrapped_blob
 );
 int export_key(
-    ::android::sp<::android::hardware::keymaster::V4_0::IKeymasterDevice>   hal,
+    HidlSusKeymaster4&                                                      hal,
     ::android::hardware::hidl_vec<uint8_t> const&                           key,
 
     ::android::hardware::hidl_vec<uint8_t>&                                 out_public_key_x509
 );
 
 int sign(
-    ::android::sp<::android::hardware::keymaster::V4_0::IKeymasterDevice>   hal,
+    HidlSusKeymaster4&                                                      hal,
     ::android::hardware::hidl_vec<uint8_t> const&                           message,
     ::android::hardware::hidl_vec<uint8_t> const&                           key,
     ::android::hardware::hidl_vec
@@ -57,7 +58,7 @@ int sign(
 
 /* Implemented in `sign.cpp` for convenience */
 int get_key_characteristics(
-    ::android::sp<::android::hardware::keymaster::V4_0::IKeymasterDevice>   hal,
+    HidlSusKeymaster4&                                                      hal,
     ::android::hardware::hidl_vec<uint8_t> const&                           key,
     ::android::hardware::hidl_vec
         <::android::hardware::keymaster::V4_0::KeyParameter> const&         in_application_id_data
@@ -83,7 +84,7 @@ namespace keybox {
 namespace transact {
     namespace client {
         int generate_and_attest_wrapping_key(
-            ::android::sp<::android::hardware::keymaster::V4_0::IKeymasterDevice>   hal,
+            HidlSusKeymaster4&                                                  hal,
 
             ::android::hardware::hidl_vec<uint8_t>&                             out_wrapping_blob,
             ::android::hardware::hidl_vec<uint8_t>&                             out_wrapping_pubkey,
@@ -112,7 +113,7 @@ namespace transact {
 
     namespace client {
         int import_wrapped_key(
-            ::android::sp<::android::hardware::keymaster::V4_0::IKeymasterDevice>   hal,
+            HidlSusKeymaster4&                                                  hal,
 
             ::android::hardware::hidl_vec<uint8_t> const&                       in_wrapped_data,
             ::android::hardware::hidl_vec<uint8_t> const&                       in_masking_key,

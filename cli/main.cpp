@@ -1,4 +1,5 @@
 #include "cli.hpp"
+#include "hidl-hal.hpp"
 #include <libgenericutil/cert-types.h>
 #include <core/log.h>
 #include <android/hardware/keymaster/4.0/types.h>
@@ -6,7 +7,6 @@
 #include <iomanip>
 #include <istream>
 #include <netinet/in.h>
-#include <utils/StrongPointer.h>
 #include <strings.h>
 #include <arpa/inet.h>
 #include <cstdio>
@@ -24,7 +24,7 @@ using namespace ::android::hardware::keymaster::V4_0;
 using namespace ::android::hardware;
 
 static const char *g_argv0 = NULL;
-static ::android::sp<IKeymasterDevice> g_hal;
+static suskeymaster::HidlSusKeymaster4 g_hal;
 
 static void setup_cgd_log(void);
 
@@ -980,8 +980,7 @@ static int dispatch_cmd(int argc, const char **argv)
 
 static int init_g_hal(void)
 {
-    g_hal = ::android::hardware::keymaster::V4_0::IKeymasterDevice::tryGetService();
-    if (g_hal == nullptr || !g_hal->ping().isOk()) {
+    if (!g_hal.isHALOk()) {
         std::cerr << "Couldn't obtain handle to KeyMaster HAL service" << std::endl;
         return EXIT_FAILURE;
     }

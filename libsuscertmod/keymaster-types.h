@@ -6,6 +6,7 @@
 #include <openssl/asn1.h>
 #include <openssl/asn1t.h>
 #include <core/vector.h>
+#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -1409,25 +1410,25 @@ union KM_IntegerParams {
     /*
      * Enum types
      */
-    enum KM_Algorithm algorithm __attribute__ ((aligned(4)));
-    enum KM_BlockMode blockMode __attribute__ ((aligned(4)));
-    enum KM_PaddingMode paddingMode __attribute__ ((aligned(4)));
-    enum KM_Digest digest __attribute__ ((aligned(4)));
-    enum KM_EcCurve ecCurve __attribute__ ((aligned(4)));
-    enum KM_KeyOrigin origin __attribute__ ((aligned(4)));
-    enum KM_KeyBlobUsageRequirements keyBlobUsageRequirements __attribute__ ((aligned(4)));
-    enum KM_KeyPurpose purpose __attribute__ ((aligned(4)));
-    enum KM_KeyDerivationFunction keyDerivationFunction __attribute__ ((aligned(4)));
-    enum KM_HardwareAuthenticatorType hardwareAuthenticatorType __attribute__ ((aligned(4)));
-    enum KM_SecurityLevel hardwareType __attribute__ ((aligned(4)));
+    enum KM_Algorithm algorithm;
+    enum KM_BlockMode blockMode;
+    enum KM_PaddingMode paddingMode;
+    enum KM_Digest digest;
+    enum KM_EcCurve ecCurve;
+    enum KM_KeyOrigin origin;
+    enum KM_KeyBlobUsageRequirements keyBlobUsageRequirements;
+    enum KM_KeyPurpose purpose;
+    enum KM_KeyDerivationFunction keyDerivationFunction;
+    enum KM_HardwareAuthenticatorType hardwareAuthenticatorType;
+    enum KM_SecurityLevel hardwareType;
 
     /*
      * Other types
      */
-    bool boolValue __attribute__ ((aligned(1)));
-    uint32_t integer __attribute__ ((aligned(4)));
-    uint64_t longInteger __attribute__ ((aligned(8)));
-    uint64_t dateTime __attribute__ ((aligned(8)));
+    bool boolValue;
+    uint32_t integer;
+    uint64_t longInteger;
+    uint64_t dateTime;
 };
 
 struct KM_KeyParameter {
@@ -1436,10 +1437,19 @@ struct KM_KeyParameter {
      * Discriminates the union/blob field used.  The blob cannot be placed in the union, but only
      * one of "f" and "blob" may ever be used at a time.
      */
-    enum KM_Tag tag __attribute__ ((aligned(4)));
-    union KM_IntegerParams f __attribute__ ((aligned(8)));
-    void *blob __attribute__ ((aligned(8))); /* hidl_vec<uint8_t> */
+    enum KM_Tag tag;
+    union KM_IntegerParams f;
+    VECTOR(u8) blob; /* hidl_vec<uint8_t> */
 };
+static inline void km_destroy_key_parameter(struct KM_KeyParameter *kp)
+{
+    if (kp == NULL)
+        return;
+
+    kp->tag = KM_TAG_INVALID;
+    memset(&kp->f, 0, sizeof(union KM_IntegerParams));
+    vector_destroy(&kp->blob);
+}
 
 /**
  * The OID for Android attestation records.  For the curious, it breaks down as follows:
@@ -1466,6 +1476,206 @@ enum KM_VerifiedBootState {
     KM_VERIFIED_BOOT_UNVERIFIED = 2,
     KM_VERIFIED_BOOT_FAILED = 3,
 };
+
+/**
+ * KeyCharacteristics defines the attributes of a key, including cryptographic parameters, and usage
+ * restrictions.  It consits of two vectors of KeyParameters, one for "softwareEnforced" attributes
+ * and one for "hardwareEnforced" attributes.
+ *
+ * KeyCharacteristics objects are returned by generateKey, importKey, importWrappedKey and
+ * getKeyCharacteristics.  The IKeymasterDevice secure environment is responsible for allocating the
+ * parameters, all of which are Tags with associated values, to the correct vector.  The
+ * hardwareEnforced vector must contain only those attributes which are enforced by secure hardware.
+ * All others should be in the softwareEnforced vector.  See the definitions of individual Tag enums
+ * for specification of which must be hardware-enforced, which may be software-enforced and which
+ * must never appear in KeyCharacteristics.
+ */
+struct KM_KeyCharacteristics {
+    VECTOR(struct KM_KeyParameter) softwareEnforced;
+    VECTOR(struct KM_KeyParameter) hardwareEnforced;
+};
+static inline void km_destroy_key_characteristics(struct KM_KeyCharacteristics *kc)
+{
+    if (kc == NULL)
+        return;
+
+    if (kc->softwareEnforced != NULL) {
+        for (u32 i = 0; i < vector_size(kc->softwareEnforced); i++)
+            km_destroy_key_parameter(&kc->softwareEnforced[i]);
+
+        vector_destroy(&kc->softwareEnforced);
+    }
+
+    if (kc->hardwareEnforced != NULL) {
+        for (u32 i = 0; i < vector_size(kc->hardwareEnforced); i++)
+            km_destroy_key_parameter(&kc->hardwareEnforced[i]);
+
+        vector_destroy(&kc->hardwareEnforced);
+    }
+}
+
+/**
+ * HardwareAuthToken is used to prove successful user authentication, to unlock the use of a key.
+ *
+ * HardwareAuthTokens are produced by other secure environment applications, notably GateKeeper and
+ * Fingerprint, in response to successful user authentication events.  These tokens are passed to
+ * begin(), update(), and finish() to prove that authentication occurred.  See those methods for
+ * more details.  It is up to the caller to determine which of the generated auth tokens is
+ * appropriate for a given key operation.
+ */
+struct KM_HardwareAuthToken {
+    /**
+     * challenge is a value that's used to enable authentication tokens to authorize specific
+     * events.  The primary use case for challenge is to authorize an IKeymasterDevice cryptographic
+     * operation, for keys that require authentication per operation. See begin() for details.
+     */
+    uint64_t challenge;
+    /**
+     *  userId is the a "secure" user ID.  It is not related to any Android user ID or UID, but is
+     *  created in the Gatekeeper application in the secure environment.
+     */
+    uint64_t userId;
+    /**
+     *  authenticatorId is the a "secure" user ID.  It is not related to any Android user ID or UID,
+     *  but is created in an authentication application in the secure environment, such as the
+     *  Fingerprint application.
+     */
+    uint64_t authenticatorId;
+    /**
+     * authenticatorType describes the type of authentication that took place, e.g. password or
+     * fingerprint.
+     */
+    enum KM_HardwareAuthenticatorType authenticatorType;
+    /**
+     * timestamp indicates when the user authentication took place, in milliseconds since some
+     * starting point (generally the most recent device boot) which all of the applications within
+     * one secure environment must agree upon.  This timestamp is used to determine whether or not
+     * the authentication occurred recently enough to unlock a key (see Tag::AUTH_TIMEOUT).
+     */
+    uint64_t timestamp;
+    /**
+     * MACs are computed with a backward-compatible method, used by Keymaster 3.0, Gatekeeper 1.0
+     * and Fingerprint 1.0, as well as pre-treble HALs.
+     *
+     * The MAC is Constants::AUTH_TOKEN_MAC_LENGTH bytes in length and is computed as follows:
+     *
+     *     HMAC_SHA256(
+     *         H, 0 || challenge || user_id || authenticator_id || authenticator_type || timestamp)
+     *
+     * where ``||'' represents concatenation, the leading zero is a single byte, and all integers
+     * are represented as unsigned values, the full width of the type.  The challenge, userId and
+     * authenticatorId values are in machine order, but authenticatorType and timestamp are in
+     * network order (big-endian).  This odd construction is compatible with the hw_auth_token_t
+     * structure,
+     *
+     * Note that mac is a vec rather than an array, not because it's actually variable-length but
+     * because it could be empty.  As documented in the IKeymasterDevice::begin,
+     * IKeymasterDevice::update and IKeymasterDevice::finish doc comments, an empty mac indicates
+     * that this auth token is empty.
+     */
+    uint8_t mac[KM_AUTH_TOKEN_MAC_LENGTH];
+};
+static inline void km_destroy_hardware_auth_token(struct KM_HardwareAuthToken *auth_token)
+{
+    if (auth_token == NULL)
+        return;
+
+    auth_token->challenge = 0;
+    auth_token->userId = 0;
+    auth_token->authenticatorId = 0;
+    auth_token->authenticatorType = KM_AUTHENTICATOR_NONE;
+    auth_token->timestamp = 0;
+    memset(auth_token->mac, 0, KM_AUTH_TOKEN_MAC_LENGTH);
+}
+
+typedef uint64_t KM_OperationHandle_t;
+
+/**
+ * HmacSharingParameters holds the data used in the process of establishing a shared HMAC key
+ * between multiple Keymaster instances.  Sharing parameters are returned in this struct by
+ * getHmacSharingParameters() and send to computeSharedHmac().  See the named methods in IKeymaster
+ * for details of usage.
+ */
+struct KM_HmacSharingParameters {
+    /**
+     * Either empty or contains a persistent value that is associated with the pre-shared HMAC
+     * agreement key (see documentation of computeSharedHmac in @4.0::IKeymaster).  It is either
+     * empty or 32 bytes in length.
+     */
+    VECTOR(u8) seed;
+    /**
+     * A 32-byte value which is guaranteed to be different each time
+     * getHmacSharingParameters() is called.  Probabilistic uniqueness (i.e. random) is acceptable,
+     * though a stronger uniqueness guarantee (e.g. counter) is recommended where possible.
+     */
+    u8 nonce[32];
+};
+static inline void km_destroy_hmac_sharing_parameters(struct KM_HmacSharingParameters *params)
+{
+    if (params == NULL)
+        return;
+
+    vector_destroy(&params->seed);
+    memset(params->nonce, 0, sizeof(params->nonce));
+}
+
+/**
+ * VerificationToken enables one Keymaster instance to validate authorizations for another.  See
+ * verifyAuthorizations() in IKeymaster for details.
+ */
+struct KM_VerificationToken {
+    /**
+     * The operation handle, used to ensure freshness.
+     */
+    uint64_t challenge;
+    /**
+     * The current time of the secure environment that generates the VerificationToken.  This can be
+     * checked against auth tokens generated by the same secure environment, which avoids needing to
+     * synchronize clocks.
+     */
+    uint64_t timestamp;
+    /**
+     * A list of the parameters verified.  Empty if the only parameters verified are time-related.
+     * In that case the timestamp is the payload.
+     */
+    VECTOR(struct KM_KeyParameter) parametersVerified;
+    /**
+     * SecurityLevel of the secure environment that generated the token.
+     */
+    enum KM_SecurityLevel securityLevel;
+    /**
+     * 32-byte HMAC-SHA256 of the above values, computed as:
+     *
+     *    HMAC(H,
+     *         "Auth Verification" || challenge || timestamp || securityLevel || parametersVerified)
+     *
+     * where:
+     *
+     *   ``HMAC'' is the shared HMAC key (see computeSharedHmac() in IKeymaster).
+     *
+     *   ``||'' represents concatenation
+     *
+     * The representation of challenge and timestamp is as 64-bit unsigned integers in big-endian
+     * order.  securityLevel is represented as a 32-bit unsigned integer in big-endian order.
+     *
+     * If parametersVerified is non-empty, the representation of parametersVerified is an ASN.1 DER
+     * encoded representation of the values.  The ASN.1 schema used is the AuthorizationList schema
+     * from the Keystore attestation documentation.  If parametersVerified is empty, it is simply
+     * omitted from the HMAC computation.
+     */
+    u8 mac[KM_AUTH_TOKEN_MAC_LENGTH];
+};
+static inline void km_destroy_verification_token(struct KM_VerificationToken *vt)
+{
+    if (vt == NULL)
+        return;
+
+    vt->challenge = 0;
+    vt->timestamp = 0;
+    vector_destroy(&vt->parametersVerified);
+    vt->securityLevel = KM_SECURITY_LEVEL_SOFTWARE;
+    memset(vt->mac, 0, KM_AUTH_TOKEN_MAC_LENGTH);
+}
 
 /* The C struct representation of the `RootOfTrust` ASN.1 sequence.
  * Part of the `AuthorizationList` struct,

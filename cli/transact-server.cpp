@@ -7,7 +7,6 @@
 #include <libsuscertmod/keymaster-types.h>
 #include <libgenericutil/cert-types.h>
 #include <android/hardware/keymaster/4.0/types.h>
-#include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
 #include <hidl/HidlSupport.h>
 #include <cstddef>
 #include <cstring>
