@@ -75,24 +75,146 @@ int parse_km_tag_params(const char *arg, hidl_vec<KeyParameter>& out)
     return 0;
 }
 
+km_default::km_default(Tag t, Algorithm a) {
+    KeyParameter kp;
+    kp.tag = t;
+    kp.f.algorithm = a;
+    this->val = { kp };
+}
+km_default::km_default(Tag t, std::vector<BlockMode> const& bm) {
+    for (BlockMode b : bm) {
+        KeyParameter kp;
+    kp.tag = t;
+        kp.f.blockMode = b;
+        this->val.push_back(kp);
+    }
+}
+km_default::km_default(Tag t, std::vector<PaddingMode> const& pm) {
+    for (PaddingMode p : pm) {
+        KeyParameter kp;
+    kp.tag = t;
+        kp.f.paddingMode = p;
+        this->val.push_back(kp);
+    }
+}
+km_default::km_default(Tag t, std::vector<Digest> const& ds) {
+    for (Digest d : ds) {
+        KeyParameter kp;
+    kp.tag = t;
+        kp.f.digest = d;
+        this->val.push_back(kp);
+    }
+}
+km_default::km_default(Tag t, EcCurve e) {
+    KeyParameter kp;
+    kp.tag = t;
+    kp.f.ecCurve = e;
+    this->val = { kp };
+}
+km_default::km_default(Tag t, KeyOrigin o) {
+    KeyParameter kp;
+    kp.tag = t;
+    kp.f.origin = o;
+    this->val = { kp };
+}
+km_default::km_default(Tag t, KeyBlobUsageRequirements ureq) {
+    KeyParameter kp;
+    kp.tag = t;
+    kp.f.keyBlobUsageRequirements = ureq;
+    this->val = { kp };
+}
+km_default::km_default(Tag t, std::vector<KeyPurpose> const& ps) {
+    for (KeyPurpose p : ps) {
+        KeyParameter kp;
+    kp.tag = t;
+        kp.f.purpose = p;
+        this->val.push_back(kp);
+    }
+}
+km_default::km_default(Tag t, std::vector<KeyDerivationFunction> const& kdfs) {
+    for (KeyDerivationFunction kdf : kdfs) {
+        KeyParameter kp;
+    kp.tag = t;
+        kp.f.keyDerivationFunction = kdf;
+        this->val.push_back(kp);
+    }
+}
+km_default::km_default(Tag t, HardwareAuthenticatorType h) {
+    KeyParameter kp;
+    kp.tag = t;
+    kp.f.hardwareAuthenticatorType = h;
+    this->val = { kp };
+}
+km_default::km_default(Tag t, SecurityLevel s) {
+    KeyParameter kp;
+    kp.tag = t;
+    kp.f.integer = static_cast<uint32_t>(s);
+    this->val = { kp };
+}
+km_default::km_default(Tag t, bool b) {
+    KeyParameter kp;
+    kp.tag = t;
+    kp.f.boolValue = b;
+    this->val = { kp };
+}
+km_default::km_default(Tag t, uint32_t i) {
+    KeyParameter kp;
+    kp.tag = t;
+    kp.f.integer = i;
+    this->val = { kp };
+}
+km_default::km_default(Tag t, int i) {
+    KeyParameter kp;
+    kp.tag = t;
+    kp.f.integer = i;
+    this->val = { kp };
+}
+km_default::km_default(Tag t, long l) {
+    KeyParameter kp;
+    kp.tag = t;
+    kp.f.longInteger = l;
+    this->val = { kp };
+}
+km_default::km_default(Tag t, uint64_t l) {
+    KeyParameter kp;
+    kp.tag = t;
+    kp.f.longInteger = l;
+    this->val = { kp };
+}
+km_default::km_default(Tag t, std::vector<uint8_t> b) {
+    KeyParameter kp;
+    kp.tag = t;
+    kp.blob = hidl_vec<uint8_t>(b);
+    this->val = { kp };
+}
+
 void init_default_params(
-    std::unordered_map<Tag, struct defaults_with_flags>& defaults,
-    hidl_vec<KeyParameter>& params
+    ::android::hardware::hidl_vec<::android::hardware::keymaster::V4_0::KeyParameter>& params,
+    std::vector<struct km_default> defaults
 )
 {
+    std::unordered_map<Tag, km_default> map;
+    for (km_default d : defaults) {
+        if (d.val.size() == 0)
+            continue;
+        Tag t = d.val[0].tag;
+
+        map.insert(std::pair<Tag, km_default>(t, d));
+    }
+
     for (uint32_t i = 0; i < params.size(); i ++) {
         KeyParameter const& curr = params[i];
 
-        auto it = defaults.find(curr.tag);
-        if (it != defaults.end())
+        auto it = map.find(curr.tag);
+        if (it != map.end())
             it->second.found = true;
     }
 
     /* Populate the defaults values that weren't already found in `params` */
-    for (auto const& kv : defaults) {
+    for (auto const& kv : map) {
         Tag key = kv.first;
         bool param_found = kv.second.found;
-        std::vector<uint32_t> const& vals = kv.second.vals;
+        std::vector<KeyParameter> const& vals = kv.second.val;
 
         if (!param_found) {
             const uint32_t old_base = params.size();
@@ -100,7 +222,8 @@ void init_default_params(
 
             for (uint32_t i = 0; i < vals.size(); i++) {
                 params[old_base + i].tag = key;
-                params[old_base + i].f.integer = vals[i];
+                memcpy(&params[old_base + i].f, &vals[i].f, sizeof(KeyParameter::IntegerParams));
+                params[old_base + i].blob = std::move(vals[i].blob);
             }
         }
     }

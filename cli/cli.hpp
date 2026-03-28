@@ -133,19 +133,39 @@ int parse_km_tag_params(
         ::android::hardware::hidl_vec<::android::hardware::keymaster::V4_0::KeyParameter>& out
 );
 
-template <typename E>
-constexpr uint32_t to_u32(E e) noexcept {
-    return static_cast<uint32_t>(e);
-}
+struct km_default {
+public:
+    km_default(Tag, Algorithm);
+    km_default(Tag, std::vector<BlockMode> const&);
+    km_default(Tag, std::vector<PaddingMode> const&);
+    km_default(Tag, std::vector<Digest> const&);
+    km_default(Tag, EcCurve);
+    km_default(Tag, KeyOrigin);
+    km_default(Tag, KeyBlobUsageRequirements);
+    km_default(Tag, std::vector<KeyPurpose> const&);
+    km_default(Tag, std::vector<KeyDerivationFunction> const&);
+    km_default(Tag, HardwareAuthenticatorType);
+    km_default(Tag, SecurityLevel);
+    km_default(Tag, bool);
+    km_default(Tag, uint32_t);
+    km_default(Tag, int);
+    km_default(Tag, long);
+    km_default(Tag, uint64_t);
 
-struct defaults_with_flags {
-    std::vector<uint32_t> vals;
-    bool found;
+    km_default(Tag, std::vector<uint8_t>);
+
+private:
+    std::vector<KeyParameter> val = {};
+    bool found = false;
+
+    friend void init_default_params(
+        ::android::hardware::hidl_vec<::android::hardware::keymaster::V4_0::KeyParameter>&,
+        std::vector<struct km_default>
+    );
 };
 void init_default_params(
-    std::unordered_map<::android::hardware::keymaster::V4_0::Tag, struct defaults_with_flags>
-        & defaults,
-    ::android::hardware::hidl_vec<::android::hardware::keymaster::V4_0::KeyParameter>& params
+    ::android::hardware::hidl_vec<::android::hardware::keymaster::V4_0::KeyParameter>& params,
+    std::vector<struct km_default> defaults
 );
 
 void key_params_2_auth_list(

@@ -6,7 +6,6 @@
 #include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
 #include <cstdio>
 #include <iostream>
-#include <unordered_map>
 #include <semaphore.h>
 #include <openssl/rand.h>
 
@@ -34,20 +33,15 @@ int generate_and_attest_wrapping_key(HidlSusKeymaster4& hal,
     }
     hidl_vec<KeyParameter> params(in_gen_params);
     if (is_rsa) {
-        std::unordered_map<Tag, struct defaults_with_flags> defaults = {
-            { Tag::ALGORITHM, { { to_u32(Algorithm::RSA) }, 0 } },
-            { Tag::PURPOSE, { {
-                to_u32(KeyPurpose::WRAP_KEY),
-                to_u32(KeyPurpose::ENCRYPT),
-                to_u32(KeyPurpose::DECRYPT)
-            }, 0 } },
-            { Tag::KEY_SIZE, { { 2048 }, 0 } },
-            { Tag::RSA_PUBLIC_EXPONENT, { { 65537 }, 0 } },
-            { Tag::DIGEST, { { to_u32(Digest::SHA_2_256) }, 0 } },
-            { Tag::PADDING, { { to_u32(PaddingMode::RSA_OAEP) }, 0 } },
-            { Tag::NO_AUTH_REQUIRED, { { 1 }, 0 } }
-        };
-        init_default_params(defaults, params);
+        init_default_params(params, {
+            { Tag::ALGORITHM, Algorithm::RSA },
+            { Tag::PURPOSE, { KeyPurpose::WRAP_KEY, KeyPurpose::ENCRYPT, KeyPurpose::DECRYPT } },
+            { Tag::KEY_SIZE, 2048 },
+            { Tag::RSA_PUBLIC_EXPONENT, 65537 },
+            { Tag::DIGEST, { Digest::SHA_2_256 } },
+            { Tag::PADDING, { PaddingMode::RSA_OAEP } },
+            { Tag::NO_AUTH_REQUIRED, true }
+        });
     }
 
     /* Generate the wrapping RSA-2048 key */
@@ -92,11 +86,10 @@ int import_wrapped_key(HidlSusKeymaster4& hal, hidl_vec<uint8_t> const& in_wrapp
 )
 {
     hidl_vec<KeyParameter> params(in_unwrapping_params);
-    std::unordered_map<Tag, struct defaults_with_flags> defaults = {
-        { Tag::DIGEST, { { to_u32(Digest::SHA_2_256) }, 0 } },
-        { Tag::PADDING, { { to_u32(PaddingMode::RSA_OAEP) }, 0 } }
-    };
-    init_default_params(defaults, params);
+    init_default_params(params, {
+        { Tag::DIGEST, { Digest::SHA_2_256 } },
+        { Tag::PADDING, { PaddingMode::RSA_OAEP } }
+    });
 
     KeyCharacteristics kc;
     ErrorCode e = hal.importWrappedKey(in_wrapped_data, in_wrapping_blob,

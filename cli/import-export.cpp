@@ -4,7 +4,6 @@
 #include <libgenericutil/atomic-wrapper.h>
 #include <android/hardware/keymaster/4.0/types.h>
 #include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
-#include <unordered_map>
 #include <utils/StrongPointer.h>
 #include <cstdbool>
 #include <iostream>
@@ -27,11 +26,8 @@ int import_key(HidlSusKeymaster4& hal, hidl_vec<uint8_t> const& priv_pkcs8,
         return -1;
     }
 
-    std::unordered_map<Tag, struct defaults_with_flags> defaults = {
-        { Tag::ALGORITHM, { { to_u32(alg) }, 0 } }
-    };
     hidl_vec<KeyParameter> params(in_import_params);
-    init_default_params(defaults, params);
+    init_default_params(params, { { Tag::ALGORITHM, alg } });
 
     KeyCharacteristics c;
     ErrorCode e = hal.importKey(params, KeyFormat::PKCS8, priv_pkcs8, out_keyblob, c);

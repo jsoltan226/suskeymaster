@@ -193,25 +193,23 @@ int wrap_key(hidl_vec<uint8_t> const& in_private_key, enum util::sus_key_variant
     }
 
     if (key_variant == util::SUS_KEY_RSA) {
-        std::unordered_map<Tag, struct defaults_with_flags> rsa_defaults = {
-            { Tag::ALGORITHM, { { to_u32(Algorithm::RSA) }, 0 } },
-            { Tag::DIGEST, { { to_u32(Digest::SHA_2_256) }, 0 } },
-            { Tag::PADDING, { { to_u32(PaddingMode::RSA_PKCS1_1_5_SIGN) }, 0 } },
-            { Tag::KEY_SIZE, { { 2048 }, 0 } },
-            { Tag::RSA_PUBLIC_EXPONENT, { { 65537 }, 0 } },
-            { Tag::PURPOSE, { { to_u32(KeyPurpose::SIGN), to_u32(KeyPurpose::VERIFY) }, 0 } },
-            { Tag::NO_AUTH_REQUIRED, { { 1 }, 0 } },
-        };
-        init_default_params(rsa_defaults, params);
+        init_default_params(params, {
+            { Tag::ALGORITHM, Algorithm::RSA },
+            { Tag::DIGEST, { Digest::SHA_2_256 } },
+            { Tag::PADDING, { PaddingMode::RSA_PKCS1_1_5_SIGN } },
+            { Tag::KEY_SIZE, 2048 },
+            { Tag::RSA_PUBLIC_EXPONENT, 65537 },
+            { Tag::PURPOSE, { KeyPurpose::SIGN, KeyPurpose::VERIFY } },
+            { Tag::NO_AUTH_REQUIRED, true }
+        });
     } else /* if (key_variant == SUS_KEY_EC) */ {
-        std::unordered_map<Tag, struct defaults_with_flags> ec_defaults = {
-            { Tag::ALGORITHM, { { to_u32(Algorithm::EC) }, 0 } },
-            { Tag::DIGEST, { { to_u32(Digest::SHA_2_256) }, 0 } },
-            { Tag::EC_CURVE, { { to_u32(EcCurve::P_256) }, 0 } },
-            { Tag::PURPOSE, { { to_u32(KeyPurpose::SIGN), to_u32(KeyPurpose::VERIFY) }, 0 } },
-            { Tag::NO_AUTH_REQUIRED, { { 1 }, 0 } },
-        };
-        init_default_params(ec_defaults, params);
+        init_default_params(params, {
+            { Tag::ALGORITHM, Algorithm::EC },
+            { Tag::DIGEST, { Digest::SHA_2_256 } },
+            { Tag::EC_CURVE, EcCurve::P_256 },
+            { Tag::PURPOSE, { KeyPurpose::SIGN, KeyPurpose::VERIFY } },
+            { Tag::NO_AUTH_REQUIRED, true }
+        });
     }
 
     key_params_2_auth_list(params, &auth_list);
