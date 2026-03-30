@@ -1,16 +1,17 @@
 #include "cli.hpp"
 #include "hidl-hal.hpp"
 #include <libgenericutil/util.h>
+#include <libgenericutil/km-params.hpp>
 #include <libgenericutil/atomic-wrapper.h>
 #include <android/hardware/keymaster/4.0/types.h>
 #include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
-#include <utils/StrongPointer.h>
 #include <cstdbool>
 #include <iostream>
 #include <semaphore.h>
 
 namespace suskeymaster {
 namespace cli {
+namespace hidl_ops {
 
 using namespace ::android::hardware::keymaster::V4_0;
 using ::android::hardware::hidl_vec;
@@ -27,7 +28,7 @@ int import_key(HidlSusKeymaster4& hal, hidl_vec<uint8_t> const& priv_pkcs8,
     }
 
     hidl_vec<KeyParameter> params(in_import_params);
-    init_default_params(params, { { Tag::ALGORITHM, alg } });
+    util::init_default_params(params, { { Tag::ALGORITHM, alg } });
 
     KeyCharacteristics c;
     ErrorCode e = hal.importKey(params, KeyFormat::PKCS8, priv_pkcs8, out_keyblob, c);
@@ -57,5 +58,6 @@ int export_key(HidlSusKeymaster4& hal,
     return 0;
 }
 
+} /* namespace hidl_ops */
 } /* namespace cli */
 } /* namespace suskeymaster */

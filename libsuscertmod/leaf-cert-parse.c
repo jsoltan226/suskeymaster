@@ -1,11 +1,11 @@
 #include "leaf-cert.h"
 #include "key-desc.h"
-#include "keymaster-types.h"
 #include <core/int.h>
 #include <core/log.h>
 #include <core/util.h>
 #include <core/math.h>
 #include <libgenericutil/cert-types.h>
+#include <libgenericutil/keymaster-c-types.h>
 #include <stdbool.h>
 #include <openssl/rsa.h>
 #include <openssl/evp.h>

@@ -1,9 +1,7 @@
 cc_defaults {
     name: "libgenericutil_defaults",
     cflags: ["-Wall", "-Wextra", "-pipe", "-fPIC"],
-    include_dirs: [
-        ".",
-    ],
+    include_dirs: [ "." ],
     local_include_dirs: [ "." ],
 }
 
@@ -12,7 +10,7 @@ cc_library_static {
     defaults: ["libgenericutil_defaults"],
 
     srcs: [
-        "./*.c"
+        "./*.c", "./*.cpp"
     ],
 
     cflags: [
@@ -23,6 +21,14 @@ cc_library_static {
         "-DCGD_LOG_BUILD_TAG=\"certmod\""
     ],
     export_include_dirs: [ "./include" ],
+
+    header_libs: [
+        "suskeymaster_aosp_headers"
+    ],
+
+    static_libs: [
+        "libcgdcore"
+    ],
 
     visibility: [ "//visibility:public" ],
 

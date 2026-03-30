@@ -1,10 +1,10 @@
 #define _GNU_SOURCE
 #include "key-desc.h"
-#include "keymaster-types.h"
 #include <core/int.h>
 #include <core/util.h>
 #include <core/math.h>
 #include <core/hex2ascii.h>
+#include <libgenericutil/keymaster-c-types.h>
 #include <time.h>
 #include <stdio.h>
 #include <string.h>

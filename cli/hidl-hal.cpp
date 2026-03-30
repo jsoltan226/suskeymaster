@@ -1,10 +1,10 @@
 #include "hidl-hal-c.h"
 #include "hidl-hal.hpp"
 #include <core/vector.h>
+#include <libgenericutil/keymaster-c-types.h>
 #include <hidl/HidlSupport.h>
 #include <android/hardware/keymaster/4.0/types.h>
 #include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
-#include <libsuscertmod/keymaster-types.h>
 #include <new>
 #include <cstring>
 #include <cstdlib>

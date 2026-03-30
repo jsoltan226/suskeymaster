@@ -1,8 +1,8 @@
 #ifndef SUS_CERT_MOD_PARAMS_H_
 #define SUS_CERT_MOD_PARAMS_H_
 
-#include "keymaster-types.h"
 #include <core/int.h>
+#include <libgenericutil/keymaster-c-types.h>
 
 /** Top-level Key Description modifications **/
 #define MOD_KEYDESC_ATTESTATION_SEC_LVL KM_SECURITY_LEVEL_TRUSTED_ENVIRONMENT

@@ -1,10 +1,10 @@
 #include "key-desc.h"
-#include "keymaster-types.h"
 #include <core/log.h>
 #include <core/util.h>
 #include <core/vector.h>
 #include <openssl/asn1.h>
 #include <openssl/crypto.h>
+#include <libgenericutil/keymaster-c-types.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>

@@ -1,7 +1,8 @@
 #include "cli.hpp"
 #include "hidl-hal.hpp"
-#include <libgenericutil/cert-types.h>
 #include <core/log.h>
+#include <libgenericutil/cert-types.h>
+#include <libgenericutil/km-params.hpp>
 #include <android/hardware/keymaster/4.0/types.h>
 #include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
 #include <iomanip>
@@ -270,7 +271,7 @@ static int handle_cmd_get_characteristics(const char *key_path, const char *dese
     hidl_vec<KeyParameter> params;
 
     if (deserialization_params != NULL &&
-            cli::parse_km_tag_params(deserialization_params, params))
+            util::parse_km_tag_params(deserialization_params, params))
     {
         std::cerr << "Invalid key parameters" << std::endl;
         return EXIT_FAILURE;
@@ -281,7 +282,7 @@ static int handle_cmd_get_characteristics(const char *key_path, const char *dese
         return EXIT_FAILURE;
     }
 
-    return cli::get_key_characteristics(g_hal, keyblob, params);
+    return cli::hidl_ops::get_key_characteristics(g_hal, keyblob, params);
 }
 
 static int handle_cmd_attest(const char *key_source, const char *key_spec,
@@ -303,13 +304,13 @@ static int handle_cmd_attest(const char *key_source, const char *key_spec,
 
         hidl_vec<KeyParameter> gen_params;
         if (in_key_params != NULL &&
-                cli::parse_km_tag_params(in_key_params, gen_params))
+                util::parse_km_tag_params(in_key_params, gen_params))
         {
             std::cerr << "Invalid generation key parameters" << std::endl;
             return EXIT_FAILURE;
         }
 
-        if (cli::generate_key(g_hal, alg, gen_params, keyblob)) {
+        if (cli::hidl_ops::generate_key(g_hal, alg, gen_params, keyblob)) {
             std::cerr << "Failed to generate an " << toString(alg) << " key" << std::endl;
             return EXIT_FAILURE;
         }
@@ -325,13 +326,13 @@ static int handle_cmd_attest(const char *key_source, const char *key_spec,
 
     hidl_vec<KeyParameter> attest_params;
     if (in_attest_params != NULL &&
-            cli::parse_km_tag_params(in_attest_params, attest_params))
+            util::parse_km_tag_params(in_attest_params, attest_params))
     {
         std::cerr << "Invalid attestation key parameters" << std::endl;
         return EXIT_FAILURE;
     }
 
-    return cli::attest_key(g_hal, keyblob, attest_params);
+    return cli::hidl_ops::attest_key(g_hal, keyblob, attest_params);
 }
 
 static int handle_cmd_import(const char *algorithm_name,
@@ -358,13 +359,13 @@ static int handle_cmd_import(const char *algorithm_name,
 
     hidl_vec<KeyParameter> import_params;
     if (key_params != NULL &&
-            cli::parse_km_tag_params(key_params, import_params))
+            util::parse_km_tag_params(key_params, import_params))
     {
         std::cerr << "Invalid key parameters" << std::endl;
         return EXIT_FAILURE;
     }
 
-    if (cli::import_key(g_hal, priv_key_pkcs8, alg, import_params, out_key_blob)) {
+    if (cli::hidl_ops::import_key(g_hal, priv_key_pkcs8, alg, import_params, out_key_blob)) {
         std::cerr << "Couldn't import private key!" << std::endl;
         return EXIT_FAILURE;
     }
@@ -388,7 +389,7 @@ static int handle_cmd_export(const char *in_km_keyblob_path,
         return EXIT_FAILURE;
     }
 
-    if (cli::export_key(g_hal, key_blob, out_pubkey_x509)) {
+    if (cli::hidl_ops::export_key(g_hal, key_blob, out_pubkey_x509)) {
         std::cerr << "Couldn't export keymaster key!" << std::endl;
         return EXIT_FAILURE;
     }
@@ -418,13 +419,13 @@ static int handle_cmd_sign(const char *in_km_keyblob_path, const char *in_messag
         return EXIT_FAILURE;
     }
     if (in_sign_params != NULL &&
-            cli::parse_km_tag_params(in_sign_params, params))
+            util::parse_km_tag_params(in_sign_params, params))
     {
         std::cerr << "Invalid key parameters" << std::endl;
         return EXIT_FAILURE;
     }
 
-    if (cli::sign(g_hal, message, keyblob, params, out_signature)) {
+    if (cli::hidl_ops::sign(g_hal, message, keyblob, params, out_signature)) {
         std::cerr << "Signing operation failed!" << std::endl;
         return EXIT_FAILURE;
     }
@@ -454,13 +455,13 @@ static int handle_cmd_generate(const char *algorithm_name,
 
     hidl_vec<KeyParameter> gen_params;
     if (key_params != NULL &&
-            cli::parse_km_tag_params(key_params, gen_params))
+            util::parse_km_tag_params(key_params, gen_params))
     {
         std::cerr << "Invalid key parameters" << std::endl;
         return EXIT_FAILURE;
     }
 
-    if (cli::generate_key(g_hal, alg, gen_params, keyblob)) {
+    if (cli::hidl_ops::generate_key(g_hal, alg, gen_params, keyblob)) {
         std::cerr << "Failed to generate key!" << std::endl;
         return EXIT_FAILURE;
     }
@@ -612,7 +613,7 @@ static int handle_cmd_transact_client_generate(const char *out_wrapping_keyblob_
 
     hidl_vec<KeyParameter> key_params;
     if (in_key_params != NULL &&
-            cli::parse_km_tag_params(in_key_params, key_params))
+            util::parse_km_tag_params(in_key_params, key_params))
     {
         std::cerr << "Invalid key parameters" << std::endl;
         return 1;
@@ -689,7 +690,7 @@ static int handle_cmd_transact_server_wrap(const char *in_private_pkcs8_path,
 
     hidl_vec<KeyParameter> key_params;
     if (in_key_params != NULL &&
-            cli::parse_km_tag_params(in_key_params, key_params))
+            util::parse_km_tag_params(in_key_params, key_params))
     {
         std::cerr << "Invalid key parameters" << std::endl;
         return 1;
@@ -739,7 +740,7 @@ static int handle_cmd_transact_client_import(const char *in_wrapped_data_path,
 
     hidl_vec<KeyParameter> unwrapping_params;
     if (in_unwrapping_params != NULL &&
-            cli::parse_km_tag_params(in_unwrapping_params, unwrapping_params))
+            util::parse_km_tag_params(in_unwrapping_params, unwrapping_params))
     {
         std::cerr << "Invalid key parameters" << std::endl;
         return 1;

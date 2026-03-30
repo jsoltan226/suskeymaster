@@ -60,7 +60,7 @@ struct keybox_file_header {
         u32 version;
         u32 hdr_data_size;
         u32 file_content_size;
-    } __attribute((packed)) intro;
+    } __attribute__((packed)) intro;
 
     struct keybox_v1_header_data {
 #define KEYBOX_V1_HEADER_MAGIC (u8[]){ 's', 'u', 's', 0x01 }
@@ -86,9 +86,9 @@ struct keybox_file_header {
 #define KEYBOX_V1_ISSUER_NOTAFTER_BLOB_SIZE \
     (KEYBOX_V1_ISSUER_NOTAFTER_SIZE + sizeof(struct keybox_v1_blob))
 
-        } ec, rsa;
-    } data;
-} __attribute((packed));
+        } __attribute__((packed)) ec, rsa;
+    } __attribute__((packed)) data;
+} __attribute__((packed));
 
 #ifdef __cplusplus
 } /* extern "C" */

@@ -1,7 +1,7 @@
 #include "cli.hpp"
-#include <libsuscertsign/keybox.h>
 #include <core/util.h>
 #include <core/vector.h>
+#include <libsuscertsign/keybox.h>
 #include <hidl/HidlSupport.h>
 #include <android/hardware/keymaster/4.0/types.h>
 #include <android/hardware/keymaster/4.0/IKeymasterDevice.h>

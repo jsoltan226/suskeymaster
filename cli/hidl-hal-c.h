@@ -1,7 +1,7 @@
 #ifndef SUSKEYMASTER_HIDL_HAL_C_H_
 #define SUSKEYMASTER_HIDL_HAL_C_H_
 
-#include <libsuscertmod/keymaster-types.h>
+#include <libgenericutil/keymaster-c-types.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <core/vector.h>
@@ -9,7 +9,7 @@
 #if (defined(__cplusplus))
 extern "C" {
 namespace suskeymaster {
-using namespace ::suskeymaster::certmod;
+using namespace util;
 #endif /* (defined(__cplusplus)) */
 
 struct hidl_suskeymaster4;

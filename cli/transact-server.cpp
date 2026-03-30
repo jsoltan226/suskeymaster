@@ -4,8 +4,9 @@
 #include <core/vector.h>
 #include <libsuscertmod/key-desc.h>
 #include <libsuscertmod/leaf-cert.h>
-#include <libsuscertmod/keymaster-types.h>
 #include <libgenericutil/cert-types.h>
+#include <libgenericutil/km-params.hpp>
+#include <libgenericutil/keymaster-c-types.h>
 #include <android/hardware/keymaster/4.0/types.h>
 #include <hidl/HidlSupport.h>
 #include <cstddef>
@@ -17,7 +18,6 @@
 #include <openssl/x509.h>
 #include <openssl/x509_vfy.h>
 #include <stdio.h>
-#include <unordered_map>
 
 namespace suskeymaster {
 namespace cli {
@@ -175,7 +175,7 @@ int wrap_key(hidl_vec<uint8_t> const& in_private_key, enum util::sus_key_variant
         hidl_vec<uint8_t>& out_wrapped_data, hidl_vec<uint8_t>& out_masking_key)
 {
     hidl_vec<KeyParameter> params(in_key_params);
-    struct certmod::KM_AuthorizationList_v3 auth_list = {};
+    struct util::KM_AuthorizationList_v3 auth_list = {};
 
     hidl_vec<uint8_t> iwk_key_description_der = {};
     hidl_vec<uint8_t> encrypted_transport_key;
@@ -193,7 +193,7 @@ int wrap_key(hidl_vec<uint8_t> const& in_private_key, enum util::sus_key_variant
     }
 
     if (key_variant == util::SUS_KEY_RSA) {
-        init_default_params(params, {
+        util::init_default_params(params, {
             { Tag::ALGORITHM, Algorithm::RSA },
             { Tag::DIGEST, { Digest::SHA_2_256 } },
             { Tag::PADDING, { PaddingMode::RSA_PKCS1_1_5_SIGN } },
@@ -203,7 +203,7 @@ int wrap_key(hidl_vec<uint8_t> const& in_private_key, enum util::sus_key_variant
             { Tag::NO_AUTH_REQUIRED, true }
         });
     } else /* if (key_variant == SUS_KEY_EC) */ {
-        init_default_params(params, {
+        util::init_default_params(params, {
             { Tag::ALGORITHM, Algorithm::EC },
             { Tag::DIGEST, { Digest::SHA_2_256 } },
             { Tag::EC_CURVE, EcCurve::P_256 },
@@ -212,14 +212,14 @@ int wrap_key(hidl_vec<uint8_t> const& in_private_key, enum util::sus_key_variant
         });
     }
 
-    key_params_2_auth_list(params, &auth_list);
+    util::key_params_2_auth_list(params, &auth_list);
 
     if (encode_iwk_key_description_der(iwk_key_description_der, &auth_list)) {
         std::cerr << "Failed to encode the importWrappedKey KeyDescription" << std::endl;
-        key_desc_destroy_auth_list(&auth_list);
+        certmod::key_desc_destroy_auth_list(&auth_list);
         return 1;
     }
-    key_desc_destroy_auth_list(&auth_list);
+    certmod::key_desc_destroy_auth_list(&auth_list);
 
     if (do_transport_encryption(in_wrapping_key, iwk_key_description_der, encrypted_key,
                 encrypted_transport_key, transport_iv, transport_tag, out_masking_key))
@@ -236,7 +236,7 @@ int wrap_key(hidl_vec<uint8_t> const& in_private_key, enum util::sus_key_variant
         return 1;
     }
 
-    key_desc_destroy_auth_list(&auth_list);
+    certmod::key_desc_destroy_auth_list(&auth_list);
     std::cout << "Successfully wrapped private key for transact" << std::endl;
     return 0;
 }
@@ -739,7 +739,7 @@ err:
 }
 
 static int encode_iwk_key_description_der(hidl_vec<uint8_t>& der,
-        const struct certmod::KM_AuthorizationList_v3 *auth_list)
+        const struct util::KM_AuthorizationList_v3 *auth_list)
 {
     struct certmod::key_desc_measure_ctx mctx = {};
     i32 tmp = 0;
@@ -782,7 +782,7 @@ static int encode_iwk_key_description_der(hidl_vec<uint8_t>& der,
     end = der.data() + der.size();
 
     if (!certmod::key_desc_write_sequence_header(&p, end,
-                content_bytes, static_cast<u32>(certmod::KM_TAG_INVALID)))
+                content_bytes, static_cast<u32>(util::KM_TAG_INVALID)))
     {
         std::cerr << "Failed to write the iwk key description SEQUENCE header" << std::endl;
         goto err;
@@ -864,7 +864,7 @@ static int encode_iwk_secure_key_wrapper_der(hidl_vec<uint8_t>& der,
     p = der.data();
     end = p + der.size();
 
-    if (!key_desc_write_sequence_header(&p, end, len, certmod::KM_TAG_INVALID)) {
+    if (!certmod::key_desc_write_sequence_header(&p, end, len, util::KM_TAG_INVALID)) {
         std::cerr << "Failed to write the SecureKeyWrapper SEQUENCE header" << std::endl;
         goto err;
     }

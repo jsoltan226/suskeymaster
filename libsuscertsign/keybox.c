@@ -1000,27 +1000,33 @@ static u64 populate_v1_header(struct keybox_v1_header_data *out,
 
     u64 o = 0;
 
+    /* We have to do everything indirectly like this to avoid
+     * taking the address of a potentially unaligned ((packed)) struct member */
+    u64 off, sz;
+
     out->ec.number_of_certs = vector_size(kb->ec.cert_chain);
-    add_v1_cert_chain(&o, &out->ec.cert_arr_offset, &out->ec.cert_arr_size,
-            (void *)kb->ec.cert_chain);
-    add_v1_blob(&o, &out->ec.key_offset, &out->ec.key_size,
-            kb->ec.keyblob);
-    add_v1_blob(&o, &out->ec.issuer_title_offset, &out->ec.issuer_title_size,
-            kb->ec.issuer_info.title);
-    add_v1_blob(&o, &out->ec.issuer_serial_offset, &out->ec.issuer_serial_size,
-            kb->ec.issuer_info.serial);
+    add_v1_cert_chain(&o, &off, &sz, (void *)kb->ec.cert_chain);
+    out->ec.cert_arr_offset = off; out->ec.cert_arr_size = sz;
+    add_v1_blob(&o, &off, &sz, kb->ec.keyblob);
+    out->ec.key_offset = o; out->ec.key_size = sz;
+    add_v1_blob(&o, &off, &sz, kb->ec.issuer_info.title);
+    out->ec.issuer_title_offset = off; out->ec.issuer_title_size = sz;
+    add_v1_blob(&o, &off, &sz, kb->ec.issuer_info.serial);
+    out->ec.issuer_serial_offset = off; out->ec.issuer_serial_size = sz;
     out->ec.issuer_notafter_offset = o;
     o += KEYBOX_V1_ISSUER_NOTAFTER_BLOB_SIZE;
 
     out->rsa.number_of_certs = vector_size(kb->rsa.cert_chain);
-    add_v1_cert_chain(&o, &out->rsa.cert_arr_offset, &out->rsa.cert_arr_size,
-            (void *)kb->rsa.cert_chain);
-    add_v1_blob(&o, &out->rsa.key_offset, &out->rsa.key_size,
-            kb->rsa.keyblob);
-    add_v1_blob(&o, &out->rsa.issuer_title_offset, &out->rsa.issuer_title_size,
-            kb->rsa.issuer_info.title);
-    add_v1_blob(&o, &out->rsa.issuer_serial_offset,
-            &out->rsa.issuer_serial_size, kb->rsa.issuer_info.serial);
+    add_v1_cert_chain(&o, &off, &sz, (void *)kb->rsa.cert_chain);
+    out->rsa.cert_arr_offset = off; out->rsa.cert_arr_size = sz;
+    add_v1_blob(&o, &off, &sz, kb->rsa.keyblob);
+    out->rsa.key_offset = o; out->rsa.key_size = sz;
+    add_v1_blob(&o, &off, &sz, kb->rsa.issuer_info.title);
+    out->rsa.issuer_title_offset = off; out->rsa.issuer_title_size = sz;
+    add_v1_blob(&o, &off, &sz, kb->rsa.issuer_info.serial);
+    out->rsa.issuer_serial_offset = off; out->rsa.issuer_serial_size = sz;
+    out->rsa.issuer_notafter_offset = o;
+    o += KEYBOX_V1_ISSUER_NOTAFTER_BLOB_SIZE;
     out->rsa.issuer_notafter_offset = o;
     o += KEYBOX_V1_ISSUER_NOTAFTER_BLOB_SIZE;
 

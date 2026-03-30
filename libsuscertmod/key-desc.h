@@ -1,17 +1,21 @@
 #ifndef SUS_CERT_MOD_REPACK_KEY_DESC_H_
 #define SUS_CERT_MOD_REPACK_KEY_DESC_H_
 
-#include "keymaster-types.h"
+#include <libgenericutil/keymaster-c-types.h>
 #include <openssl/asn1.h>
 
 #ifdef __cplusplus
 extern "C" {
 namespace suskeymaster {
 namespace certmod {
+using ::suskeymaster::util::KM_KeyDescription_v3;
+using ::suskeymaster::util::KM_AuthorizationList_v3;
+using ::suskeymaster::util::KM_RootOfTrust_v3;
 #endif /* __cplusplus */
 
 /* Various utilities for working with Android Attestation Extension objects,
- * represented by the KeyDescription struct (see `keymaster-types.h`).
+ * represented by the KeyDescription struct
+ * (see `libgenericutil/keymaster-c-types.h`).
  *
  * For more information, visit the official Google/AOSP documentation at
  *  https://source.android.com/docs/security/features/keystore/attestation

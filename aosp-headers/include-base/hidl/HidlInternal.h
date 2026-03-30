@@ -138,6 +138,8 @@ private:
 #define HAL_LIBRARY_PATH_ODM    HAL_LIBRARY_PATH_ODM_32BIT
 #endif
 
+#ifndef HIDL_DISABLE_INSTRUMENTATION
+
 // ----------------------------------------------------------------------
 // Class that provides Hidl instrumentation utilities.
 struct HidlInstrumentor {
@@ -225,6 +227,8 @@ static_assert(sizeof(HidlInstrumentor) == 88, "HidlInstrumentor size frozen by p
 #else
 static_assert(sizeof(HidlInstrumentor) == 44, "HidlInstrumentor size frozen by prebuilts");
 #endif
+
+#endif /* HIDL_DISABLE_INSTRUMENTATION */
 
 }  // namespace details
 }  // namespace hardware

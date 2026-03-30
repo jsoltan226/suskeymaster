@@ -1,9 +1,9 @@
-#include "../aosp-headers/include-keymaster/android/hardware/keymaster/4.0/types.h"
-#include "cli.hpp"
-#include <string>
-#include <libsuscertmod/keymaster-types.h>
+#define HIDL_DISABLE_INSTRUMENTATION
+#include "km-params.hpp"
+#include "keymaster-c-types.h"
 #include <hidl/HidlSupport.h>
-#include <openssl/evp.h>
+#include <android/hardware/keymaster/4.0/types.h>
+#include <string>
 #include <strings.h>
 #include <vector>
 #include <sstream>
@@ -13,7 +13,7 @@
 #include <unordered_map>
 
 namespace suskeymaster {
-namespace cli {
+namespace util {
 
 using ::android::hardware::hidl_vec;
 using namespace ::android::hardware::keymaster::V4_0;
@@ -188,10 +188,8 @@ km_default::km_default(Tag t, std::vector<uint8_t> b) {
     this->val = { kp };
 }
 
-void init_default_params(
-    ::android::hardware::hidl_vec<::android::hardware::keymaster::V4_0::KeyParameter>& params,
-    std::vector<struct km_default> defaults
-)
+void init_default_params(hidl_vec<KeyParameter>& params,
+    std::vector<struct km_default> const& defaults)
 {
     std::unordered_map<Tag, km_default> map;
     for (km_default d : defaults) {
@@ -838,7 +836,7 @@ static bool is_valid_intval_for_enum(Tag t, uint32_t val)
 }
 
 void key_params_2_auth_list(hidl_vec<KeyParameter> const& params,
-        struct certmod::KM_AuthorizationList_v3 *out)
+        struct KM_AuthorizationList_v3 *out)
 {
     /* holy macro */
 #define push_enum(field_, val_) do {                    \
@@ -1075,5 +1073,5 @@ void key_params_2_auth_list(hidl_vec<KeyParameter> const& params,
     }
 }
 
-} /* namespace cli */
+} /* namespace util */
 } /* namespace suskeymaster */

@@ -1,0 +1,10 @@
+cc_library_headers {
+    name: "suskeymaster_aosp_headers",
+
+    export_include_dirs: [
+        "include-base",
+        "include-keymaster",
+    ],
+
+    visibility: ["//visibility:public"],
+}

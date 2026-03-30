@@ -3,13 +3,13 @@
 #include "key-desc.h"
 #include "leaf-cert.h"
 #include "mod-params.h"
-#include "keymaster-types.h"
 #include <core/int.h>
 #include <core/log.h>
 #include <core/util.h>
 #include <core/math.h>
 #include <core/vector.h>
 #include <libgenericutil/cert-types.h>
+#include <libgenericutil/keymaster-c-types.h>
 #include <time.h>
 #include <stdlib.h>
 #include <stdarg.h>

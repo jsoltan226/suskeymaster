@@ -7,7 +7,6 @@
 #include <android/log.h>
 #include <android/hardware/keymaster/4.0/types.h>
 #include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
-#include <utils/StrongPointer.h>
 #include <ctime>
 #include <mutex>
 #include <cstring>

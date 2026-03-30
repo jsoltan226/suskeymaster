@@ -1,9 +1,9 @@
 #ifndef SUS_CERT_MOD_CERT_PARSE_H_
 #define SUS_CERT_MOD_CERT_PARSE_H_
 
-#include "keymaster-types.h"
 #include <core/int.h>
 #include <libgenericutil/cert-types.h>
+#include <libgenericutil/keymaster-c-types.h>
 #include <openssl/asn1.h>
 
 #ifdef __cplusplus

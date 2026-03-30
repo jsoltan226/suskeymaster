@@ -1,14 +1,14 @@
 #include "key-desc.h"
-#include "keymaster-types.h"
-#include "openssl/crypto.h"
 #include <core/log.h>
 #include <core/util.h>
 #include <core/math.h>
 #include <core/vector.h>
+#include <libgenericutil/keymaster-c-types.h>
 #include <stdlib.h>
 #include <string.h>
 #include <openssl/asn1.h>
 #include <openssl/asn1t.h>
+#include <openssl/crypto.h>
 #include <openssl/safestack.h>
 
 #define MODULE_NAME "key-desc"
@@ -28,8 +28,8 @@ static i32 measure_set_of_integer_64_size(struct key_desc_measure_ctx *ctx,
 static i32 measure_tagged_null_size(struct key_desc_measure_ctx *ctx_,
         void *null_, u32 tag);
 
-#define MEASURE_NULL_SIZE 2
-#define MEASURE_BOOLEAN_SIZE 3
+#define MEASURE_NULL_SIZE 2 /* Always <V_ASN1_NULL> <LENGTH 0x00> */
+#define MEASURE_BOOLEAN_SIZE 3 /* Always <V_ASN1_BOOL> <LENGTH 0x01> <VALUE> */
 
 /* These functions will re-use the values from inside `measure_ctx`,
  * but not modify them */

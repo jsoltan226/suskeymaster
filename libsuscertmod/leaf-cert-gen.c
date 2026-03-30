@@ -1,9 +1,9 @@
 #include "leaf-cert.h"
 #include "key-desc.h"
-#include "keymaster-types.h"
-#include <libgenericutil/cert-types.h>
 #include <libsuscertsign/keybox.h>
 #include <libsuscertsign/suscertsign.h>
+#include <libgenericutil/cert-types.h>
+#include <libgenericutil/keymaster-c-types.h>
 #include <core/log.h>
 #include <core/util.h>
 #include <core/vector.h>

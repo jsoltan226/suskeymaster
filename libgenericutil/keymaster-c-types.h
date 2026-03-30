@@ -3,15 +3,13 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include <openssl/asn1.h>
-#include <openssl/asn1t.h>
 #include <core/vector.h>
 #include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
 namespace suskeymaster {
-namespace certmod {
+namespace util {
 #endif /* __cplusplus */
 
 /**
@@ -2058,7 +2056,7 @@ __attribute__((unused)) static inline const char * KM_ErrorCodeToString(enum KM_
 }
 
 #ifdef __cplusplus
-} /* namespace certmod */
+} /* namespace util */
 } /* namespace suskeymaster */
 } /* extern "C" */
 #endif /* __cplusplus */
