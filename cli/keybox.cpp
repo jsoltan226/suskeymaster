@@ -1,11 +1,10 @@
+#define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
 #include <core/util.h>
 #include <core/vector.h>
-#include <libsuscertsign/keybox.h>
+#include <libsuscertmod/keybox.h>
 #include <hidl/HidlSupport.h>
 #include <android/hardware/keymaster/4.0/types.h>
-#include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
-#include <array>
 #include <ctime>
 #include <string>
 #include <iosfwd>
@@ -36,7 +35,7 @@ int make_kb(
     VECTOR(VECTOR(uint8_t)) rsa_cert_chain = NULL;
     VECTOR(uint8_t) ec_key = NULL;
     VECTOR(uint8_t) rsa_key = NULL;
-    struct certsign::keybox *new_kb = NULL;
+    struct certmod::keybox *new_kb = NULL;
     VECTOR(uint8_t) out_data = NULL;
 
     int ret = 1;
@@ -79,14 +78,14 @@ int make_kb(
         goto out;
     }
 
-    new_kb = certsign::keybox_init(ec_cert_chain, ec_key, rsa_cert_chain, rsa_key, false);
+    new_kb = certmod::keybox_init(ec_cert_chain, ec_key, rsa_cert_chain, rsa_key, false);
     if (new_kb == NULL) {
         std::cerr << "Couldn't initialize a keybox structure " <<
             "with the provided cert chains & keys" << std::endl;
         goto out;
     }
 
-    out_data = certsign::keybox_store((const struct certsign::keybox *)new_kb);
+    out_data = certmod::keybox_store((const struct certmod::keybox *)new_kb);
     if (out_data == NULL) {
         std::cerr << "Failed to serialize the new keybox" << std::endl;
         goto out;
@@ -118,9 +117,9 @@ out:
     return ret;
 }
 
-const std::array<std::pair<enum util::sus_key_variant, const char *>, 2> algs({
-        std::pair(util::SUS_KEY_EC, "ec"),
-        std::pair(util::SUS_KEY_RSA, "rsa")
+const std::array<std::pair<enum certmod::sus_key_variant, const char *>, 2> algs({
+        std::pair(certmod::SUS_KEY_EC, "ec"),
+        std::pair(certmod::SUS_KEY_RSA, "rsa")
 });
 int dump_kb(
     std::string const& keybox_path,
@@ -129,7 +128,7 @@ int dump_kb(
 )
 {
     VECTOR(u8) keybox_data = NULL;
-    struct certsign::keybox *kb = NULL;
+    struct certmod::keybox *kb = NULL;
     char path_buf[128] = { 0 };
     VECTOR(char) tmp_str = NULL;
     int ret = EXIT_FAILURE;
@@ -140,7 +139,7 @@ int dump_kb(
         goto fail;
     }
 
-    kb = certsign::keybox_load(keybox_data);
+    kb = certmod::keybox_load(keybox_data);
     if (kb == NULL) {
         std::cerr << "Failed to deserialize the keybox file" << std::endl;
         goto fail;
@@ -150,7 +149,7 @@ int dump_kb(
         VECTOR(u8 const) tmp_blob = NULL;
         VECTOR(VECTOR(u8 const) const) tmp_cert_chain = NULL;
 
-        const enum util::sus_key_variant variant = a.first;
+        const enum certmod::sus_key_variant variant = a.first;
         const char *name = a.second;
 
         tmp_cert_chain = keybox_get_cert_chain(kb, variant);
@@ -297,7 +296,11 @@ static int write_file(std::string const& path, VECTOR(uint8_t const) data)
 static std::string utc_to_string(std::time_t ts)
 {
     std::tm tm{};
+#ifdef _WIN32
+    gmtime_s(&tm, &ts);
+#else
     gmtime_r(&ts, &tm);
+#endif
     char buf[64];
 
     strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S UTC", &tm);

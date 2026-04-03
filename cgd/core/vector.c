@@ -92,12 +92,12 @@ void * vector_insert_prepare__(void **v_p, u32 at)
     return *v_p;
 }
 
-bool vector_empty(void *v)
+bool vector_empty(const void *v)
 {
     return v == NULL ? true : get_metadata_ptr(v)->n_items == 0;
 }
 
-u32 vector_capacity(void *v)
+u32 vector_capacity(const void *v)
 {
     return v == NULL ? 0 : get_metadata_ptr(v)->capacity;
 }
@@ -163,7 +163,7 @@ void vector_resize__(void **v_p, u32 new_size)
     meta->n_items = new_size;
 }
 
-void * vector_clone(void *v)
+void * vector_clone(const void *v)
 {
     u_check_params(v != NULL);
 

@@ -9,6 +9,8 @@ cc_defaults {
 
 cc_library_static {
     name: "libsuscertmod",
+    host_supported: true,
+    compile_multilib: "64",
     defaults: ["suscertmod_defaults"],
 
     srcs: [
@@ -23,10 +25,9 @@ cc_library_static {
     export_include_dirs: [ "include" ],
 
     static_libs: [
-        "libsuscertsign",
-        "libgenericutil",
         "libcgdcore",
-        "libcrypto_sus_prebuilt",
+        "libsuskmhal",
+        "libbuiltinkeybox"
     ],
 
     shared_libs: [
@@ -37,17 +38,21 @@ cc_library_static {
     visibility: [ "//visibility:public" ],
 
     target: {
+        host: {
+            enabled: true,
+            static_libs: [
+                "liblog",
+                "libcrypto"
+            ]
+        },
         android_arm64: {
             enabled: true,
+            static_libs: [
+                "libcrypto_sus_prebuilt"
+            ]
         },
-        android_arm: {
-            enabled: false,
-        },
-        android_x86_64: {
-            enabled: true,
-        },
-        android_x86: {
-            enabled: false,
-        },
+        android_arm: { enabled: false },
+        android_x86: { enabled: false },
+        android_x86_64: { enabled: false }
     },
 }

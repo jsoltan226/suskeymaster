@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#define OPENSSL_API_COMPAT 0x10002000L
 #define SUS_CERT_SIGN_KEYBOX_INTERNAL_GUARD__
 #include "keybox-internal.h"
 #undef SUS_CERT_SIGN_KEYBOX_INTERNAL_GUARD__
@@ -7,7 +8,7 @@
 #include <core/log.h>
 #include <core/util.h>
 #include <core/vector.h>
-#include <libgenericutil/cert-types.h>
+#include <libsuskmhal/keymaster-types-c.h>
 #include <time.h>
 #include <errno.h>
 #include <string.h>
@@ -18,6 +19,7 @@
 #include <openssl/x509.h>
 
 #define MODULE_NAME "keybox"
+
 
 /* `check_*` functions */
 
@@ -78,6 +80,7 @@ static bool range_contains(u64 big_start, u64 big_size,
         u64 small_start, u64 small_size);
 static bool range_valid(u64 start, u64 size);
 
+static i32 asn1_time_to_tm(const ASN1_TIME *t, struct tm *out);
 
 struct keybox * keybox_load(VECTOR(u8 const) data)
 {
@@ -843,6 +846,14 @@ static void copy_v1_notafter(u64 *out, const u8 *start)
 
 /* functions used by `keybox_init` */
 
+static time_t portable_timegm(struct tm *tm)
+{
+#ifdef _WIN32
+    return _mkgmtime(tm);  // Windows
+#else
+    return timegm(tm);     // POSIX
+#endif
+}
 static i32 extract_issuer_cert_info(VECTOR(u8 const) cert,
         struct keybox_issuer_info *out)
 {
@@ -881,10 +892,10 @@ static i32 extract_issuer_cert_info(VECTOR(u8 const) cert,
     if (not_after_field == NULL)
         goto_error("Couldn't get the notAfter value of the certificate");
 
-    if (ASN1_TIME_to_tm(not_after_field, &t) == 0)
+    if (asn1_time_to_tm(not_after_field, &t))
         goto_error("Couldn't parse the ASN1 TIME structure");
 
-    ret_notafter = timegm(&t);
+    ret_notafter = portable_timegm(&t);
     if (ret_notafter == (time_t)-1)
         goto_error("Couldn't convert the tm struct into time_t: %d (%s)",
                 errno, strerror(errno));
@@ -955,6 +966,7 @@ err:
     }
 
     if (!ok) {
+        vector_destroy(&ret_title);
         vector_destroy(&ret_serial);
         ret_notafter = 0;
         return 1;
@@ -1105,4 +1117,51 @@ static bool range_contains(u64 big_start, u64 big_size,
 static bool range_valid(u64 start, u64 size)
 {
     return size != 0 && start + size >= start;
+}
+
+static i32 asn1_time_to_tm(const ASN1_TIME *t, struct tm *out)
+{
+    const char *str = (const char *)ASN1_STRING_get0_data(t);
+    int len = ASN1_STRING_length(t);
+
+    memset(out, 0, sizeof(struct tm));
+
+    if (t->type == V_ASN1_UTCTIME) {
+        /* Format: YYMMDDHHMMSSZ (13 chars) */
+        if (len != 13 || str[12] != 'Z')
+            return -1;
+
+        out->tm_year = (str[0] - '0') * 10 + (str[1] - '0');
+        /* Per RFC 5280: years 00-49 are 2000-2049, 50-99 are 1950-1999 */
+        out->tm_year += (out->tm_year < 50) ? 100 : 0;
+        out->tm_mon  = (str[2] - '0') * 10 + (str[3] - '0') - 1;
+        out->tm_mday = (str[4] - '0') * 10 + (str[5] - '0');
+        out->tm_hour = (str[6] - '0') * 10 + (str[7] - '0');
+        out->tm_min  = (str[8] - '0') * 10 + (str[9] - '0');
+        out->tm_sec  = (str[10] - '0') * 10 + (str[11] - '0');
+    } else if (t->type == V_ASN1_GENERALIZEDTIME) {
+        /* Format: YYYYMMDDHHMMSSZ (15 chars) */
+        if (len != 15 || str[14] != 'Z')
+            return -1;
+
+        out->tm_year = (str[0] - '0') * 1000 + (str[1] - '0') * 100
+                     + (str[2] - '0') * 10   + (str[3] - '0') - 1900;
+        out->tm_mon  = (str[4] - '0') * 10 + (str[5] - '0') - 1;
+        out->tm_mday = (str[6] - '0') * 10 + (str[7] - '0');
+        out->tm_hour = (str[8] - '0') * 10 + (str[9] - '0');
+        out->tm_min  = (str[10] - '0') * 10 + (str[11] - '0');
+        out->tm_sec  = (str[12] - '0') * 10 + (str[13] - '0');
+    } else {
+        return -1;
+    }
+
+    /* Basic range checks */
+    if (out->tm_mon  < 0  || out->tm_mon  > 11 ||
+        out->tm_mday < 1  || out->tm_mday > 31 ||
+        out->tm_hour < 0  || out->tm_hour > 23 ||
+        out->tm_min  < 0  || out->tm_min  > 59 ||
+        out->tm_sec  < 0  || out->tm_sec  > 60) /* 60 allows leap seconds */
+        return -1;
+
+    return 0;
 }

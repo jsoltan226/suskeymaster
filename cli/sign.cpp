@@ -1,16 +1,14 @@
+#define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
-#include "hidl-hal.hpp"
-#include <cstdlib>
-#include <libgenericutil/util.h>
-#include <libgenericutil/km-params.hpp>
-#include <libgenericutil/atomic-wrapper.h>
-#include <libgenericutil/keymaster-c-types.h>
+#include <libsuskmhal/hidl/hidl-hal.hpp>
+#include <libsuskmhal/util/km-params.hpp>
+#include <libsuskmhal/keymaster-types-c.h>
 #include <libsuscertmod/key-desc.h>
 #include <utils/StrongPointer.h>
 #include <android/hardware/keymaster/4.0/types.h>
-#include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
 #include <ctime>
 #include <cstdio>
+#include <cstdlib>
 #include <cstdarg>
 #include <iostream>
 #include <semaphore.h>
@@ -79,15 +77,15 @@ int get_key_characteristics(HidlSusKeymaster4& hal,
         return 1;
     }
 
-    struct util::KM_KeyDescription_v3 *key_desc = certmod::key_desc_new();
+    struct kmhal::KM_KeyDescription_v3 *key_desc = certmod::key_desc_new();
     if (key_desc == NULL) {
         std::cerr << "Failed to allocate a new key description" << std::endl;
         return EXIT_FAILURE;
     }
 
-    util::key_params_2_auth_list(kc.softwareEnforced,
+    kmhal::util::key_params_2_auth_list(kc.softwareEnforced,
             &key_desc->softwareEnforced);
-    util::key_params_2_auth_list(kc.hardwareEnforced,
+    kmhal::util::key_params_2_auth_list(kc.hardwareEnforced,
             &key_desc->hardwareEnforced);
     certmod::key_desc_dump(key_desc, pr_info);
     certmod::key_desc_destroy(&key_desc);

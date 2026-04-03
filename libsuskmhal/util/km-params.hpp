@@ -1,13 +1,16 @@
 #ifndef SUSKEYMASTER_GENERIC_UTIL_KM_PARAMS_H_
 #define SUSKEYMASTER_GENERIC_UTIL_KM_PARAMS_H_
 
-#include "keymaster-c-types.h"
+#define HIDL_DISABLE_INSTRUMENTATION
+
+#include "../keymaster-types-c.h"
 #include <vector>
 #include <cstdint>
 #include <hidl/HidlSupport.h>
 #include <android/hardware/keymaster/4.0/types.h>
 
 namespace suskeymaster {
+namespace kmhal {
 namespace util {
 
 using namespace ::android::hardware::keymaster::V4_0;
@@ -52,6 +55,7 @@ void key_params_2_auth_list(hidl_vec<KeyParameter> const& params,
 
 
 } /* namespace util */
+} /* namespace kmhal */
 } /* namespace suskeymaster */
 
 #endif /* SUSKEYMASTER_GENERIC_UTIL_KM_PARAMS_H_ */

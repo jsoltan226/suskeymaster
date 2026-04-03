@@ -19,10 +19,12 @@
 
 #include <cstdint>
 #include <dirent.h>
+#include <exception>
 #include <functional>
 #include <string>
 #include <vector>
 #include <utility>
+#include <iostream>
 
 namespace android {
 namespace hardware {
@@ -42,7 +44,11 @@ struct bs_tag {};
 
 //Templated classes can use the below method
 //to avoid creating dependencies on liblog.
-void logAlwaysFatal(const char *message);
+inline void logAlwaysFatal(const char *message)
+{
+    std::cerr << message << std::endl;
+    std::terminate();
+}
 
 // Returns VNDK-SP hw path according to "ro.vndk.version"
 #if defined(__LP64__)

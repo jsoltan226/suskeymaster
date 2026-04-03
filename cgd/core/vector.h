@@ -67,7 +67,7 @@ void * vector_end(void *v);
 #define vector_back(v) (vector_at((v), vector_size((v)) - 1U))
 
 /* Check whether `v` is empty */
-bool vector_empty(void *v);
+bool vector_empty(const void *v);
 
 /* Return the size of `v` (number of elements) */
 #define vector_size(v) ((u32)(*((u32 *)(                                    \
@@ -75,7 +75,7 @@ bool vector_empty(void *v);
 )))
 
 /* Return the allocated capacity of `v` */
-u32 vector_capacity(void *v);
+u32 vector_capacity(const void *v);
 
 /* Shrink `capacity` to `size` */
 #define vector_shrink_to_fit(v_p) \
@@ -100,7 +100,7 @@ void vector_reserve__(void **v_p, u32 count);
 void vector_resize__(void **v_p, u32 new_size);
 
 #define vector_copy vector_clone
-void * vector_clone(void *v);
+void * vector_clone(const void *v);
 
 /* Destroy the vector that `v_p` points to and set `*v_p` to `NULL` */
 #define vector_destroy(v_p) vector_destroy__((void **)((void)**v_p, v_p))

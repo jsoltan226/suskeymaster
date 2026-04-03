@@ -9,7 +9,7 @@
 #ifdef __cplusplus
 extern "C" {
 namespace suskeymaster {
-namespace util {
+namespace kmhal {
 #endif /* __cplusplus */
 
 /**
@@ -1448,6 +1448,18 @@ static inline void km_destroy_key_parameter(struct KM_KeyParameter *kp)
     memset(&kp->f, 0, sizeof(union KM_IntegerParams));
     vector_destroy(&kp->blob);
 }
+static inline void km_destroy_key_parameters(VECTOR(struct KM_KeyParameter) *kps_p)
+{
+    if (kps_p == NULL || *kps_p == NULL)
+        return;
+
+    VECTOR(struct KM_KeyParameter) const kps = *kps_p;
+
+    for (u32 i = 0; i < vector_size(kps); i++)
+        km_destroy_key_parameter(&kps[i]);
+
+    vector_destroy(kps_p);
+}
 
 /**
  * The OID for Android attestation records.  For the curious, it breaks down as follows:
@@ -2056,7 +2068,7 @@ __attribute__((unused)) static inline const char * KM_ErrorCodeToString(enum KM_
 }
 
 #ifdef __cplusplus
-} /* namespace util */
+} /* namespace kmhal */
 } /* namespace suskeymaster */
 } /* extern "C" */
 #endif /* __cplusplus */

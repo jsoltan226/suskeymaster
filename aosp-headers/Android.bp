@@ -1,5 +1,7 @@
 cc_library_headers {
     name: "suskeymaster_aosp_headers",
+    host_supported: true,
+    compile_multilib: "64",
 
     export_include_dirs: [
         "include-base",
@@ -7,4 +9,8 @@ cc_library_headers {
     ],
 
     visibility: ["//visibility:public"],
+    target: {
+        android: { enabled: true },
+        host: { enabled: true }
+    }
 }

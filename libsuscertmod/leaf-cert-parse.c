@@ -1,12 +1,14 @@
+#define OPENSSL_API_COMPAT 0x10002000L
 #include "leaf-cert.h"
+#include "certmod.h"
 #include "key-desc.h"
 #include <core/int.h>
 #include <core/log.h>
 #include <core/util.h>
 #include <core/math.h>
-#include <libgenericutil/cert-types.h>
-#include <libgenericutil/keymaster-c-types.h>
+#include <libsuskmhal/keymaster-types-c.h>
 #include <stdbool.h>
+#include <openssl/ec.h>
 #include <openssl/rsa.h>
 #include <openssl/evp.h>
 #include <openssl/x509.h>
@@ -60,8 +62,8 @@ i32 leaf_cert_parse(const VECTOR(u8) cert,
     const X509_PUBKEY *subj_pubkey_x509 = NULL;
     EVP_PKEY *subj_pubkey = NULL;
     i32 expected_subj_pubkey_type = NID_undef;
+    /* const */ ASN1_OBJECT *subj_pubkey_alg = NULL;
     i32 subj_pubkey_type = NID_undef;
-    EVP_PKEY_CTX *subj_pubkey_ctx = NULL;
 
     const X509_NAME *issuer = NULL;
     const X509_NAME *subject = NULL;
@@ -71,6 +73,7 @@ i32 leaf_cert_parse(const VECTOR(u8) cert,
     const ASN1_TIME *notBefore = NULL;
     const ASN1_TIME *notAfter = NULL;
 
+    ASN1_OBJECT *km_ext_oid = NULL;
     i32 km_ext_index = 0;
     /* const */ X509_EXTENSION *km_ext = NULL;
     ASN1_OCTET_STRING *km_ext_str = NULL;
@@ -116,20 +119,20 @@ i32 leaf_cert_parse(const VECTOR(u8) cert,
         sig_nid == NID_ecdsa_with_SHA512)
     {
         sig_variant_str = "ECDSA";
-        expected_subj_pubkey_type = EVP_PKEY_EC;
+        expected_subj_pubkey_type = NID_X9_62_id_ecPublicKey;
     } else if (sig_nid == NID_sha256WithRSAEncryption ||
             sig_nid == NID_sha384WithRSAEncryption ||
             sig_nid == NID_sha512WithRSAEncryption)
     {
         sig_variant_str = "RSA-SHA256";
-        expected_subj_pubkey_type = EVP_PKEY_RSA;
+        expected_subj_pubkey_type = NID_rsaEncryption;
     } else if (sig_nid == NID_rsassaPss) {
         /* Additional sanity checks for RSA-PSS signatures */
         if (rsa_pss_sig_sanity(x509))
             goto_error("Invalid RSA-PSS signature");
 
         sig_variant_str = "RSA-PSS";
-        expected_subj_pubkey_type = EVP_PKEY_RSA;
+        expected_subj_pubkey_type = NID_rsaEncryption;
     } else {
         goto_error("Unsupported leaf cert signature algorithm: %d", sig_nid);
     }
@@ -143,41 +146,49 @@ i32 leaf_cert_parse(const VECTOR(u8) cert,
     if (subj_pubkey == NULL)
         goto_error("Couldn't decode the subject public key!");
 
-    subj_pubkey_type = EVP_PKEY_base_id(subj_pubkey);
-    if (subj_pubkey_type != expected_subj_pubkey_type)
-        goto_error("Mismatched signature algorithm and subject public key "
-                "(sig: %d, spk_type: %d)!", sig_nid, subj_pubkey_type);
+    if (X509_PUBKEY_get0_param(&subj_pubkey_alg, NULL, NULL, NULL,
+                subj_pubkey_x509) == 0)
+        goto_error("Couldn't get the subject public key algorithm object");
 
-    if (subj_pubkey_type == EVP_PKEY_EC)
+    subj_pubkey_type = OBJ_obj2nid(subj_pubkey_alg);
+    if (subj_pubkey_type == NID_undef)
+        goto_error("Couldn't get the subject public key algorithm NID");
+
+    if (subj_pubkey_type != expected_subj_pubkey_type) {
+        /* RSA-PSS certs may use either NID_rsaEncryption or NID_rsassaPss
+         * in the subjectPublicKeyInfo algorithm field */
+        if (sig_nid == NID_rsassaPss &&
+                subj_pubkey_type == NID_rsassaPss)
+            key_variant = SUS_KEY_RSA;
+
+        else
+            goto_error("Mismatched signature algorithm and subject public key "
+                    "(sig: %d, spk_type: %d)!", sig_nid, subj_pubkey_type);
+    }
+
+    if (subj_pubkey_type == NID_X9_62_id_ecPublicKey)
         key_variant = SUS_KEY_EC;
-    else if (subj_pubkey_type == EVP_PKEY_RSA)
+    else if (subj_pubkey_type == NID_rsaEncryption)
         key_variant = SUS_KEY_RSA;
     else
         s_log_fatal("Impossible outcome!");
 
     /* Additional public key sanity checks */
-    if (subj_pubkey_type == EVP_PKEY_EC &&
+    if (subj_pubkey_type == NID_X9_62_id_ecPublicKey &&
             ec_pubkey_sanity(subj_pubkey))
     {
         goto_error("Invalid ECDSA subject public key!");
     }
-    else if (subj_pubkey_type == EVP_PKEY_RSA &&
+    else if (subj_pubkey_type == NID_rsaEncryption &&
             rsa_pubkey_sanity(subj_pubkey))
     {
         goto_error("Invalid RSA subject public key!");
     }
-    else if (subj_pubkey_type != EVP_PKEY_RSA &&
-            subj_pubkey_type != EVP_PKEY_EC)
+    else if (subj_pubkey_type != NID_rsaEncryption &&
+            subj_pubkey_type != NID_X9_62_id_ecPublicKey)
     {
         s_log_fatal("Impossible outcome!");
     }
-
-    subj_pubkey_ctx = EVP_PKEY_CTX_new(subj_pubkey, NULL);
-    if (subj_pubkey_ctx == NULL)
-        goto_error("Failed to create the subject public key context!");
-
-    if (EVP_PKEY_public_check(subj_pubkey_ctx) != 1)
-        goto_error("Invalid subject public key (check failed)!");
 
     /* Check that the issuer field exists */
     issuer = X509_get_issuer_name(x509);
@@ -208,8 +219,11 @@ i32 leaf_cert_parse(const VECTOR(u8) cert,
                 "(expected \"Android Keystore Key\")", subject_cn_buf);
 
     /* Get & deserialize the Android attestation extension */
-    km_ext_index = X509_get_ext_by_OBJ(x509,
-            OBJ_txt2obj(KM_kAttestionRecordOid, 1), -1);
+    km_ext_oid = OBJ_txt2obj(KM_kAttestionRecordOid, 1);
+    if (km_ext_oid == NULL)
+        goto_error("Couldn't create the attestation extension object from OID");
+
+    km_ext_index = X509_get_ext_by_OBJ(x509, km_ext_oid, -1);
     if (km_ext_index < 0)
         goto_error("The X509 attestation extension wasn't found!");
 
@@ -268,9 +282,9 @@ err:
     else
         key_desc_destroy(&km_desc);
 
-    if (subj_pubkey_ctx != NULL) {
-        EVP_PKEY_CTX_free(subj_pubkey_ctx);
-        subj_pubkey_ctx = NULL;
+    if (km_ext_oid != NULL) {
+        ASN1_OBJECT_free(km_ext_oid);
+        km_ext_oid = NULL;
     }
 
     if (x509 != NULL) {
@@ -286,24 +300,19 @@ static i32 rsa_pss_sig_sanity(const X509 *cert)
     bool ok = false;
 
     const X509_ALGOR *alg = NULL;
-    const ASN1_BIT_STRING *sig = NULL;
     RSA_PSS_PARAMS *pss = NULL;
 
-    i32 hash_nid = 0;
-
-    i32 expected_salt_length = -1;
     i32 salt_length = 0;
+    i32 hash_nid = 0;
 
     const ASN1_OBJECT *mgf_obj = NULL;
     const void *mgf_val = NULL;
     i32 mgf_enc_type = 0;
     i32 mgf_type_nid = 0;
 
-    i32 mgf_hash_nid = 0;
-
-    X509_get0_signature(&sig, &alg, cert);
-    if (sig == NULL || alg == NULL)
-        goto_error("Couldn't get the X509 signature!");
+    X509_get0_signature(NULL, &alg, cert);
+    if (alg == NULL)
+        goto_error("Couldn't get the X509 signature algorithm!");
 
     if (alg->parameter == NULL ||
             ASN1_TYPE_get(alg->parameter) != V_ASN1_SEQUENCE)
@@ -315,10 +324,14 @@ static i32 rsa_pss_sig_sanity(const X509 *cert)
         goto_error("Couldn't retrieve the RSA-PSS parameters!");
 
     if (pss->maskGenAlgorithm == NULL || pss->hashAlgorithm == NULL
-            || pss->saltLength == NULL || pss->maskHash == NULL
-            || pss->trailerField == NULL)
+            || pss->saltLength == NULL || pss->trailerField == NULL)
         goto_error("Invalid RSA-PSS parameters!");
 
+    /* Sanity-check the salt length */
+    salt_length = ASN1_INTEGER_get(pss->saltLength);
+    if (salt_length < 20)
+        goto_error("RSA-PSS salt length too small: %d (minimum: 20)",
+                salt_length);
 
     /* Only SHA256, SHA384 and SHA512 hashes are allowed */
     hash_nid = OBJ_obj2nid(pss->hashAlgorithm->algorithm);
@@ -326,23 +339,11 @@ static i32 rsa_pss_sig_sanity(const X509 *cert)
         goto_error("Couldn't get the RSA-PSS hash algorithm!");
 
     if (hash_nid != NID_sha256 &&
-        hash_nid != NID_sha384 &&
-        hash_nid != NID_sha512)
+            hash_nid != NID_sha384 &&
+            hash_nid != NID_sha512)
     {
         goto_error("Unsupported RSA-PSS hash algorithm: %d", hash_nid);
     }
-    else if (hash_nid == NID_sha256)
-        expected_salt_length = 32;
-    else if (hash_nid == NID_sha384)
-        expected_salt_length = 48;
-    else if (hash_nid == NID_sha512)
-        expected_salt_length = 64;
-
-    /* Sanity-check the salt length */
-    salt_length = ASN1_INTEGER_get(pss->saltLength);
-    if (salt_length != expected_salt_length)
-        goto_error("Invalid RSA-PSS salt length: %d (expected: %d)",
-                salt_length, expected_salt_length);
 
     /* Only MGF-1 masks with the above hashes are allowed */
     X509_ALGOR_get0(&mgf_obj, &mgf_enc_type, &mgf_val, pss->maskGenAlgorithm);
@@ -356,12 +357,8 @@ static i32 rsa_pss_sig_sanity(const X509 *cert)
     if (mgf_type_nid != NID_mgf1)
         goto_error("Unsupported RSA-PSS mask-gen algorithm: %d", mgf_type_nid);
 
-    mgf_hash_nid = OBJ_obj2nid(pss->maskHash->algorithm);
-    if (mgf_hash_nid != hash_nid)
-        goto_error("RSA-PSS MGF-1 hash algorithm mismatch (%d - expected %d)",
-                mgf_hash_nid, hash_nid);
-
-    /* Check the trailer field */
+    /* `trailerField` must be 1, which represents the only
+     * defined trailer value 0xBC per RFC 8017 appendix C */
     if (ASN1_INTEGER_get(pss->trailerField) != 1)
         goto_error("Invalid RSA-PSS trailer field value!");
 
@@ -381,18 +378,23 @@ static i32 rsa_pubkey_sanity(const EVP_PKEY *key)
     bool ok = false;
 
     i32 bits = 0;
-    BIGNUM *modulus = NULL;
-    BIGNUM *exponent = NULL;;
+    const RSA *rsa = NULL;
+    const BIGNUM *modulus = NULL;
+    const BIGNUM *exponent = NULL;;
 
-    if (EVP_PKEY_get_bn_param(key, OSSL_PKEY_PARAM_RSA_N, &modulus) == 0)
+    rsa = EVP_PKEY_get0_RSA(key);
+    if (rsa == NULL)
+        goto_error("Couldn't get the RSA key!");
+
+    RSA_get0_key(rsa, &modulus, &exponent, NULL);
+    if (modulus == NULL)
         goto_error("Couldn't get the RSA modulus!");
+    else if (exponent == NULL)
+        goto_error("Couldn't get the RSA exponent!");
 
     bits = BN_num_bits(modulus);
     if (bits < 2048)
         goto_error("RSA modulus is too small (%d - minimal: 2048)", bits);
-
-    if (EVP_PKEY_get_bn_param(key, OSSL_PKEY_PARAM_RSA_E, &exponent) == 0)
-        goto_error("Couldn't get the RSA exponent!");
 
     if (!BN_is_odd(exponent))
         goto_error("Invalid RSA exponent (even value)!");
@@ -400,14 +402,6 @@ static i32 rsa_pubkey_sanity(const EVP_PKEY *key)
     ok = true;
 
 err:
-    if (exponent != NULL) {
-        BN_free(exponent);
-        exponent = NULL;
-    }
-    if (modulus != NULL) {
-        BN_free(modulus);
-        modulus = NULL;
-    }
 
     return ok ? 0 : 1;
 }
@@ -416,21 +410,30 @@ static i32 ec_pubkey_sanity(const EVP_PKEY *key)
 {
     bool ok = false;
 
-    char group_name[64] = { 0 };
-    u64 group_name_len = 0;
+    const EC_KEY *ec_key = NULL;
+    const EC_GROUP *ec_group = NULL;
+    i32 curve_nid = 0;
+    const char *curve_name = NULL;
 
-    if (EVP_PKEY_get_utf8_string_param(key, OSSL_PKEY_PARAM_GROUP_NAME,
-                group_name, u_arr_size(group_name), &group_name_len) == 0)
-    {
-        goto_error("Failed to get the curve name");
-    }
-    group_name[u_arr_size(group_name) - 1] = '\0';
+    ec_key = EVP_PKEY_get0_EC_KEY(key);
+    if (ec_key == NULL)
+        goto_error("Couldn't get the EC key!");
 
-    if (strncmp(group_name, "prime256v1", u_arr_size(group_name)) &&
-        strncmp(group_name, "secp384r1", u_arr_size(group_name)) &&
-        strncmp(group_name, "secp521r1", u_arr_size(group_name)))
+    ec_group = EC_KEY_get0_group(ec_key);
+    if (ec_group == NULL)
+        goto_error("Couldn't get the EC group!");
+
+    curve_nid = EC_GROUP_get_curve_name(ec_group);
+    if (curve_nid == NID_undef)
+        goto_error("Couldn't get the EC curve name!");
+
+    if (curve_nid != NID_X9_62_prime256v1 &&
+            curve_nid != NID_secp384r1 &&
+            curve_nid != NID_secp521r1)
     {
-        goto_error("Unsupported EC curve name: %s", group_name);
+        curve_name = OBJ_nid2sn(curve_nid);
+        goto_error("Unsupported EC curve: %d (%s)", curve_nid,
+                curve_name ? curve_name : "N/A");
     }
 
     ok = true;

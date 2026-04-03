@@ -1,16 +1,23 @@
+#define HIDL_DISABLE_INSTRUMENTATION
 #include "hidl-hal-c.h"
 #include "hidl-hal.hpp"
+#include "../keymaster-types-c.h"
 #include <core/vector.h>
-#include <libgenericutil/keymaster-c-types.h>
 #include <hidl/HidlSupport.h>
 #include <android/hardware/keymaster/4.0/types.h>
+#ifndef SUSKEYMASTER_BUILD_HOST
 #include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
+#endif /* SUSKEYMASTER_BUILD_HOST */
 #include <new>
 #include <cstring>
 #include <cstdlib>
 #include <iostream>
 
 namespace suskeymaster {
+namespace kmhal {
+namespace hidl {
+
+#ifndef SUSKEYMASTER_BUILD_HOST
 
 HidlSusKeymaster4::HidlSusKeymaster4(void)
 {
@@ -25,6 +32,19 @@ bool HidlSusKeymaster4::isHALOk(void)
     return this->hal->ping().isOk();
 }
 
+#else /* SUSKEYMASTER_BUILD_HOST */
+
+HidlSusKeymaster4::HidlSusKeymaster4(void)
+{
+}
+
+bool HidlSusKeymaster4::isHALOk(void)
+{
+    std::cerr << "HIDL HAL not available in host build!" << std::endl;
+    return false;
+}
+
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
 #define check_hal_ok() do {                                         \
     if (!this->isHALOk()) {                                         \
@@ -43,6 +63,7 @@ void HidlSusKeymaster4::getHardwareInfo(SecurityLevel& out_securityLevel,
         return;
     }
 
+#ifndef SUSKEYMASTER_BUILD_HOST
     this->hal->getHardwareInfo(
         [&](auto const& slvl, auto const& kmName, auto const& authorName)
         {
@@ -51,6 +72,11 @@ void HidlSusKeymaster4::getHardwareInfo(SecurityLevel& out_securityLevel,
             out_keymasterAuthorName = authorName;
         }
     );
+#else
+    (void) out_securityLevel;
+    (void) out_keymasterName;
+    (void) out_keymasterAuthorName;
+#endif /* SUSKEYMASTER_BUILD_HOST */
 }
 
 ErrorCode HidlSusKeymaster4::getHmacSharingParameters(HmacSharingParameters& out_params)
@@ -58,6 +84,7 @@ ErrorCode HidlSusKeymaster4::getHmacSharingParameters(HmacSharingParameters& out
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
 
+#ifndef SUSKEYMASTER_BUILD_HOST
     this->hal->getHmacSharingParameters(
         [&](ErrorCode error, auto const& params)
         {
@@ -66,6 +93,9 @@ ErrorCode HidlSusKeymaster4::getHmacSharingParameters(HmacSharingParameters& out
                 out_params = params;
         }
     );
+#else
+    (void) out_params;
+#endif /* SUSKEYMASTER_BUILD_HOST */
     return ret;
 }
 
@@ -75,6 +105,7 @@ ErrorCode HidlSusKeymaster4::computeSharedHmac(hidl_vec<HmacSharingParameters> c
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
 
+#ifndef SUSKEYMASTER_BUILD_HOST
     this->hal->computeSharedHmac(params,
         [&](ErrorCode error, auto const& sharingCheck)
         {
@@ -83,6 +114,10 @@ ErrorCode HidlSusKeymaster4::computeSharedHmac(hidl_vec<HmacSharingParameters> c
                 out_sharingCheck = sharingCheck;
         }
     );
+#else
+    (void) params;
+    (void) out_sharingCheck;
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
     return ret;
 }
@@ -94,6 +129,7 @@ ErrorCode HidlSusKeymaster4::verifyAuthorization(uint64_t operationHandle,
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
 
+#ifndef SUSKEYMASTER_BUILD_HOST
     this->hal->verifyAuthorization(operationHandle, parametersToVerify, authToken,
         [&](ErrorCode error, auto const& verificationToken) {
             ret = error;
@@ -101,6 +137,12 @@ ErrorCode HidlSusKeymaster4::verifyAuthorization(uint64_t operationHandle,
                 out_token = verificationToken;
         }
     );
+#else
+    (void) operationHandle;
+    (void) parametersToVerify;
+    (void) authToken;
+    (void) out_token;
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
     return ret;
 }
@@ -110,7 +152,11 @@ ErrorCode HidlSusKeymaster4::addRngEntropy(hidl_vec<uint8_t> const& data)
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
 
+#ifndef SUSKEYMASTER_BUILD_HOST
     ret = this->hal->addRngEntropy(data);
+#else
+    (void) data;
+#endif /* SUSKEYMASTER_BUILD_HOST */
     return ret;
 }
 
@@ -121,6 +167,7 @@ ErrorCode HidlSusKeymaster4::generateKey(hidl_vec<KeyParameter> const& keyParams
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
 
+#ifndef SUSKEYMASTER_BUILD_HOST
     this->hal->generateKey(keyParams,
         [&](ErrorCode error, auto const& keyBlob, auto const& keyCharacteristics) {
             ret = error;
@@ -130,6 +177,11 @@ ErrorCode HidlSusKeymaster4::generateKey(hidl_vec<KeyParameter> const& keyParams
             }
         }
     );
+#else
+    (void) keyParams;
+    (void) out_keyBlob;
+    (void) out_keyCharacteristics;
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
     return ret;
 }
@@ -142,6 +194,7 @@ ErrorCode HidlSusKeymaster4::importKey(hidl_vec<KeyParameter> const& keyParams,
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
 
+#ifndef SUSKEYMASTER_BUILD_HOST
     this->hal->importKey(keyParams, keyFormat, keyData,
         [&](ErrorCode error, auto const& keyBlob, auto const& keyCharacteristics) {
             ret = error;
@@ -151,6 +204,13 @@ ErrorCode HidlSusKeymaster4::importKey(hidl_vec<KeyParameter> const& keyParams,
             }
         }
     );
+#else
+    (void) keyParams;
+    (void) keyFormat;
+    (void) keyData;
+    (void) out_keyBlob;
+    (void) out_keyCharacteristics;
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
     return ret;
 }
@@ -167,6 +227,7 @@ ErrorCode HidlSusKeymaster4::importWrappedKey(
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
 
+#ifndef SUSKEYMASTER_BUILD_HOST
     this->hal->importWrappedKey(wrappedKeyData, wrappingKeyBlob, maskingKey,
         unwrappingParams, passwordSid, biometricSid,
         [&](ErrorCode error, auto const& keyBlob, auto const& keyCharacteristics) {
@@ -177,6 +238,16 @@ ErrorCode HidlSusKeymaster4::importWrappedKey(
             }
         }
     );
+#else
+    (void) wrappedKeyData;
+    (void) wrappingKeyBlob;
+    (void) maskingKey;
+    (void) unwrappingParams;
+    (void) passwordSid;
+    (void) biometricSid;
+    (void) out_keyBlob;
+    (void) out_keyCharacteristics;
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
     return ret;
 }
@@ -190,6 +261,7 @@ ErrorCode HidlSusKeymaster4::getKeyCharacteristics(
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
 
+#ifndef SUSKEYMASTER_BUILD_HOST
     this->hal->getKeyCharacteristics(keyBlob, applicationId, applicationData,
         [&](ErrorCode error, auto const& keyCharacteristics) {
             ret = error;
@@ -197,6 +269,12 @@ ErrorCode HidlSusKeymaster4::getKeyCharacteristics(
                 out_keyCharacteristics = keyCharacteristics;
         }
     );
+#else
+    (void) keyBlob;
+    (void) applicationId;
+    (void) applicationData;
+    (void) out_keyCharacteristics;
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
     return ret;
 }
@@ -210,6 +288,7 @@ ErrorCode HidlSusKeymaster4::exportKey(KeyFormat keyFormat,
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
 
+#ifndef SUSKEYMASTER_BUILD_HOST
     this->hal->exportKey(keyFormat, keyBlob, applicationId, applicationData,
         [&](ErrorCode error, auto const& keyMaterial) {
             ret = error;
@@ -217,6 +296,13 @@ ErrorCode HidlSusKeymaster4::exportKey(KeyFormat keyFormat,
                 out_keyMaterial = keyMaterial;
         }
     );
+#else
+    (void) keyFormat;
+    (void) keyBlob;
+    (void) applicationId;
+    (void) applicationData;
+    (void) out_keyMaterial;
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
     return ret;
 }
@@ -229,6 +315,7 @@ ErrorCode HidlSusKeymaster4::attestKey(
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
 
+#ifndef SUSKEYMASTER_BUILD_HOST
     this->hal->attestKey(keyToAttest, attestParams,
         [&](ErrorCode error, auto const& certChain) {
             ret = error;
@@ -236,6 +323,11 @@ ErrorCode HidlSusKeymaster4::attestKey(
                 out_certChain = certChain;
         }
     );
+#else
+    (void) keyToAttest;
+    (void) attestParams;
+    (void) out_certChain;
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
     return ret;
 }
@@ -248,6 +340,7 @@ ErrorCode HidlSusKeymaster4::upgradeKey(
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
 
+#ifndef SUSKEYMASTER_BUILD_HOST
     this->hal->upgradeKey(keyBlobToUpgrade, upgradeParams,
         [&](ErrorCode error, auto const& upgradedKeyBlob) {
             ret = error;
@@ -255,6 +348,11 @@ ErrorCode HidlSusKeymaster4::upgradeKey(
                 out_upgradedKeyBlob = upgradedKeyBlob;
         }
     );
+#else
+    (void) keyBlobToUpgrade;
+    (void) upgradeParams;
+    (void) out_upgradedKeyBlob;
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
     return ret;
 }
@@ -264,7 +362,11 @@ ErrorCode HidlSusKeymaster4::deleteKey(hidl_vec<uint8_t> const& keyBlob)
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
 
+#ifndef SUSKEYMASTER_BUILD_HOST
     ret = this->hal->deleteKey(keyBlob);
+#else
+    (void) keyBlob;
+#endif /* SUSKEYMASTER_BUILD_HOST */
     return ret;
 }
 
@@ -273,7 +375,9 @@ ErrorCode HidlSusKeymaster4::deleteAllKeys(void)
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
 
+#ifndef SUSKEYMASTER_BUILD_HOST
     ret = this->hal->deleteAllKeys();
+#endif /* SUSKEYMASTER_BUILD_HOST */
     return ret;
 }
 
@@ -282,7 +386,9 @@ ErrorCode HidlSusKeymaster4::destroyAttestationIds(void)
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
 
+#ifndef SUSKEYMASTER_BUILD_HOST
     ret = this->hal->destroyAttestationIds();
+#endif /* SUSKEYMASTER_BUILD_HOST */
     return ret;
 }
 
@@ -296,6 +402,7 @@ ErrorCode HidlSusKeymaster4::begin(KeyPurpose purpose,
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
 
+#ifndef SUSKEYMASTER_BUILD_HOST
     this->hal->begin(purpose, keyBlob, inParams, authToken,
         [&](ErrorCode error, auto const& outParams, uint64_t operationHandle) {
             ret = error;
@@ -305,6 +412,14 @@ ErrorCode HidlSusKeymaster4::begin(KeyPurpose purpose,
             }
         }
     );
+#else
+    (void) purpose;
+    (void) keyBlob;
+    (void) inParams;
+    (void) authToken;
+    (void) out_outParams;
+    (void) out_operationHandle;
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
     return ret;
 }
@@ -321,6 +436,7 @@ ErrorCode HidlSusKeymaster4::update(uint64_t operationHandle,
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
 
+#ifndef SUSKEYMASTER_BUILD_HOST
     this->hal->update(operationHandle, inParams, input, authToken,
         verificationToken,
         [&](ErrorCode error, uint32_t inputConsumed,
@@ -333,6 +449,16 @@ ErrorCode HidlSusKeymaster4::update(uint64_t operationHandle,
             }
         }
     );
+#else
+    (void) operationHandle;
+    (void) inParams;
+    (void) input;
+    (void) authToken;
+    (void) verificationToken;
+    (void) out_inputConsumed;
+    (void) out_outParams;
+    (void) out_output;
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
     return ret;
 }
@@ -349,6 +475,7 @@ ErrorCode HidlSusKeymaster4::finish(uint64_t operationHandle,
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
 
+#ifndef SUSKEYMASTER_BUILD_HOST
     this->hal->finish(operationHandle, inParams, input, signature,
         authToken, verificationToken,
         [&](ErrorCode error, auto const& outParams, auto const& output) {
@@ -359,6 +486,16 @@ ErrorCode HidlSusKeymaster4::finish(uint64_t operationHandle,
             }
         }
     );
+#else
+    (void) operationHandle;
+    (void) inParams;
+    (void) input;
+    (void) signature;
+    (void) authToken;
+    (void) verificationToken;
+    (void) out_outParams;
+    (void) out_output;
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
     return ret;
 }
@@ -368,10 +505,15 @@ ErrorCode HidlSusKeymaster4::abort(uint64_t operationHandle)
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
 
+#ifndef SUSKEYMASTER_BUILD_HOST
     ret = this->hal->abort(operationHandle);
+#else
+    (void) operationHandle;
+#endif /* SUSKEYMASTER_BUILD_HOST */
     return ret;
 }
 
+#undef check_hal_ok
 
 extern "C" {
 
@@ -384,6 +526,9 @@ using namespace ::android::hardware;
 
 static hidl_vec<uint8_t> to_hidl_vec(VECTOR(u8 const) v)
 {
+    if (v == NULL || vector_size(v) == 0)
+        return {};
+
     hidl_vec<uint8_t> ret;
     ret.resize(vector_size(v));
     memcpy(ret.data(), v, vector_size(v));
@@ -401,7 +546,7 @@ static hidl_vec<uint8_t> to_hidl_vec(VECTOR(u8) v)
  * We wrap it with setToExternal so no copies are made for the call duration. */
 static hidl_vec<KeyParameter> to_hidl_params(VECTOR(struct KM_KeyParameter const) params)
 {
-    if (params == NULL)
+    if (params == NULL || vector_size(params) == 0)
         return {};
 
     hidl_vec<KeyParameter> out(vector_size(params));
@@ -443,6 +588,7 @@ from_hidl_params(const hidl_vec<KeyParameter> &src)
         struct KM_KeyParameter &d = out[i];
 
         d.tag = static_cast<enum KM_Tag>(s.tag);
+        memset(&d.f, 0, sizeof(d.f));
         d.blob = nullptr;
 
         uint32_t tag_type = (uint32_t)s.tag & 0xFF000000u;
@@ -511,7 +657,7 @@ static VerificationToken make_verification_token(const struct KM_VerificationTok
  * Error code conversion
  * ---------------------------------------------------------------------- */
 
-static enum KM_ErrorCode from_hidl_error(ErrorCode e)
+static constexpr enum KM_ErrorCode from_hidl_error(ErrorCode e)
 {
     return static_cast<enum KM_ErrorCode>(e);
 }
@@ -525,7 +671,7 @@ static enum KM_ErrorCode from_hidl_error(ErrorCode e)
  * ---------------------------------------------------------------------- */
 
 struct hidl_suskeymaster4 {
-    ::suskeymaster::HidlSusKeymaster4 impl;
+    HidlSusKeymaster4 impl;
 };
 
 struct hidl_suskeymaster4 *hidl_suskeymaster4_new(void)
@@ -597,6 +743,7 @@ enum KM_ErrorCode hidl_suskeymaster4_get_hmac_sharing_parameters(struct hidl_sus
 
     if (out_params) {
         out_params->seed = from_hidl_bytes(params.seed);
+        /* both out_params->nonce & params.nonce are fixed size u8[32] arrays */
         memcpy(out_params->nonce, params.nonce.data(), 32);
     }
 
@@ -614,6 +761,7 @@ enum KM_ErrorCode hidl_suskeymaster4_compute_shared_hmac(struct hidl_suskeymaste
     hidl_vec<HmacSharingParameters> hidl_params(vector_size(params));
     for (uint32_t i = 0; i < vector_size(params); i++) {
         hidl_params[i].seed = to_hidl_vec(params[i].seed);
+        /* both hidl_params[i].nonce & params[i].nonce are fixed size u8[32] arrays */
         memcpy(hidl_params[i].nonce.data(), params[i].nonce, 32);
     }
 
@@ -974,4 +1122,6 @@ enum KM_ErrorCode hidl_suskeymaster4_abort(
 }
 
 } /* extern "C" */
+} /* namespace hidl */
+} /* namespace kmhal */
 } /* namespace suskeymaster */

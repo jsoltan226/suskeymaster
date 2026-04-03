@@ -3,13 +3,12 @@
 
 #include <core/int.h>
 #include <core/vector.h>
-#include <libgenericutil/cert-types.h>
+#include "certmod.h"
 
 #ifdef __cplusplus
 namespace suskeymaster {
-namespace certsign {
+namespace certmod {
 extern "C" {
-using ::suskeymaster::util::sus_key_variant;
 #endif /* __cplusplus */
 
 struct keybox;

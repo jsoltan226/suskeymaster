@@ -1,24 +1,22 @@
 #ifndef SUS_CERT_SIGN_H_
 #define SUS_CERT_SIGN_H_
 
+#include "certmod.h"
 #include <core/int.h>
 #include <core/vector.h>
-#include <libgenericutil/cert-types.h>
 
 #ifdef __cplusplus
 namespace suskeymaster {
-namespace certsign {
+namespace certmod {
 extern "C" {
-using ::suskeymaster::util::sus_key_variant;
 #endif /* __cplusplus */
 
-int sus_cert_sign(unsigned char *tbs_der, unsigned long tbs_der_len,
-        unsigned char **out_sig, unsigned long *out_sig_len,
+i32 sus_cert_sign(VECTOR(u8 const) tbs_der, VECTOR(u8) *out_sig,
         enum sus_key_variant variant);
 
 #ifdef __cplusplus
 } /* extern "C" */
-} /* namespace certsign */
+} /* namespace certmod */
 } /* namespace suskeymaster */
 #endif /* __cplusplus */
 

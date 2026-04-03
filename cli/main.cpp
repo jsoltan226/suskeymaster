@@ -1,15 +1,19 @@
+#define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
-#include "hidl-hal.hpp"
 #include <core/log.h>
-#include <libgenericutil/cert-types.h>
-#include <libgenericutil/km-params.hpp>
+#include <libsuscertmod/certmod.h>
+#include <libsuskmhal/hidl/hidl-hal.hpp>
+#include <libsuskmhal/util/km-params.hpp>
 #include <android/hardware/keymaster/4.0/types.h>
-#include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
 #include <iomanip>
 #include <istream>
-#include <netinet/in.h>
-#include <strings.h>
+#ifdef _WIN32
+#include <winsock2.h>
+#else
 #include <arpa/inet.h>
+#include <netinet/in.h>
+#endif /* _WIN32 */
+#include <strings.h>
 #include <cstdio>
 #include <sstream>
 #include <cerrno>
@@ -25,7 +29,7 @@ using namespace ::android::hardware::keymaster::V4_0;
 using namespace ::android::hardware;
 
 static const char *g_argv0 = NULL;
-static suskeymaster::HidlSusKeymaster4 g_hal;
+static suskeymaster::kmhal::hidl::HidlSusKeymaster4 g_hal;
 
 static void setup_cgd_log(void);
 
@@ -271,7 +275,7 @@ static int handle_cmd_get_characteristics(const char *key_path, const char *dese
     hidl_vec<KeyParameter> params;
 
     if (deserialization_params != NULL &&
-            util::parse_km_tag_params(deserialization_params, params))
+            kmhal::util::parse_km_tag_params(deserialization_params, params))
     {
         std::cerr << "Invalid key parameters" << std::endl;
         return EXIT_FAILURE;
@@ -304,7 +308,7 @@ static int handle_cmd_attest(const char *key_source, const char *key_spec,
 
         hidl_vec<KeyParameter> gen_params;
         if (in_key_params != NULL &&
-                util::parse_km_tag_params(in_key_params, gen_params))
+                kmhal::util::parse_km_tag_params(in_key_params, gen_params))
         {
             std::cerr << "Invalid generation key parameters" << std::endl;
             return EXIT_FAILURE;
@@ -326,7 +330,7 @@ static int handle_cmd_attest(const char *key_source, const char *key_spec,
 
     hidl_vec<KeyParameter> attest_params;
     if (in_attest_params != NULL &&
-            util::parse_km_tag_params(in_attest_params, attest_params))
+            kmhal::util::parse_km_tag_params(in_attest_params, attest_params))
     {
         std::cerr << "Invalid attestation key parameters" << std::endl;
         return EXIT_FAILURE;
@@ -359,7 +363,7 @@ static int handle_cmd_import(const char *algorithm_name,
 
     hidl_vec<KeyParameter> import_params;
     if (key_params != NULL &&
-            util::parse_km_tag_params(key_params, import_params))
+            kmhal::util::parse_km_tag_params(key_params, import_params))
     {
         std::cerr << "Invalid key parameters" << std::endl;
         return EXIT_FAILURE;
@@ -419,7 +423,7 @@ static int handle_cmd_sign(const char *in_km_keyblob_path, const char *in_messag
         return EXIT_FAILURE;
     }
     if (in_sign_params != NULL &&
-            util::parse_km_tag_params(in_sign_params, params))
+            kmhal::util::parse_km_tag_params(in_sign_params, params))
     {
         std::cerr << "Invalid key parameters" << std::endl;
         return EXIT_FAILURE;
@@ -455,7 +459,7 @@ static int handle_cmd_generate(const char *algorithm_name,
 
     hidl_vec<KeyParameter> gen_params;
     if (key_params != NULL &&
-            util::parse_km_tag_params(key_params, gen_params))
+            kmhal::util::parse_km_tag_params(key_params, gen_params))
     {
         std::cerr << "Invalid key parameters" << std::endl;
         return EXIT_FAILURE;
@@ -613,7 +617,7 @@ static int handle_cmd_transact_client_generate(const char *out_wrapping_keyblob_
 
     hidl_vec<KeyParameter> key_params;
     if (in_key_params != NULL &&
-            util::parse_km_tag_params(in_key_params, key_params))
+            kmhal::util::parse_km_tag_params(in_key_params, key_params))
     {
         std::cerr << "Invalid key parameters" << std::endl;
         return 1;
@@ -667,11 +671,11 @@ static int handle_cmd_transact_server_wrap(const char *in_private_pkcs8_path,
         const char *out_wrapped_data_path, const char *out_masking_key_path,
         const char *in_key_params)
 {
-    enum util::sus_key_variant variant;
+    enum certmod::sus_key_variant variant;
     if (!strcasecmp(in_alg_str, "ec"))
-        variant = util::SUS_KEY_EC;
+        variant = certmod::SUS_KEY_EC;
     else if (!strcasecmp(in_alg_str, "rsa"))
-        variant = util::SUS_KEY_RSA;
+        variant = certmod::SUS_KEY_RSA;
     else {
         std::cerr << "Invalid algorithm name: " << in_alg_str << std::endl;
         return 1;
@@ -690,7 +694,7 @@ static int handle_cmd_transact_server_wrap(const char *in_private_pkcs8_path,
 
     hidl_vec<KeyParameter> key_params;
     if (in_key_params != NULL &&
-            util::parse_km_tag_params(in_key_params, key_params))
+            kmhal::util::parse_km_tag_params(in_key_params, key_params))
     {
         std::cerr << "Invalid key parameters" << std::endl;
         return 1;
@@ -740,7 +744,7 @@ static int handle_cmd_transact_client_import(const char *in_wrapped_data_path,
 
     hidl_vec<KeyParameter> unwrapping_params;
     if (in_unwrapping_params != NULL &&
-            util::parse_km_tag_params(in_unwrapping_params, unwrapping_params))
+            kmhal::util::parse_km_tag_params(in_unwrapping_params, unwrapping_params))
     {
         std::cerr << "Invalid key parameters" << std::endl;
         return 1;
@@ -986,6 +990,13 @@ static int init_g_hal(void)
         return EXIT_FAILURE;
     }
 
+    SecurityLevel slvl;
+    hidl_string km_name;
+    hidl_string km_author_name;
+    g_hal.getHardwareInfo(slvl, km_name, km_author_name);
+    std::cout << "Using keymaster \"" << km_name.c_str()
+        << "\" (of \"" << km_author_name.c_str() << "\") " <<
+        "with SecurityLevel::" << toString(slvl) << std::endl;
     return EXIT_SUCCESS;
 }
 

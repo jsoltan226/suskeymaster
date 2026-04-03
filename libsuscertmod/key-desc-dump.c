@@ -4,7 +4,7 @@
 #include <core/util.h>
 #include <core/math.h>
 #include <core/hex2ascii.h>
-#include <libgenericutil/keymaster-c-types.h>
+#include <libsuskmhal/keymaster-types-c.h>
 #include <time.h>
 #include <stdio.h>
 #include <string.h>
@@ -811,6 +811,14 @@ static void dump_enum_arr(const char *prefix, const char *postfix,
     log_proc("%s%s", i2str, postfix);
 }
 
+static int portable_localtime(const time_t *timep, struct tm *result)
+{
+#ifdef _WIN32
+    return localtime_s(result, timep);
+#else
+    return localtime_r(timep, result) ? 0 : -1;
+#endif
+}
 static void datetime_to_str(char *buf, u32 buf_size, KM_DateTime_t dt)
 {
     struct tm t = { 0 };
@@ -820,7 +828,7 @@ static void datetime_to_str(char *buf, u32 buf_size, KM_DateTime_t dt)
     i32 ms = (i32)(dt % 1000);
     if (ms < 1000) ms += 1000;
 
-    if (localtime_r(&s, &t) == NULL) {
+    if (portable_localtime(&s, &t)) {
         (void) snprintf(buf, buf_size, "N/A");
         return;
     }

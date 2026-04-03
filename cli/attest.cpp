@@ -1,15 +1,13 @@
+#define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
-#include "hidl-hal.hpp"
 #include <core/vector.h>
 #include <libsuscertmod/key-desc.h>
 #include <libsuscertmod/leaf-cert.h>
-#include <libgenericutil/util.h>
-#include <libgenericutil/km-params.hpp>
-#include <libgenericutil/atomic-wrapper.h>
-#include <libgenericutil/keymaster-c-types.h>
-#include <android/hardware/keymaster/4.0/types.h>
-#include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
+#include <libsuskmhal/hidl/hidl-hal.hpp>
+#include <libsuskmhal/util/km-params.hpp>
+#include <libsuskmhal/keymaster-types-c.h>
 #include <hidl/HidlSupport.h>
+#include <android/hardware/keymaster/4.0/types.h>
 #include <ctime>
 #include <cstdio>
 #include <cstdlib>
@@ -32,7 +30,7 @@ int generate_key(HidlSusKeymaster4& hal, Algorithm alg,
 {
     hidl_vec<KeyParameter> params(in_key_params);
     if (alg == Algorithm::EC) {
-        util::init_default_params(params, {
+        kmhal::util::init_default_params(params, {
             { Tag::ALGORITHM, Algorithm::EC },
             { Tag::DIGEST, { Digest::SHA_2_256 } },
             { Tag::EC_CURVE, EcCurve::P_256 },
@@ -40,7 +38,7 @@ int generate_key(HidlSusKeymaster4& hal, Algorithm alg,
             { Tag::NO_AUTH_REQUIRED, true }
         });
     } else if (alg == Algorithm::RSA) {
-        util::init_default_params(params, {
+        kmhal::util::init_default_params(params, {
             { Tag::ALGORITHM, Algorithm::RSA },
             { Tag::DIGEST, { Digest::SHA_2_256 } },
             /* Only 2048-bit keys are guaranteed to be supported
@@ -77,7 +75,7 @@ int attest_key(HidlSusKeymaster4& hal, const hidl_vec<uint8_t>& key,
     static const size_t ch_len = sizeof(ch) - 1;
     static const uint8_t app_id[] = "suskeymaster TEST ATTESTATION APPLICATION ID";
     static const size_t app_id_len = sizeof(app_id) - 1;
-    util::init_default_params(params, {
+    kmhal::util::init_default_params(params, {
         { Tag::ATTESTATION_CHALLENGE, hidl_vec<uint8_t>(ch, ch + ch_len) },
         { Tag::ATTESTATION_APPLICATION_ID, hidl_vec<uint8_t>(app_id, app_id + app_id_len) }
     });

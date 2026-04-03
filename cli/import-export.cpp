@@ -1,8 +1,8 @@
+#define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
-#include "hidl-hal.hpp"
-#include <libgenericutil/util.h>
-#include <libgenericutil/km-params.hpp>
-#include <libgenericutil/atomic-wrapper.h>
+#include <libsuskmhal/hidl/hidl-hal.hpp>
+#include <libsuskmhal/util/km-params.hpp>
+#include <libsuskmhal/keymaster-types-c.h>
 #include <android/hardware/keymaster/4.0/types.h>
 #include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
 #include <cstdbool>
@@ -28,7 +28,7 @@ int import_key(HidlSusKeymaster4& hal, hidl_vec<uint8_t> const& priv_pkcs8,
     }
 
     hidl_vec<KeyParameter> params(in_import_params);
-    util::init_default_params(params, { { Tag::ALGORITHM, alg } });
+    kmhal::util::init_default_params(params, { { Tag::ALGORITHM, alg } });
 
     KeyCharacteristics c;
     ErrorCode e = hal.importKey(params, KeyFormat::PKCS8, priv_pkcs8, out_keyblob, c);

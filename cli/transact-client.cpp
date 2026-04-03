@@ -1,10 +1,10 @@
+#define HIDL_DISABLE_INSTRUMENTATION
+#define OPENSSL_API_COMPAT 0x10002000L
 #include "cli.hpp"
-#include "hidl-hal.hpp"
-#include <libgenericutil/util.h>
-#include <libgenericutil/km-params.hpp>
-#include <libgenericutil/atomic-wrapper.h>
+#include <libsuskmhal/hidl/hidl-hal.hpp>
+#include <libsuskmhal/util/km-params.hpp>
+#include <libsuskmhal/keymaster-types-c.h>
 #include <android/hardware/keymaster/4.0/types.h>
-#include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
 #include <cstdio>
 #include <iostream>
 #include <semaphore.h>
@@ -34,7 +34,7 @@ int generate_and_attest_wrapping_key(HidlSusKeymaster4& hal,
     }
     hidl_vec<KeyParameter> params(in_gen_params);
     if (is_rsa) {
-        util::init_default_params(params, {
+        kmhal::util::init_default_params(params, {
             { Tag::ALGORITHM, Algorithm::RSA },
             { Tag::PURPOSE, { KeyPurpose::WRAP_KEY, KeyPurpose::ENCRYPT, KeyPurpose::DECRYPT } },
             { Tag::KEY_SIZE, 2048 },
@@ -87,7 +87,7 @@ int import_wrapped_key(HidlSusKeymaster4& hal, hidl_vec<uint8_t> const& in_wrapp
 )
 {
     hidl_vec<KeyParameter> params(in_unwrapping_params);
-    util::init_default_params(params, {
+    kmhal::util::init_default_params(params, {
         { Tag::DIGEST, { Digest::SHA_2_256 } },
         { Tag::PADDING, { PaddingMode::RSA_OAEP } }
     });

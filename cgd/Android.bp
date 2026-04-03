@@ -9,6 +9,8 @@ cc_defaults {
 
 cc_library_static {
     name: "libcgdcore",
+    host_supported: true,
+    compile_multilib: "64",
     defaults: ["cgd_defaults"],
 
     srcs: [
@@ -27,17 +29,13 @@ cc_library_static {
     visibility: [ "//visibility:public" ],
 
     target: {
-        android_arm64: {
+        host: {
             enabled: true,
+            static_libs: [ "liblog" ],
         },
-        android_arm: {
-            enabled: false,
-        },
-        android_x86_64: {
-            enabled: true,
-        },
-        android_x86: {
-            enabled: false,
-        },
+        android_arm64: { enabled: true },
+        android_arm: { enabled: false },
+        android_x86: { enabled: false },
+        android_x86_64: { enabled: false }
     },
 }

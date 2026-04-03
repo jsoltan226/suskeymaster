@@ -1,9 +1,10 @@
+#define OPENSSL_API_COMPAT 0x10002000L
 #include "leaf-cert.h"
+#include "keybox.h"
+#include "certmod.h"
 #include "key-desc.h"
-#include <libsuscertsign/keybox.h>
-#include <libsuscertsign/suscertsign.h>
-#include <libgenericutil/cert-types.h>
-#include <libgenericutil/keymaster-c-types.h>
+#include "certsign.h"
+#include <libsuskmhal/keymaster-types-c.h>
 #include <core/log.h>
 #include <core/util.h>
 #include <core/vector.h>
@@ -38,16 +39,13 @@ static i32 set_attestation_extension(X509 *x509,
 
 static i32 construct_tbs_der(const struct KM_KeyDescription_v3 *km_desc,
         enum sus_key_variant signing_key_variant, EVP_PKEY *subj_pubkey,
-        u8 **out_der, u32 *out_der_len);
+        VECTOR(u8) *out_der);
 
-static i32 set_x509_signature_algorithm(u8 **out_der, u32 *out_der_len,
+static i32 set_x509_signature_algorithm(VECTOR(u8) *out_der,
         enum sus_key_variant signing_key_variant);
 
-static VECTOR(u8) construct_x509_der(
-        const unsigned char *tbs_der, unsigned long tbs_der_len,
-        const unsigned char *sig_alg, unsigned long sig_alg_len,
-        unsigned char *sig, unsigned long sig_len
-);
+static VECTOR(u8) construct_x509_der(const VECTOR(u8) tbs,
+        const VECTOR(u8) sig_alg, const VECTOR(u8) sig);
 
 static unsigned long get_bitstr_tl_length(unsigned long content_len);
 static void encode_der_sig_bitstr_tl(unsigned char **p, unsigned long content_len);
@@ -72,56 +70,42 @@ i32 leaf_cert_gen(VECTOR(u8) *out,
 
 
     VECTOR(u8) ret = NULL;
-    u8 *tbs_der = NULL;
-    u32 tbs_der_len = 0;
 
-    u8 *sig_alg_der = NULL;
-    u32 sig_alg_der_len = 0;
-
-    u8 *sig = NULL;
-    unsigned long sig_len = 0;
+    VECTOR(u8) tbs = NULL;
+    VECTOR(u8) sig_alg = NULL;
+    VECTOR(u8) sig = NULL;
 
     i32 r = 1;
 
     /* Encode the certificate contents (To-Be-Signed AKA TBS) */
-    if (construct_tbs_der(km_desc, signing_key_variant, subj_pubkey,
-                &tbs_der, &tbs_der_len))
+    if (construct_tbs_der(km_desc, signing_key_variant, subj_pubkey, &tbs))
         goto_error("Couldn't generate the TBS certificate");
 
     /* Create the signature algorithm sequence */
-    if (set_x509_signature_algorithm(&sig_alg_der, &sig_alg_der_len,
-                signing_key_variant))
+    if (set_x509_signature_algorithm(&sig_alg, signing_key_variant))
         goto_error("Couldn't set the X.509 signatureAlgorithm");
 
     /* Generate the signature (over TBS) */
-    if (sus_cert_sign(tbs_der, tbs_der_len,
-                &sig, &sig_len, signing_key_variant))
+    if (sus_cert_sign(tbs, &sig, signing_key_variant))
         goto_error("Couldn't sign the X509 cert");
 
     /* Finally, glue everything together */
-    ret = construct_x509_der(tbs_der, tbs_der_len,
-            sig_alg_der, sig_alg_der_len, sig, sig_len);
+    ret = construct_x509_der(tbs, sig_alg, sig);
     if (ret == NULL)
         goto_error("Couldn't construct the final X509 certificate sequence");
 
     r = 0;
-    if (out != NULL) *out = ret;
+    if (out != NULL)
+        *out = ret;
+    else
+        vector_destroy(&ret);
 
 err:
-    /* `ret` need not be freed under any circumstances */
+    /* `ret` need not be freed here under any circumstances */
 
-    if (sig != NULL) {
-        free(sig);
-        sig = NULL;
-    }
-    if (sig_alg_der != NULL) {
-        OPENSSL_free(sig_alg_der);
-        sig_alg_der = NULL;
-    }
-    if (tbs_der != NULL) {
-        OPENSSL_free(tbs_der);
-        tbs_der = NULL;
-    }
+    vector_destroy(&sig);
+    vector_destroy(&sig_alg);
+    vector_destroy(&tbs);
 
     return r;
 }
@@ -433,13 +417,14 @@ err:
 
 static i32 construct_tbs_der(const struct KM_KeyDescription_v3 *km_desc,
         enum sus_key_variant signing_key_variant, EVP_PKEY *subj_pubkey,
-        u8 **out_der, u32 *out_der_len)
+        VECTOR(u8) *out_der)
 {
     X509 *x509 = NULL;
     i64 issuer_not_after = 0;
     unsigned char *der = NULL;
     int der_len = 0;
     i32 ret = 1;
+    VECTOR(u8) der_ret = NULL;
 
     x509 = X509_new();
     if (x509 == NULL)
@@ -490,11 +475,21 @@ static i32 construct_tbs_der(const struct KM_KeyDescription_v3 *km_desc,
     if (der_len <= 0)
         goto_error("Couldn't serialize the X509 To-Be-Signed certificate");
 
-    *out_der = der;
-    *out_der_len = (u32)der_len;
-    ret = 0;
+    if (out_der != NULL) {
+        der_ret = vector_new(u8);
+        vector_resize(&der_ret, der_len);
+        memcpy(der_ret, der, der_len);
+
+        *out_der = der_ret;
+    }
+
+    OPENSSL_free(der);
+    der = NULL;
 
 err:
+    /* both `der` and `der_ret` are guaranteed to be uninitialized
+     * in all error cases */
+
     if (x509 != NULL) {
         X509_free(x509);
         x509 = NULL;
@@ -502,12 +497,12 @@ err:
     return ret;
 }
 
-static i32 set_x509_signature_algorithm(u8 **out_der, u32 *out_der_len,
+static i32 set_x509_signature_algorithm(VECTOR(u8) *out_der,
         enum sus_key_variant signing_key_variant)
 {
     X509_ALGOR *sig_alg = NULL;
     unsigned char *sig_alg_der = NULL;
-    long sig_alg_len = 0;
+    long sig_alg_der_len = 0;
     i32 ret = 1;
 
     const int sig_nid = signing_key_variant == SUS_KEY_RSA ?
@@ -520,15 +515,23 @@ static i32 set_x509_signature_algorithm(u8 **out_der, u32 *out_der_len,
     if (X509_ALGOR_set0(sig_alg, OBJ_nid2obj(sig_nid), V_ASN1_NULL, NULL) == 0)
         goto_error("Couldn't set the outer signature algorithm");
 
-    sig_alg_len = i2d_X509_ALGOR(sig_alg, &sig_alg_der);
-    if (sig_alg_len <= 0)
+    sig_alg_der_len = i2d_X509_ALGOR(sig_alg, &sig_alg_der);
+    if (sig_alg_der_len <= 0)
         goto_error("Couldn't serialize the X509 signature algorithm sequence");
 
-    *out_der = sig_alg_der;
-    *out_der_len = (u32)sig_alg_len;
+    *out_der = vector_new(u8);
+    vector_resize(out_der, sig_alg_der_len);
+    memcpy(*out_der, sig_alg_der, sig_alg_der_len);
+
+    OPENSSL_free(sig_alg_der);
+    sig_alg_der = NULL;
+
     ret = 0;
 
 err:
+    /* `out_der` and `sig_alg_der` are both
+     * guaranteed to be unused in all error cases */
+
     if (sig_alg != NULL) {
         X509_ALGOR_free(sig_alg);
         sig_alg = NULL;
@@ -537,11 +540,8 @@ err:
     return ret;
 }
 
-static VECTOR(u8) construct_x509_der(
-        const unsigned char *tbs_der, unsigned long tbs_der_len,
-        const unsigned char *sig_alg, unsigned long sig_alg_len,
-        unsigned char *sig, unsigned long sig_len
-)
+static VECTOR(u8) construct_x509_der(const VECTOR(u8) tbs,
+        const VECTOR(u8) sig_alg, const VECTOR(u8) sig)
 {
     /* See:
      * https://source.android.com/docs/security/features/keystore/attestation#certificate-sequence
@@ -551,6 +551,10 @@ static VECTOR(u8) construct_x509_der(
     VECTOR(u8) ret = NULL;
     unsigned char *p = NULL;
 
+    const u32 tbs_len = vector_size(tbs);
+    const u32 sig_alg_len = vector_size(sig_alg);
+    const u32 sig_len = vector_size(sig);
+
     /* First wrap the signature in a BIT_STRING */
 
     sig_str_len = get_bitstr_tl_length(sig_len) + sig_len;
@@ -558,7 +562,7 @@ static VECTOR(u8) construct_x509_der(
         goto_error("Invalid size of signature bit string: %ld", sig_str_len);
 
     /* Allocate buffer */
-    const u64 inner_length = tbs_der_len + sig_alg_len + sig_str_len;
+    const u64 inner_length = tbs_len + sig_alg_len + sig_str_len;
     const u64 outer_length =
         ASN1_object_size(true, inner_length, V_ASN1_SEQUENCE);
 
@@ -571,8 +575,8 @@ static VECTOR(u8) construct_x509_der(
 
     ASN1_put_object(&p, true, inner_length, V_ASN1_SEQUENCE, V_ASN1_UNIVERSAL);
 
-    memcpy(p, tbs_der, tbs_der_len);
-    p += tbs_der_len;
+    memcpy(p, tbs, tbs_len);
+    p += tbs_len;
 
     memcpy(p, sig_alg, sig_alg_len);
     p += sig_alg_len;
@@ -607,7 +611,7 @@ static unsigned long get_bitstr_tl_length(unsigned long content_len)
         content_len >>= 8;
     } while (content_len != 0);
 
-    return 2 + lensz + 1; /* TAG | LENSZ | <LEN> | UNUSED BITS */
+    return 1 + 1 + lensz + 1; /* TAG | LENSZ | <LEN> | UNUSED BITS */
 }
 
 static void encode_der_sig_bitstr_tl(unsigned char **p, unsigned long len)

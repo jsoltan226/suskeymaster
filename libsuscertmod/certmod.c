@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#define OPENSSL_API_COMPAT 0x10002000L
 #include "certmod.h"
 #include "key-desc.h"
 #include "leaf-cert.h"
@@ -8,8 +9,7 @@
 #include <core/util.h>
 #include <core/math.h>
 #include <core/vector.h>
-#include <libgenericutil/cert-types.h>
-#include <libgenericutil/keymaster-c-types.h>
+#include <libsuskmhal/keymaster-types-c.h>
 #include <time.h>
 #include <stdlib.h>
 #include <stdarg.h>

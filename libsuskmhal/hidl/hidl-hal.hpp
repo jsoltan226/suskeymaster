@@ -3,15 +3,15 @@
 
 #include <cstdint>
 #include <utils/StrongPointer.h>
-#include <android/hardware/keymaster/4.0/types.h>
 
-#ifdef SUSKEYMASTER_BUILD_HOST
-class HidlSusKeymaster4Device {
-};
-#else /* SUSKEYMASTER_BUILD_HOST */
+#include <android/hardware/keymaster/4.0/types.h>
+#ifndef SUSKEYMASTER_BUILD_HOST
 #include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
 namespace suskeymaster {
+namespace kmhal {
+namespace hidl {
 
 using namespace ::android::hardware::keymaster::V4_0;
 using namespace ::android::hardware;
@@ -19,7 +19,9 @@ using namespace ::android::hardware;
 class HidlSusKeymaster4 {
 
 private:
+#ifndef SUSKEYMASTER_BUILD_HOST
     ::android::sp<::android::hardware::keymaster::V4_0::IKeymasterDevice> hal;
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
 public:
     HidlSusKeymaster4();
@@ -91,7 +93,8 @@ public:
     ErrorCode abort(uint64_t operationHandle);
 };
 
-}; /* namespace suskeymaster */
-#endif /* SUSKEYMASTER_BUILD_HOST */
+} /* namespace hidl */
+} /* namespace kmhal */
+} /* namespace suskeymaster */
 
 #endif /* SUSKEYMASTER_HIDL_HAL_HPP_ */

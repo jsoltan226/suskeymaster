@@ -1,10 +1,11 @@
+#define OPENSSL_API_COMPAT 0x10002000L
 #include "key-desc.h"
 #include <core/log.h>
 #include <core/util.h>
 #include <core/vector.h>
 #include <openssl/asn1.h>
 #include <openssl/crypto.h>
-#include <libgenericutil/keymaster-c-types.h>
+#include <libsuskmhal/keymaster-types-c.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
@@ -782,7 +783,7 @@ static bool parse_set_of_int64(const unsigned char **p, long len,
 
     i32 tag = 0;
     i32 asn1_class = 0;
-    i64 set_len = 0;
+    long set_len = 0;
 
     if (ASN1_get_object(p, &set_len, &tag, &asn1_class, end - start) & 0x80) {
         return false;
@@ -831,7 +832,7 @@ static bool parse_set_of_int32(const unsigned char **p, long len,
 
     i32 tag = 0;
     i32 asn1_class = 0;
-    i64 set_len = 0;
+    long set_len = 0;
 
     if (ASN1_get_object(p, &set_len, &tag, &asn1_class, end - start) & 0x80) {
         return false;

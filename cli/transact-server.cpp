@@ -1,18 +1,22 @@
+#define HIDL_DISABLE_INSTRUMENTATION
+#define OPENSSL_API_COMPAT 0x10002000L
 #include "cli.hpp"
 #include "google-root.h"
 #include <core/int.h>
 #include <core/vector.h>
+#include <libsuskmhal/hidl/hidl-hal.hpp>
+#include <libsuskmhal/util/km-params.hpp>
+#include <libsuskmhal/keymaster-types-c.h>
+#include <libsuscertmod/certmod.h>
 #include <libsuscertmod/key-desc.h>
 #include <libsuscertmod/leaf-cert.h>
-#include <libgenericutil/cert-types.h>
-#include <libgenericutil/km-params.hpp>
-#include <libgenericutil/keymaster-c-types.h>
-#include <android/hardware/keymaster/4.0/types.h>
 #include <hidl/HidlSupport.h>
+#include <android/hardware/keymaster/4.0/types.h>
 #include <cstddef>
 #include <cstring>
 #include <iostream>
 #include <openssl/err.h>
+#include <openssl/evp.h>
 #include <openssl/asn1.h>
 #include <openssl/rand.h>
 #include <openssl/x509.h>
@@ -170,12 +174,12 @@ err:
     }
 }
 
-int wrap_key(hidl_vec<uint8_t> const& in_private_key, enum util::sus_key_variant key_variant,
+int wrap_key(hidl_vec<uint8_t> const& in_private_key, enum certmod::sus_key_variant key_variant,
         hidl_vec<uint8_t> const& in_wrapping_key, hidl_vec<KeyParameter> const& in_key_params,
         hidl_vec<uint8_t>& out_wrapped_data, hidl_vec<uint8_t>& out_masking_key)
 {
     hidl_vec<KeyParameter> params(in_key_params);
-    struct util::KM_AuthorizationList_v3 auth_list = {};
+    struct kmhal::KM_AuthorizationList_v3 auth_list = {};
 
     hidl_vec<uint8_t> iwk_key_description_der = {};
     hidl_vec<uint8_t> encrypted_transport_key;
@@ -183,17 +187,17 @@ int wrap_key(hidl_vec<uint8_t> const& in_private_key, enum util::sus_key_variant
     hidl_vec<uint8_t> transport_tag;
     hidl_vec<uint8_t> encrypted_key(in_private_key);
 
-    if (key_variant != util::SUS_KEY_EC && key_variant != util::SUS_KEY_RSA) {
+    if (key_variant != certmod::SUS_KEY_EC && key_variant != certmod::SUS_KEY_RSA) {
         std::cerr << "Invalid parameters (key_variant: " << key_variant << ")" << std::endl;
         return 1;
     } else {
         std::cout << "Private key variant is " <<
-            (key_variant == util::SUS_KEY_RSA ? "RSA" : "EC")
+            (key_variant == certmod::SUS_KEY_RSA ? "RSA" : "EC")
             << std::endl;
     }
 
-    if (key_variant == util::SUS_KEY_RSA) {
-        util::init_default_params(params, {
+    if (key_variant == certmod::SUS_KEY_RSA) {
+        kmhal::util::init_default_params(params, {
             { Tag::ALGORITHM, Algorithm::RSA },
             { Tag::DIGEST, { Digest::SHA_2_256 } },
             { Tag::PADDING, { PaddingMode::RSA_PKCS1_1_5_SIGN } },
@@ -203,7 +207,7 @@ int wrap_key(hidl_vec<uint8_t> const& in_private_key, enum util::sus_key_variant
             { Tag::NO_AUTH_REQUIRED, true }
         });
     } else /* if (key_variant == SUS_KEY_EC) */ {
-        util::init_default_params(params, {
+        kmhal::util::init_default_params(params, {
             { Tag::ALGORITHM, Algorithm::EC },
             { Tag::DIGEST, { Digest::SHA_2_256 } },
             { Tag::EC_CURVE, EcCurve::P_256 },
@@ -212,7 +216,7 @@ int wrap_key(hidl_vec<uint8_t> const& in_private_key, enum util::sus_key_variant
         });
     }
 
-    util::key_params_2_auth_list(params, &auth_list);
+    kmhal::util::key_params_2_auth_list(params, &auth_list);
 
     if (encode_iwk_key_description_der(iwk_key_description_der, &auth_list)) {
         std::cerr << "Failed to encode the importWrappedKey KeyDescription" << std::endl;
@@ -409,7 +413,7 @@ static int check_google_root(hidl_vec<uint8_t> const& root_der, bool *is_old_roo
 static void destroy_certs(X509 **leaf_p, STACK_OF(X509) **intermediates_p, X509 **root_p)
 {
     if (*intermediates_p != NULL) {
-        for (int i = 0; i < sk_X509_num(*intermediates_p); i++) {
+        for (unsigned int i = 0; i < (unsigned int)sk_X509_num(*intermediates_p); i++) {
             X509 *const curr = sk_X509_value(*intermediates_p, i);
             if (curr != NULL)
                 X509_free(curr);
@@ -537,8 +541,12 @@ static int wrap_with_transport_key(
         goto err;
     }
 
-    if (EVP_EncryptInit_ex2(ctx, EVP_aes_256_gcm(), transport_key, iv, NULL) != 1) {
+    if (EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL) != 1) {
         std::cerr << "Failed to initialize the encryption context" << std::endl;
+        goto err;
+    }
+    if (EVP_EncryptInit_ex(ctx, NULL, NULL, transport_key, iv) != 1) {
+        std::cerr << "Failed to set the encryption context parameters" << std::endl;
         goto err;
     }
 
@@ -739,7 +747,7 @@ err:
 }
 
 static int encode_iwk_key_description_der(hidl_vec<uint8_t>& der,
-        const struct util::KM_AuthorizationList_v3 *auth_list)
+        const struct certmod::KM_AuthorizationList_v3 *auth_list)
 {
     struct certmod::key_desc_measure_ctx mctx = {};
     i32 tmp = 0;
@@ -782,7 +790,7 @@ static int encode_iwk_key_description_der(hidl_vec<uint8_t>& der,
     end = der.data() + der.size();
 
     if (!certmod::key_desc_write_sequence_header(&p, end,
-                content_bytes, static_cast<u32>(util::KM_TAG_INVALID)))
+                content_bytes, static_cast<u32>(kmhal::KM_TAG_INVALID)))
     {
         std::cerr << "Failed to write the iwk key description SEQUENCE header" << std::endl;
         goto err;
@@ -864,7 +872,7 @@ static int encode_iwk_secure_key_wrapper_der(hidl_vec<uint8_t>& der,
     p = der.data();
     end = p + der.size();
 
-    if (!certmod::key_desc_write_sequence_header(&p, end, len, util::KM_TAG_INVALID)) {
+    if (!certmod::key_desc_write_sequence_header(&p, end, len, kmhal::KM_TAG_INVALID)) {
         std::cerr << "Failed to write the SecureKeyWrapper SEQUENCE header" << std::endl;
         goto err;
     }

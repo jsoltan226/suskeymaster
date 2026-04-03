@@ -19,6 +19,8 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
+#include <exception>
 #include <iterator>
 #include <hidl/HidlInternal.h>
 #include <map>
@@ -27,6 +29,10 @@
 #include <tuple>
 #include <type_traits>
 #include <vector>
+#include <cstdint>
+#include <cstring>
+#include <climits>
+#include <iostream>
 
 // no requirements on types not used in scatter/gather
 // no requirements on other libraries
@@ -94,6 +100,7 @@ struct hidl_death_recipient : public virtual RefBase {
 //    // copy and its enclosed file descriptors will remain valid here.
 // 3) The move constructor does what you would expect; it only owns the handle if the
 //    original did.
+static const char *const kEmptyString = "";
 struct hidl_handle {
     hidl_handle();
     ~hidl_handle();
@@ -135,44 +142,117 @@ private:
 };
 
 struct hidl_string {
-    hidl_string();
-    ~hidl_string();
+    hidl_string() : mBuffer(kEmptyString), mSize(0), mOwnsBuffer(false) {
+        memset(mPad, 0, sizeof(mPad));
+    }
+    ~hidl_string() {
+        clear();
+    }
 
     // copy constructor.
-    hidl_string(const hidl_string &);
+    hidl_string(const hidl_string &other) {
+        copyFrom(other.c_str(), other.size());
+    }
     // copy from a C-style string. nullptr will create an empty string
-    hidl_string(const char *);
+    hidl_string(const char *s) : hidl_string() {
+        if (s == nullptr) {
+            return;
+        }
+
+        copyFrom(s, strlen(s));
+    }
     // copy the first length characters from a C-style string.
-    hidl_string(const char *, size_t length);
+    hidl_string(const char *s, size_t length) : hidl_string() {
+        copyFrom(s, length);
+    }
     // copy from an std::string.
-    hidl_string(const std::string &);
+    hidl_string(const std::string &s) {
+        copyFrom(s.c_str(), s.size());
+    }
 
     // move constructor.
-    hidl_string(hidl_string &&) noexcept;
+    hidl_string(hidl_string&& other) noexcept : hidl_string() {
+        moveFrom(std::forward<hidl_string>(other));
+    }
 
-    const char *c_str() const;
-    size_t size() const;
-    bool empty() const;
+    const char *c_str() const { return mBuffer; }
+    size_t size() const { return mSize; }
+    bool empty() const { return mSize == 0; }
 
     // copy assignment operator.
-    hidl_string &operator=(const hidl_string &);
-    // copy from a C-style string.
-    hidl_string &operator=(const char *s);
-    // copy from an std::string.
-    hidl_string &operator=(const std::string &);
-    // move assignment operator.
-    hidl_string &operator=(hidl_string &&other) noexcept;
-    // cast to std::string.
-    operator std::string() const;
+    hidl_string &operator=(const hidl_string &other) {
+        if (this != &other) {
+            clear();
+            copyFrom(other.c_str(), other.size());
+        }
 
-    void clear();
+        return *this;
+    }
+    // copy from a C-style string.
+    hidl_string &operator=(const char *s) {
+        clear();
+
+        if (s == nullptr) {
+            return *this;
+        }
+
+        copyFrom(s, strlen(s));
+        return *this;
+    }
+    // copy from an std::string.
+    hidl_string &operator=(const std::string &s) {
+        clear();
+        copyFrom(s.c_str(), s.size());
+        return *this;
+    }
+    // move assignment operator.
+    hidl_string &operator=(hidl_string &&other) noexcept {
+        if (this != &other) {
+            clear();
+            moveFrom(std::forward<hidl_string>(other));
+        }
+        return *this;
+    }
+    // cast to std::string.
+    operator std::string() const {
+        return std::string(mBuffer, mSize);
+    }
+
+
+    void clear() {
+        if (mOwnsBuffer && (mBuffer != kEmptyString)) {
+            free(const_cast<char *>(static_cast<const char *>(mBuffer)));
+        }
+
+        mBuffer = kEmptyString;
+        mSize = 0;
+        mOwnsBuffer = false;
+    }
 
     // Reference an external char array. Ownership is _not_ transferred.
     // Caller is responsible for ensuring that underlying memory is valid
     // for the lifetime of this hidl_string.
     //
     // size == strlen(data)
-    void setToExternal(const char *data, size_t size);
+    void setToExternal(const char *data, size_t size) {
+        if (size > UINT32_MAX) {
+            std::cerr << "string size can't exceed 2^32 bytes: " << size;
+            std::terminate();
+        }
+
+        // When the binder driver copies this data into its buffer, it must
+        // have a zero byte there because the remote process will have a pointer
+        // directly into the read-only binder buffer. If we manually copy the
+        // data now to add a zero, then we lose the efficiency of this method.
+        // Checking here (it's also checked in the parceling code later).
+        assert(data[size] == '\0');
+
+        clear();
+
+        mBuffer = data;
+        mSize = static_cast<uint32_t>(size);
+        mOwnsBuffer = false;
+    }
 
     // offsetof(hidl_string, mBuffer) exposed since mBuffer is private.
     static const size_t kOffsetOfBuffer;
@@ -185,9 +265,40 @@ private:
 
     // copy from data with size. Assume that my memory is freed
     // (through clear(), for example)
-    void copyFrom(const char *data, size_t size);
+    void copyFrom(const char *data, size_t size) {
+        // assume my resources are freed.
+
+        if (size >= UINT32_MAX) {
+            std::cerr << "string size can't exceed 2^32 bytes: " << size;
+            std::terminate();
+        }
+
+        if (size == 0) {
+            mBuffer = kEmptyString;
+            mSize = 0;
+            mOwnsBuffer = false;
+            return;
+        }
+
+        char *buf = (char *)malloc(size + 1);
+        memcpy(buf, data, size);
+        buf[size] = '\0';
+        mBuffer = buf;
+
+        mSize = static_cast<uint32_t>(size);
+        mOwnsBuffer = true;
+    }
     // move from another hidl_string
-    void moveFrom(hidl_string &&);
+    void moveFrom(hidl_string &&other) {
+        // assume my resources are freed.
+
+        mBuffer = std::move(other.mBuffer);
+        mSize = other.mSize;
+        mOwnsBuffer = other.mOwnsBuffer;
+
+        other.mOwnsBuffer = false;
+        other.clear();
+    }
 };
 
 // Use NOLINT to suppress missing parentheses warnings around OP.

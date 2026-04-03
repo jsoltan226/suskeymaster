@@ -1,6 +1,6 @@
 #define HIDL_DISABLE_INSTRUMENTATION
 #include "km-params.hpp"
-#include "keymaster-c-types.h"
+#include "../keymaster-types-c.h"
 #include <hidl/HidlSupport.h>
 #include <android/hardware/keymaster/4.0/types.h>
 #include <string>
@@ -13,6 +13,7 @@
 #include <unordered_map>
 
 namespace suskeymaster {
+namespace kmhal {
 namespace util {
 
 using ::android::hardware::hidl_vec;
@@ -422,6 +423,12 @@ static int parse_tag_value(Tag t, std::string const& value,
 
         case TagType::BIGNUM:
         case TagType::BYTES:
+            /* Allow 0-length blobs */
+            if (value.length() == 0) {
+                out.blob = hidl_vec<uint8_t>(0);
+                return 0;
+            }
+
             if (b64decode(value, tmp)) {
                 std::cerr << "Couldn't decode base64 value \"" << value << "\" "
                     << "for tag type " << toString(type) << std::endl;
@@ -1074,4 +1081,5 @@ void key_params_2_auth_list(hidl_vec<KeyParameter> const& params,
 }
 
 } /* namespace util */
+} /* namespace kmhal */
 } /* namespace suskeymaster */

@@ -1,16 +1,17 @@
 #ifndef SUS_CERT_MOD_REPACK_KEY_DESC_H_
 #define SUS_CERT_MOD_REPACK_KEY_DESC_H_
 
-#include <libgenericutil/keymaster-c-types.h>
+#define OPENSSL_API_COMPAT 0x10002000L
+#include <libsuskmhal/keymaster-types-c.h>
 #include <openssl/asn1.h>
 
 #ifdef __cplusplus
 extern "C" {
 namespace suskeymaster {
 namespace certmod {
-using ::suskeymaster::util::KM_KeyDescription_v3;
-using ::suskeymaster::util::KM_AuthorizationList_v3;
-using ::suskeymaster::util::KM_RootOfTrust_v3;
+using ::suskeymaster::kmhal::KM_KeyDescription_v3;
+using ::suskeymaster::kmhal::KM_AuthorizationList_v3;
+using ::suskeymaster::kmhal::KM_RootOfTrust_v3;
 #endif /* __cplusplus */
 
 /* Various utilities for working with Android Attestation Extension objects,

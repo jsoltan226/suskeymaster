@@ -1,28 +1,29 @@
 cc_defaults {
-    name: "suskeymaster_cli_defaults",
+    name: "libsuskmhal_defaults",
     cflags: ["-Wall", "-Wextra", "-pipe", "-fPIC" ],
     cppflags: ["-Wno-c11-extensions", "-std=c++20", "-fPIC", "-pipe" ],
     include_dirs: [ "." ],
     local_include_dirs: [ "." ],
 }
 
-cc_binary {
-    name: "suskeymaster",
+cc_library_static {
+    name: "libsuskmhal",
     host_supported: true,
     compile_multilib: "64",
+    defaults: [ "libsuskmhal_defaults" ],
 
-    defaults: [ "suskeymaster_cli_defaults" ],
     srcs: [
-        "*.cpp", "*.c"
+        "*.cpp", "*.c",
+        "hidl/*.cpp", "hidl/*.c",
+        "util/*.cpp", "util/*.c"
     ],
     cflags: [ "-g", "-O0" ],
     cppflags: [ "-g", "-O0" ],
 
+    export_include_dirs: [ "include" ],
+
     static_libs: [
         "libcgdcore",
-        "libsuskmhal",
-        "libsuscertmod",
-        "libbuiltinkeybox"
     ],
 
     shared_libs: [
@@ -41,8 +42,7 @@ cc_binary {
             cflags: [ "-DSUSKEYMASTER_BUILD_HOST", "-USUSKEYMASTER_BUILD_ANDROID" ],
             static_libs: [
                 "liblog",
-                "libutils",
-                "libcrypto",
+                "libutils"
             ],
         },
         android_arm64: {
@@ -54,15 +54,9 @@ cc_binary {
                 "libhidlbase",
                 "android.hardware.keymaster@4.0",
             ],
-            static_libs: [
-                "libcrypto_sus_prebuilt"
-            ],
         },
         android_arm: { enabled: false },
         android_x86: { enabled: false },
-        android_x86_64: { enabled: false },
-
-        // for windows host build, include the winsock2 library for `htonl' and 'ntohl'
-        windows: { host_ldlibs: [ "-lws2_32" ] }
+        android_x86_64: { enabled: false }
     },
 }

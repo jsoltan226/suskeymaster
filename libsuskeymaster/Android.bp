@@ -10,6 +10,8 @@ cc_defaults {
 
 cc_library_shared {
     name: "libsuskeymaster",
+    host_supported: false,
+    compile_multilib: "64",
     defaults: ["suskeymaster_defaults"],
 
     srcs: [
@@ -18,11 +20,10 @@ cc_library_shared {
 
     static_libs: [
         "libcgdcore",
-        "libgenericutil",
-        "libsuscertsign",
+        "libsuskmhal",
         "libsuscertmod",
-        "libcrypto_sus_prebuilt",
-        "libbuiltinkeybox"
+        "libbuiltinkeybox",
+        "libcrypto_sus_prebuilt"
     ],
 
     shared_libs: [
@@ -39,23 +40,18 @@ cc_library_shared {
     visibility: [ "//visibility:public" ],
 
     target: {
-        android_arm64: {
-            enabled: true,
-        },
-        android_arm: {
-            enabled: false,
-        },
-        android_x86_64: {
-            enabled: true,
-        },
-        android_x86: {
-            enabled: false,
-        },
+        android_arm64: { enabled: true },
+
+        host: { enabled: false },
+        android_arm: { enabled: false, },
+        android_x86_64: { enabled: false, },
+        android_x86: { enabled: false, },
     },
 }
 
 cc_library_static {
     name: "libbuiltinkeybox",
+    host_supported: true,
     defaults: [ "suskeymaster_defaults" ],
 
     srcs: [ "./builtin-keybox.c" ],
@@ -76,17 +72,7 @@ cc_library_static {
     visibility: [ "//visibility:public" ],
 
     target: {
-        android_arm64: {
-            enabled: true,
-        },
-        android_arm: {
-            enabled: false,
-        },
-        android_x86_64: {
-            enabled: true,
-        },
-        android_x86: {
-            enabled: false,
-        },
+        host: { enabled: true },
+        android_arm64: { enabled: true },
     },
 }

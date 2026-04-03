@@ -1,16 +1,20 @@
 #ifndef CLI_SUSKEYMASTER_HPP_
 #define CLI_SUSKEYMASTER_HPP_
 
-#include "hidl-hal.hpp"
-#include <libgenericutil/cert-types.h>
+#include <libsuscertmod/certmod.h>
+#include <libsuskmhal/hidl/hidl-hal.hpp>
 #include <vector>
 #include <string>
 #include <cstdint>
-#include <utils/StrongPointer.h>
-#include "../aosp-headers/include-keymaster/android/hardware/keymaster/4.0/types.h"
+#include <hidl/HidlSupport.h>
+#include <android/hardware/keymaster/4.0/types.h>
 
 namespace suskeymaster {
 namespace cli {
+
+using ::suskeymaster::kmhal::hidl::HidlSusKeymaster4;
+using namespace ::android::hardware::keymaster::V4_0;
+using ::android::hardware::hidl_vec;
 
 namespace hidl_ops {
 
@@ -64,7 +68,7 @@ namespace transact {
         int verify_attestation(hidl_vec<hidl_vec<uint8_t>> const& cert_chain);
 
         int wrap_key(hidl_vec<uint8_t> const& in_private_key,
-            enum util::sus_key_variant in_key_variant,
+            enum certmod::sus_key_variant in_key_variant,
             hidl_vec<uint8_t> const& in_wrapping_key, hidl_vec<KeyParameter> const& in_key_params,
             hidl_vec<uint8_t>& out_wrapped_data, hidl_vec<uint8_t>& out_masking_key);
     }

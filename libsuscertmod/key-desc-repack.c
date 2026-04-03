@@ -1,9 +1,10 @@
+#define OPENSSL_API_COMPAT 0x10002000L
 #include "key-desc.h"
 #include <core/log.h>
 #include <core/util.h>
 #include <core/math.h>
 #include <core/vector.h>
-#include <libgenericutil/keymaster-c-types.h>
+#include <libsuskmhal/keymaster-types-c.h>
 #include <stdlib.h>
 #include <string.h>
 #include <openssl/asn1.h>
@@ -26,7 +27,7 @@ static i32 measure_set_of_integer_64_size(struct key_desc_measure_ctx *ctx,
         const VECTOR(i64) set, u32 tag);
 
 static i32 measure_tagged_null_size(struct key_desc_measure_ctx *ctx_,
-        void *null_, u32 tag);
+        bool value, u32 tag);
 
 #define MEASURE_NULL_SIZE 2 /* Always <V_ASN1_NULL> <LENGTH 0x00> */
 #define MEASURE_BOOLEAN_SIZE 3 /* Always <V_ASN1_BOOL> <LENGTH 0x01> <VALUE> */
@@ -396,16 +397,16 @@ i32 key_desc_measure_outer_auth_list(struct key_desc_measure_ctx *ctx,
     try_measure(blockMode, KM_TAG_BLOCK_MODE, set_of_integer_32, VECTOR(i32));
     try_measure(digest, KM_TAG_DIGEST, set_of_integer_32, VECTOR(i32));
     try_measure(padding, KM_TAG_PADDING, set_of_integer_32, VECTOR(i32));
-    try_measure(callerNonce, KM_TAG_CALLER_NONCE, tagged_null, void *);
+    try_measure(callerNonce, KM_TAG_CALLER_NONCE, tagged_null, bool);
     try_measure(minMacLength, KM_TAG_MIN_MAC_LENGTH, integer, u64);
     try_measure(ecCurve, KM_TAG_EC_CURVE, integer, i32);
     try_measure(rsaPublicExponent, KM_TAG_RSA_PUBLIC_EXPONENT, integer, u64);
-    try_measure(includeUniqueId, KM_TAG_INCLUDE_UNIQUE_ID, tagged_null, void *);
+    try_measure(includeUniqueId, KM_TAG_INCLUDE_UNIQUE_ID, tagged_null, bool);
     try_measure(keyBlobUsageRequirements, KM_TAG_BLOB_USAGE_REQUIREMENTS,
             integer, i32);
-    try_measure(bootloaderOnly, KM_TAG_BOOTLOADER_ONLY, tagged_null, void *);
+    try_measure(bootloaderOnly, KM_TAG_BOOTLOADER_ONLY, tagged_null, bool);
     try_measure(rollbackResistance, KM_TAG_ROLLBACK_RESISTANCE,
-            tagged_null, void *);
+            tagged_null, bool);
     try_measure(hardwareType, KM_TAG_HARDWARE_TYPE, integer, i32);
     try_measure(activeDateTime, KM_TAG_ACTIVE_DATETIME, integer, i64);
     try_measure(originationExpireDateTime, KM_TAG_ORIGINATION_EXPIRE_DATETIME,
@@ -418,17 +419,17 @@ i32 key_desc_measure_outer_auth_list(struct key_desc_measure_ctx *ctx,
     try_measure(userId, KM_TAG_USER_ID, integer, i32);
     try_measure(userSecureId, KM_TAG_USER_SECURE_ID,
             set_of_integer_64, VECTOR(i64));
-    try_measure(noAuthRequired, KM_TAG_NO_AUTH_REQUIRED, tagged_null, void *);
+    try_measure(noAuthRequired, KM_TAG_NO_AUTH_REQUIRED, tagged_null, bool);
     try_measure(userAuthType, KM_TAG_USER_AUTH_TYPE, integer, i64);
     try_measure(authTimeout, KM_TAG_AUTH_TIMEOUT, integer, u64);
     try_measure(allowWhileOnBody, KM_TAG_ALLOW_WHILE_ON_BODY,
-            tagged_null, void *);
+            tagged_null, bool);
     try_measure(trustedUserPresenceReq, KM_TAG_TRUSTED_USER_PRESENCE_REQUIRED,
-            tagged_null, void *);
+            tagged_null, bool);
     try_measure(trustedConfirmationReq, KM_TAG_TRUSTED_CONFIRMATION_REQUIRED,
-            tagged_null, void *);
+            tagged_null, bool);
     try_measure(unlockedDeviceReq, KM_TAG_UNLOCKED_DEVICE_REQUIRED,
-            tagged_null, void *);
+            tagged_null, bool);
     try_measure(applicationId, KM_TAG_APPLICATION_ID, octet_string, VECTOR(u8));
     try_measure(applicationData, KM_TAG_APPLICATION_DATA,
             octet_string, VECTOR(u8));
@@ -492,7 +493,7 @@ i32 key_desc_measure_outer_auth_list(struct key_desc_measure_ctx *ctx,
     try_measure(nonce, KM_TAG_NONCE, octet_string, VECTOR(u8));
     try_measure(macLength, KM_TAG_MAC_LENGTH, integer, u32);
     try_measure(resetSinceIdRotation, KM_TAG_RESET_SINCE_ID_ROTATION,
-            tagged_null, void *);
+            tagged_null, bool);
     try_measure(confirmationToken, KM_TAG_CONFIRMATION_TOKEN,
             octet_string, VECTOR(u8));
 
@@ -513,15 +514,15 @@ i32 key_desc_measure_outer_auth_list(struct key_desc_measure_ctx *ctx,
     try_measure(authToken, KM_TAG_AUTH_TOKEN, octet_string, VECTOR(u8));
     try_measure(verificationToken, KM_TAG_VERIFICATION_TOKEN,
             octet_string, VECTOR(u8));
-    try_measure(allUsers, KM_TAG_ALL_USERS, tagged_null, void *);
+    try_measure(allUsers, KM_TAG_ALL_USERS, tagged_null, bool);
     try_measure(eciesSingleHashMode, KM_TAG_ECIES_SINGLE_HASH_MODE,
-            tagged_null, void *);
+            tagged_null, bool);
     try_measure(kdf, KM_TAG_KDF, integer, u32);
-    try_measure(exportable, KM_TAG_EXPORTABLE, tagged_null, void *);
-    try_measure(keyAuth, KM_TAG_KEY_AUTH, tagged_null, void *);
-    try_measure(opAuth, KM_TAG_OP_AUTH, tagged_null, void *);
+    try_measure(exportable, KM_TAG_EXPORTABLE, tagged_null, bool);
+    try_measure(keyAuth, KM_TAG_KEY_AUTH, tagged_null, bool);
+    try_measure(opAuth, KM_TAG_OP_AUTH, tagged_null, bool);
     try_measure(operationHandle, KM_TAG_OPERATION_HANDLE, integer, u64);
-    try_measure(operationFailed, KM_TAG_OPERATION_FAILED, tagged_null, void *);
+    try_measure(operationFailed, KM_TAG_OPERATION_FAILED, tagged_null, bool);
     try_measure(internalCurrentDateTime, KM_TAG_INTERNAL_CURRENT_DATETIME,
             integer, i64);
     try_measure(ekeyBlobIV, KM_TAG_EKEY_BLOB_IV, octet_string, VECTOR(u8));
@@ -544,20 +545,20 @@ i32 key_desc_measure_outer_auth_list(struct key_desc_measure_ctx *ctx,
     try_measure(samsungRequestingTA, KM_TAG_SAMSUNG_REQUESTING_TA,
             octet_string, VECTOR(u8));
     try_measure(samsungRotRequired, KM_TAG_SAMSUNG_ROT_REQUIRED,
-            tagged_null, void *);
+            tagged_null, bool);
     try_measure(samsungLegacyRot, KM_TAG_SAMSUNG_LEGACY_ROT,
-            tagged_null, void *);
+            tagged_null, bool);
     try_measure(useSecureProcessor, KM_TAG_USE_SECURE_PROCESSOR,
-            tagged_null, void *);
-    try_measure(storageKey, KM_TAG_STORAGE_KEY, tagged_null, void *);
+            tagged_null, bool);
+    try_measure(storageKey, KM_TAG_STORAGE_KEY, tagged_null, bool);
     try_measure(integrityStatus, KM_TAG_INTEGRITY_STATUS, integer, u32);
-    try_measure(isSamsungKey, KM_TAG_IS_SAMSUNG_KEY, tagged_null, void *);
+    try_measure(isSamsungKey, KM_TAG_IS_SAMSUNG_KEY, tagged_null, bool);
     try_measure(samsungAttestationRoot, KM_TAG_SAMSUNG_ATTESTATION_ROOT,
             octet_string, VECTOR(u8));
     try_measure(samsungAttestIntegrity, KM_TAG_SAMSUNG_ATTEST_INTEGRITY,
-            tagged_null, void *);
+            tagged_null, bool);
     try_measure(knoxObjectProtectionRequired,
-            KM_TAG_KNOX_OBJECT_PROTECTION_REQUIRED, tagged_null, void *);
+            KM_TAG_KNOX_OBJECT_PROTECTION_REQUIRED, tagged_null, bool);
     try_measure(knoxCreatorId, KM_TAG_KNOX_CREATOR_ID,
             octet_string, VECTOR(u8));
     try_measure(knoxAdministratorId, KM_TAG_KNOX_ADMINISTRATOR_ID,
@@ -803,12 +804,14 @@ static i32 measure_set_of_integer_64_size(struct key_desc_measure_ctx *ctx,
 }
 
 static i32 measure_tagged_null_size(struct key_desc_measure_ctx *ctx_,
-        void *null_, u32 tag)
+        bool value, u32 tag)
 {
     (void) ctx_;
-    (void) null_;
 
-    return ASN1_object_size(true, MEASURE_NULL_SIZE, __KM_TAG_MASK(tag));
+    if (!value)
+        return 0;
+    else
+        return ASN1_object_size(true, MEASURE_NULL_SIZE, __KM_TAG_MASK(tag));
 }
 
 static bool write_integer(unsigned char **p, unsigned char *end,
