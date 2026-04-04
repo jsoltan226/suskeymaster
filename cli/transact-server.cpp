@@ -51,6 +51,8 @@ static int openssl_err_print_cb(const char *msg, size_t size, void *userdata);
 static void print_openssl_errors(void);
 
 /** Functions used by `transact_s_wrap_key` */
+static Algorithm determine_key_algorithm(hidl_vec<uint8_t> const& priv_pkcs8);
+
 static EVP_PKEY * extract_x509_public_key(hidl_vec<uint8_t> const& x509_der);
 
 #define TRANSPORT_KEY_SIZE 32
@@ -174,11 +176,12 @@ err:
     }
 }
 
-int wrap_key(hidl_vec<uint8_t> const& in_private_key, enum certmod::sus_key_variant key_variant,
+int wrap_key(hidl_vec<uint8_t> const& in_private_key,
         hidl_vec<uint8_t> const& in_wrapping_key, hidl_vec<KeyParameter> const& in_key_params,
         hidl_vec<uint8_t>& out_wrapped_data, hidl_vec<uint8_t>& out_masking_key)
 {
     hidl_vec<KeyParameter> params(in_key_params);
+    Algorithm pkey_alg;
     struct kmhal::KM_AuthorizationList_v3 auth_list = {};
 
     hidl_vec<uint8_t> iwk_key_description_der = {};
@@ -187,16 +190,18 @@ int wrap_key(hidl_vec<uint8_t> const& in_private_key, enum certmod::sus_key_vari
     hidl_vec<uint8_t> transport_tag;
     hidl_vec<uint8_t> encrypted_key(in_private_key);
 
-    if (key_variant != certmod::SUS_KEY_EC && key_variant != certmod::SUS_KEY_RSA) {
-        std::cerr << "Invalid parameters (key_variant: " << key_variant << ")" << std::endl;
+    if ((pkey_alg = determine_key_algorithm(in_private_key)) == static_cast<Algorithm>(-1)) {
+        std::cerr << "The private key is not a valid PKCS#8 EC or RSA key" << std::endl;
+        return 1;
+    }
+    if (pkey_alg != Algorithm::EC && pkey_alg != Algorithm::RSA) {
+        std::cerr << "Invalid private key algorithm: " << toString(pkey_alg) << std::endl;
         return 1;
     } else {
-        std::cout << "Private key variant is " <<
-            (key_variant == certmod::SUS_KEY_RSA ? "RSA" : "EC")
-            << std::endl;
+        std::cout << "Private key algorithm is " << toString(pkey_alg) << std::endl;
     }
 
-    if (key_variant == certmod::SUS_KEY_RSA) {
+    if (pkey_alg == Algorithm::RSA) {
         kmhal::util::init_default_params(params, {
             { Tag::ALGORITHM, Algorithm::RSA },
             { Tag::DIGEST, { Digest::SHA_2_256 } },
@@ -520,6 +525,28 @@ err:
     }
 
     return ok ? ret : NULL;
+}
+
+static Algorithm determine_key_algorithm(hidl_vec<uint8_t> const& priv_pkcs8)
+{
+    EVP_PKEY *pkey = NULL;
+    const unsigned char *p = NULL;
+
+    p = priv_pkcs8.data();
+    pkey = d2i_PrivateKey(EVP_PKEY_EC, NULL, &p, priv_pkcs8.size());
+    if (pkey != NULL) {
+        EVP_PKEY_free(pkey);
+        return Algorithm::EC;
+    }
+
+    p = priv_pkcs8.data();
+    pkey = d2i_PrivateKey(EVP_PKEY_RSA, NULL, &p, priv_pkcs8.size());
+    if (pkey != NULL) {
+        EVP_PKEY_free(pkey);
+        return Algorithm::RSA;
+    }
+
+    return static_cast<Algorithm>(-1);
 }
 
 static int wrap_with_transport_key(

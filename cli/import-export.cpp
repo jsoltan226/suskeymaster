@@ -8,6 +8,7 @@
 #include <cstdbool>
 #include <iostream>
 #include <semaphore.h>
+#include <openssl/evp.h>
 
 namespace suskeymaster {
 namespace cli {
@@ -16,16 +17,19 @@ namespace hidl_ops {
 using namespace ::android::hardware::keymaster::V4_0;
 using ::android::hardware::hidl_vec;
 
+static Algorithm determine_key_algorithm(hidl_vec<uint8_t> const& priv_pkcs8);
+
 int import_key(HidlSusKeymaster4& hal, hidl_vec<uint8_t> const& priv_pkcs8,
-        Algorithm alg, hidl_vec<KeyParameter> const& in_import_params,
+        hidl_vec<KeyParameter> const& in_import_params,
         hidl_vec<uint8_t>& out_keyblob
 )
 {
-    if (alg != Algorithm::EC && alg != Algorithm::RSA) {
-        std::cerr << "Unsupported key algorithm: "
-            << static_cast<int32_t>(alg) << " (" << toString(alg) << ")" << std::endl;
-        return -1;
+    Algorithm alg = determine_key_algorithm(priv_pkcs8);
+    if (alg == static_cast<Algorithm>(-1)) {
+        std::cerr << "The key blob is not a valid EC or RSA PKCS#8 private key!" << std::endl;
+        return 1;
     }
+    std::cout << "Private key algorithm is " << toString(alg) << std::endl;
 
     hidl_vec<KeyParameter> params(in_import_params);
     kmhal::util::init_default_params(params, { { Tag::ALGORITHM, alg } });
@@ -44,9 +48,21 @@ int import_key(HidlSusKeymaster4& hal, hidl_vec<uint8_t> const& priv_pkcs8,
 }
 
 int export_key(HidlSusKeymaster4& hal,
-        const hidl_vec<uint8_t>& key, hidl_vec<uint8_t>& out_public_key_x509)
+    hidl_vec<uint8_t> const& key,
+    hidl_vec<uint8_t>& out_public_key_x509,
+    hidl_vec<KeyParameter> const& in_application_id_data)
 {
-    ErrorCode e = hal.exportKey(KeyFormat::X509, key, {}, {}, out_public_key_x509);
+    hidl_vec<uint8_t> app_id;
+    hidl_vec<uint8_t> app_data;
+
+    for (const auto& kp : in_application_id_data) {
+        if (kp.tag == Tag::APPLICATION_ID)
+            app_id = kp.blob;
+        else if (kp.tag == Tag::APPLICATION_DATA)
+            app_data = kp.blob;
+    }
+
+    ErrorCode e = hal.exportKey(KeyFormat::X509, key, app_id, app_data, out_public_key_x509);
 
     if (e != ErrorCode::OK) {
         std::cerr << "exportKey operation failed: "
@@ -56,6 +72,28 @@ int export_key(HidlSusKeymaster4& hal,
 
     std::cout << "Successfully exported public key from KeyMaster" << std::endl;
     return 0;
+}
+
+static Algorithm determine_key_algorithm(hidl_vec<uint8_t> const& priv_pkcs8)
+{
+    EVP_PKEY *pkey = NULL;
+    const unsigned char *p = NULL;
+
+    p = priv_pkcs8.data();
+    pkey = d2i_PrivateKey(EVP_PKEY_EC, NULL, &p, priv_pkcs8.size());
+    if (pkey != NULL) {
+        EVP_PKEY_free(pkey);
+        return Algorithm::EC;
+    }
+
+    p = priv_pkcs8.data();
+    pkey = d2i_PrivateKey(EVP_PKEY_RSA, NULL, &p, priv_pkcs8.size());
+    if (pkey != NULL) {
+        EVP_PKEY_free(pkey);
+        return Algorithm::RSA;
+    }
+
+    return static_cast<Algorithm>(-1);
 }
 
 } /* namespace hidl_ops */

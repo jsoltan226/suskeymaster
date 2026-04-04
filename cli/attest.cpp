@@ -24,10 +24,24 @@ namespace hidl_ops {
 using namespace ::android::hardware::keymaster::V4_0;
 using ::android::hardware::hidl_vec;
 
-int generate_key(HidlSusKeymaster4& hal, Algorithm alg,
+int generate_key(HidlSusKeymaster4& hal,
         hidl_vec<KeyParameter> const& in_key_params,
         hidl_vec<uint8_t> &out)
 {
+    Algorithm alg;
+    bool found = false;
+    for (const auto& kp : in_key_params) {
+        if (kp.tag == Tag::ALGORITHM) {
+            alg = kp.f.algorithm;
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        std::cerr << "No ALGORITHM provided in key parameters" << std::endl;
+        return -1;
+    }
+
     hidl_vec<KeyParameter> params(in_key_params);
     if (alg == Algorithm::EC) {
         kmhal::util::init_default_params(params, {
@@ -62,6 +76,7 @@ int generate_key(HidlSusKeymaster4& hal, Algorithm alg,
             << static_cast<int32_t>(e) << " (" << toString(e) << ")" << std::endl;
         return 1;
     }
+    std::cout << "Successfully generated " << toString(alg) << " key" << std::endl;
 
     return 0;
 }
