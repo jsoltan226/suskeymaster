@@ -166,24 +166,7 @@ namespace suskeymaster {
 
 static const std::vector<cli_command> cmds = {
 {
-    { "generate" },
-    {
-        "Generate a new key in KeyMaster using <params> "
-        "and save the resulting key blob to <out_key_blob>"
-    },
-    HAL_NEEDED,
-    {
-        { "params", KEY_PARAMETERS, MANDATORY,
-            "Key generation parameters, such as ALGORITHM and PURPOSE"
-        },
-        { "out_key_blob", OUTPUT_FILE, MANDATORY,
-            "The file to which the keymaster keyblob will be written"
-        },
-    },
-    [](arg_map_t& a) {
-        return cli::hidl_ops::generate_key(g_hal,
-                a["params"].in_key_params(), a["out_key_blob"].out_bytes());
-    }
+    { "__line_break__" }, {}, HAL_NOT_NEEDED, {}, {}
 },
 {
     { "get-characteristics" },
@@ -201,10 +184,30 @@ static const std::vector<cli_command> cmds = {
         }
     },
     [](arg_map_t& a) {
-        return cli::hidl_ops::get_key_characteristics(g_hal,
+        return cli::hal_ops::get_key_characteristics(g_hal,
                 a["key_blob"].in_bytes(),
                 a["deserialization_params"].in_key_params()
         );
+    }
+},
+{
+    { "generate" },
+    {
+        "Generate a new key in KeyMaster using <params> "
+        "and save the resulting key blob to <out_key_blob>"
+    },
+    HAL_NEEDED,
+    {
+        { "params", KEY_PARAMETERS, MANDATORY,
+            "Key generation parameters, such as ALGORITHM and PURPOSE"
+        },
+        { "out_key_blob", OUTPUT_FILE, MANDATORY,
+            "The file to which the keymaster keyblob will be written"
+        },
+    },
+    [](arg_map_t& a) {
+        return cli::hal_ops::generate_key(g_hal,
+                a["params"].in_key_params(), a["out_key_blob"].out_bytes());
     }
 },
 {
@@ -229,12 +232,12 @@ static const std::vector<cli_command> cmds = {
     },
     [](arg_map_t& a) {
         hidl_vec<uint8_t> keyblob;
-        if (cli::hidl_ops::generate_key(g_hal, a["generate_params"].in_key_params(), keyblob)) {
+        if (cli::hal_ops::generate_key(g_hal, a["generate_params"].in_key_params(), keyblob)) {
             std::cerr << "Failed to generate ephemeral attested key!" << std::endl;
             return 1;
         }
 
-        return cli::hidl_ops::attest_key(g_hal, keyblob, a["attest_params"].in_key_params());
+        return cli::hal_ops::attest_key(g_hal, keyblob, a["attest_params"].in_key_params());
     }
 },
 {
@@ -261,7 +264,7 @@ static const std::vector<cli_command> cmds = {
         const hidl_vec<uint8_t>& keyblob = a["keyblob"].in_bytes();
         const hidl_vec<KeyParameter>& params = a["attest params"].in_key_params();
 
-        return cli::hidl_ops::attest_key(g_hal, keyblob, params);
+        return cli::hal_ops::attest_key(g_hal, keyblob, params);
     }
 },
 {
@@ -283,7 +286,7 @@ static const std::vector<cli_command> cmds = {
         },
     },
     [](arg_map_t& a) {
-        return cli::hidl_ops::import_key(g_hal, a["in_private_pkcs8"].in_bytes(),
+        return cli::hal_ops::import_key(g_hal, a["in_private_pkcs8"].in_bytes(),
                 a["params"].in_key_params(), a["in_key_blob"].out_bytes());
     }
 },
@@ -308,13 +311,70 @@ static const std::vector<cli_command> cmds = {
         },
     },
     [](arg_map_t& a) {
-        return cli::hidl_ops::export_key(g_hal,
+        return cli::hal_ops::export_key(g_hal,
                 a["in_keyblob"].in_bytes(), a["out_public_x509"].out_bytes(),
                 a["deserialization_params"].in_key_params());
     }
 },
 {
-    { "sign" },
+    { "__line_break__" }, {}, HAL_NOT_NEEDED, {}, {}
+},
+{
+    { "crypto", "encrypt" },
+    {
+        "Encrypts <in_plaintext> with <in_key_blob>, optionally using [params], "
+            "saving the ciphertext to <out_ciphertext>"
+    },
+    HAL_NEEDED,
+    {
+        { "in_key_blob", INPUT_FILE, MANDATORY,
+            "The encryption key blob"
+        },
+        { "in_plaintext", INPUT_FILE, MANDATORY,
+            "The data to be encrypted"
+        },
+        { "out_ciphertext", OUTPUT_FILE, MANDATORY,
+            "The file to which the encrypted data will be written"
+        },
+        { "params", KEY_PARAMETERS, OPTIONAL,
+            "A space-separated list of key parameters used in the call to `begin`"
+        },
+    },
+    [](arg_map_t& a) {
+        return cli::hal_ops::crypto::encrypt(g_hal,
+                a["in_plaintext"].in_bytes(), a["in_key_blob"].in_bytes(),
+                a["params"].in_key_params(), a["out_ciphertext"].out_bytes());
+    }
+},
+{
+    { "crypto", "decrypt" },
+    {
+        "Decrypts <in_ciphertext> with <in_key_blob>, optionally using [params], "
+            "saving the plaintext to <out_plaintext>"
+    },
+    HAL_NEEDED,
+    {
+        { "in_key_blob", INPUT_FILE, MANDATORY,
+            "The decryption key blob"
+        },
+        { "in_ciphertext", INPUT_FILE, MANDATORY,
+            "The data to be decrypted"
+        },
+        { "out_plaintext", OUTPUT_FILE, MANDATORY,
+            "The file to which the decrypted data will be written"
+        },
+        { "params", KEY_PARAMETERS, OPTIONAL,
+            "A space-separated list of key parameters used in the call to `begin`"
+        },
+    },
+    [](arg_map_t& a) {
+        return cli::hal_ops::crypto::decrypt(g_hal,
+                a["in_ciphertext"].in_bytes(), a["in_key_blob"].in_bytes(),
+                a["params"].in_key_params(), a["out_plaintext"].out_bytes());
+    }
+},
+{
+    { "crypto", "sign" },
     {
         "Signs <in_message> with <in_key_blob>, optionally using [params], "
             "saving the signature to <out_signature>"
@@ -327,18 +387,48 @@ static const std::vector<cli_command> cmds = {
         { "in_message", INPUT_FILE, MANDATORY,
             "The data to be signed"
         },
-        { "signature", OUTPUT_FILE, MANDATORY,
+        { "out_signature", OUTPUT_FILE, MANDATORY,
             "The file to which the signature will be written"
         },
         { "params", KEY_PARAMETERS, OPTIONAL,
-            "A space-separated list of key parameters used in the calls to `begin` and `finish`"
+            "A space-separated list of key parameters used in the call to `begin`"
         },
     },
     [](arg_map_t& a) {
-        return cli::hidl_ops::sign(g_hal, a["in_message"].in_bytes(),
+        return cli::hal_ops::crypto::sign(g_hal, a["in_message"].in_bytes(),
                 a["in_key_blob"].in_bytes(), a["params"].in_key_params(),
                 a["out_signature"].out_bytes());
     }
+},
+{
+    { "crypto", "verify" },
+    {
+        "Verifies <in_signature> (generated over <in_message>) with <in_key_blob>, "
+            "optionally using [params]"
+    },
+    HAL_NEEDED,
+    {
+        { "in_key_blob", INPUT_FILE, MANDATORY,
+            "The key blob with which the signature was generated"
+        },
+        { "in_message", INPUT_FILE, MANDATORY,
+            "The data that the signature applies to"
+        },
+        { "in_signature", INPUT_FILE, MANDATORY,
+            "The signature to be verified"
+        },
+        { "params", KEY_PARAMETERS, OPTIONAL,
+            "A space-separated list of key parameters used in the call to `begin`"
+        },
+    },
+    [](arg_map_t& a) {
+        return cli::hal_ops::crypto::verify(g_hal,
+                a["in_message"].in_bytes(), a["in_signature"].in_bytes(),
+                a["in_key_blob"].in_bytes(), a["params"].in_key_params());
+    }
+},
+{
+    { "__line_break__" }, {}, HAL_NOT_NEEDED, {}, {}
 },
 {
     { "mkkeybox" },
@@ -425,6 +515,9 @@ static const std::vector<cli_command> cmds = {
     [](arg_map_t& a) {
         return cli::keybox::dump_kb(a["in_keybox"].in_string(), a["out_dir"].out_string());
     }
+},
+{
+    { "__line_break__" }, {}, HAL_NOT_NEEDED, {}, {}
 },
 {
     { "transact", "client", "generate" },
@@ -625,7 +718,8 @@ static const std::vector<cli_cmd_example> cmd_examples = {
     },
     {
         "sign a message with a keyblob created with APPLICATION_ID='1234'",
-        "sign keyblob.bin message.txt signature.bin \"APPLICATION_ID=$(printf '1234' | base64)\""
+        "crypto sign keyblob.bin message.txt signature.bin "
+            "\"APPLICATION_ID=$(printf '1234' | base64)\""
     },
     {
         "generate a binary suskeymaster keybox file from certificates and keyblobs",
@@ -947,6 +1041,11 @@ static void print_generic_usage(void)
         << "Available commands:" << std::endl;
     std::cout << "    help [command...]" << std::endl;
     for (const auto& c : cmds) {
+        if (c.argv_match.size() == 1 && !std::strcmp(c.argv_match[0], "__line_break__")) {
+            std::cout << std::endl;
+            continue;
+        }
+
         std::cout << "    ";
 
         for (const char *s : c.argv_match)
@@ -990,6 +1089,8 @@ static const cli_command * match_command(int argc, const char **argv, int& out_n
     out_n_consumed = 0;
 
     for (const auto& cmd : cmds) {
+        if (cmd.argv_match.size() == 1 && !std::strcmp(cmd.argv_match[0], "__line_break__"))
+            continue;
 
         if (argc < static_cast<long long>(cmd.argv_match.size()))
             continue;

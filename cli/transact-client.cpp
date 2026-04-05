@@ -56,7 +56,7 @@ int generate_and_attest_wrapping_key(HidlSusKeymaster4& hal,
     std::cout << "Successfully generated wrapping key" << std::endl;
 
     /* Export the public part */
-    if (hidl_ops::export_key(hal, out_wrapping_blob, out_wrapping_pubkey, params)) {
+    if (hal_ops::export_key(hal, out_wrapping_blob, out_wrapping_pubkey, params)) {
         std::cerr << "Failed to export the wrapping public key" << std::endl;
         return 1;
     }
