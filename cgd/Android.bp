@@ -31,9 +31,13 @@ cc_library_static {
     target: {
         host: {
             enabled: true,
-            static_libs: [ "liblog" ],
+            cflags: [ "-DSUSKEYMASTER_BUILD_HOST", "-USUSKEYMASTER_BUILD_ANDROID" ]
         },
-        android_arm64: { enabled: true },
+        android_arm64: {
+            enabled: true,
+            cflags: [ "-USUSKEYMASTER_BUILD_HOST", "-DSUSKEYMASTER_BUILD_ANDROID" ],
+            shared_libs: [ "liblog" ]
+        },
         android_arm: { enabled: false },
         android_x86: { enabled: false },
         android_x86_64: { enabled: false }

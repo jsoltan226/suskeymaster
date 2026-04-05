@@ -442,6 +442,8 @@ static int parse_tag_value(Tag t, std::string const& value,
                 " (" << toString(t) << ")" << std::endl;
             return 1;
     }
+
+    return 1;
 }
 
 // Source - https://stackoverflow.com/a/41094722
@@ -846,11 +848,12 @@ void key_params_2_auth_list(hidl_vec<KeyParameter> const& params,
         struct KM_AuthorizationList_v3 *out)
 {
     /* holy macro */
-#define push_enum(field_, val_) do {                    \
-    if (out->field_ == NULL)                            \
-        *(int **)&out->field_ = vector_new(int);        \
-    out->__##field_##_present = true;                   \
-    vector_push_back((int **)&out->field_, (int)val_);  \
+#define push_enum(type_, field_, val_) do {                     \
+    if (out->field_ == NULL)  {                                 \
+        out->field_ = vector_new(type_);                        \
+    }                                                           \
+    out->__##field_##_present = true;                           \
+    vector_push_back(&out->field_, (type_)val_);                \
 } while (0)
 #define push_long(field_, kp_) do {                         \
     if (out->field_ == NULL)                                \
@@ -865,9 +868,9 @@ void key_params_2_auth_list(hidl_vec<KeyParameter> const& params,
     vector_resize(&out->field_, kp_.blob.size());               \
     memcpy(out->field_, kp_.blob.data(), kp_.blob.size());      \
 } while (0)
-#define assign_enum(field_, val_) do {      \
-    out->__##field_##_present = true;       \
-    *(int *)&out->field_ = *((int *)&val_); \
+#define assign_enum(type_, field_, val_) do {   \
+    out->__##field_##_present = true;           \
+    out->field_ = (type_)val_;                  \
 } while (0)
 #define assign_int(field_, kp_) do {        \
     out->__##field_##_present = true;       \
@@ -888,19 +891,20 @@ void key_params_2_auth_list(hidl_vec<KeyParameter> const& params,
 
     for (auto const& kp : params) {
         switch (kp.tag) {
-        case Tag::PURPOSE: push_enum(purpose, kp.f.purpose); break;
-        case Tag::ALGORITHM: assign_enum(algorithm, kp.f.algorithm); break;
+        case Tag::PURPOSE: push_enum(KM_KeyPurpose, purpose, kp.f.purpose); break;
+        case Tag::ALGORITHM: assign_enum(KM_Algorithm, algorithm, kp.f.algorithm); break;
         case Tag::KEY_SIZE: assign_int(keySize, kp); break;
-        case Tag::BLOCK_MODE: push_enum(blockMode, kp.f.blockMode); break;
-        case Tag::DIGEST: push_enum(digest, kp.f.digest); break;
-        case Tag::PADDING: push_enum(padding, kp.f.paddingMode); break;
+        case Tag::BLOCK_MODE: push_enum(KM_BlockMode, blockMode, kp.f.blockMode); break;
+        case Tag::DIGEST: push_enum(KM_Digest, digest, kp.f.digest); break;
+        case Tag::PADDING: push_enum(KM_PaddingMode, padding, kp.f.paddingMode); break;
         case Tag::CALLER_NONCE: assign_bool(callerNonce, kp); break;
         case Tag::MIN_MAC_LENGTH: assign_int(minMacLength, kp); break;
-        case Tag::EC_CURVE: assign_enum(ecCurve, kp.f.ecCurve); break;
+        case Tag::EC_CURVE: assign_enum(KM_EcCurve, ecCurve, kp.f.ecCurve); break;
         case Tag::RSA_PUBLIC_EXPONENT: assign_long(rsaPublicExponent, kp); break;
         case Tag::INCLUDE_UNIQUE_ID: assign_bool(includeUniqueId, kp); break;
         case Tag::BLOB_USAGE_REQUIREMENTS:
-            assign_enum(keyBlobUsageRequirements, kp.f.keyBlobUsageRequirements);
+            assign_enum(KM_KeyBlobUsageRequirements,
+                    keyBlobUsageRequirements, kp.f.keyBlobUsageRequirements);
             break;
         case Tag::BOOTLOADER_ONLY: assign_bool(bootloaderOnly, kp); break;
         case Tag::ROLLBACK_RESISTANCE: assign_bool(rollbackResistance, kp); break;
@@ -924,7 +928,7 @@ void key_params_2_auth_list(hidl_vec<KeyParameter> const& params,
         case Tag::APPLICATION_ID: copy_bytes(applicationId, kp); break;
         case Tag::APPLICATION_DATA: copy_bytes(applicationData, kp); break;
         case Tag::CREATION_DATETIME: assign_datetime(creationDateTime, kp); break;
-        case Tag::ORIGIN: assign_enum(keyOrigin, kp.f.origin); break;
+        case Tag::ORIGIN: assign_enum(KM_KeyOrigin, keyOrigin, kp.f.origin); break;
         case Tag::ROOT_OF_TRUST:
             std::cerr << "WARNING: ROOT_OF_TRUST value in parameters; "
                 "setting `rootOfTrustBytes` instead of `rootOfTrust`" << std::endl;
@@ -960,11 +964,12 @@ void key_params_2_auth_list(hidl_vec<KeyParameter> const& params,
 #undef assign_long
 #undef assign_datetime
 
-#define push_enum(field_, val_) do {                            \
-    if (out->samsungfield_ == NULL)                             \
-        *(int **)&out->samsungfield_ = vector_new(int);         \
+#define push_enum(type_, field_, val_) do {                     \
+    if (out->samsung.field_ == NULL)  {                         \
+        &out->samsung.field_ = vector_new(type_));              \
+    }                                                           \
     out->samsung.__##field_##_present = true;                   \
-    vector_push_back((int **)&out->samsung.field_, (int)val_);  \
+    vector_push_back(&out->samsung.field_, val_);               \
 } while (0)
 #define push_long(field_, kp_) do {                                 \
     if (out->samsungfield_ == NULL)                                 \
@@ -979,9 +984,9 @@ void key_params_2_auth_list(hidl_vec<KeyParameter> const& params,
     vector_resize(&out->samsung.field_, kp_.blob.size());               \
     memcpy(out->samsung.field_, kp_.blob.data(), kp_.blob.size());      \
 } while (0)
-#define assign_enum(field_, val_) do {              \
-    out->samsung.__##field_##_present = true;       \
-    *(int *)&out->samsung.field_ = *((int *)&val_); \
+#define assign_enum(type_, field_, val_) do {   \
+    out->samsung.__##field_##_present = true;   \
+    out->samsung.field_ = (type_)val_;          \
 } while (0)
 #define assign_int(field_, kp_) do {            \
     out->samsung.__##field_##_present = true;   \
@@ -1004,7 +1009,9 @@ void key_params_2_auth_list(hidl_vec<KeyParameter> const& params,
         case SamsungTag::VERIFICATION_TOKEN: copy_bytes(verificationToken, kp); break;
         case SamsungTag::ALL_USERS: assign_bool(allUsers, kp); break;
         case SamsungTag::ECIES_SINGLE_HASH_MODE: assign_bool(eciesSingleHashMode, kp); break;
-        case SamsungTag::KDF: assign_enum(kdf, kp); break;
+        case SamsungTag::KDF:
+            assign_enum(KM_KeyDerivationFunction, kdf, kp.f.keyDerivationFunction);
+            break;
         case SamsungTag::EXPORTABLE: assign_bool(exportable, kp); break;
         case SamsungTag::KEY_AUTH: assign_bool(keyAuth, kp); break;
         case SamsungTag::OP_AUTH: assign_bool(opAuth, kp); break;

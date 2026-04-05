@@ -1,0 +1,213 @@
+PLATFORM ?= linux
+PREFIX ?= /usr
+
+ifeq ($(PREFIX), /data/data/com.termux/files/usr)
+TERMUX := 1
+endif
+
+# Compiler and flags
+CC ?= clang
+CXX ?= clang++
+LD = $(CXX)
+CPP = $(CXX) -E
+AR = ar rcs
+
+INCLUDES ?=
+ifeq ($(PLATFORM), linux)
+INCLUDES += -I$(PREFIX)/include/libdrm
+endif
+INCLUDES += -I$(PWD)/aosp-headers/include-base -I$(PWD)/aosp-headers/include-keymaster
+INCLUDES += -I$(PWD)/cgd
+INCLUDES += -I$(PWD)/libsuscertmod/include
+INCLUDES += -I$(PWD)/libsuskmhal/include
+
+COMMON_CFLAGS := -std=c11 -Wall -Wextra -pipe -fPIC -DSUSKEYMASTER_BUILD_HOST -USUSKEYMASTER_BUILD_ANDROID $(INCLUDES)
+COMMON_CXXFLAGS := -std=c++17 -Wall -Wno-c11-extensions -Wno-switch -Wno-unknown-pragmas -pipe -fPIC -fno-exceptions -fno-rtti -DSUSKEYMASTER_BUILD_HOST -USUSKEYMASTER_BUILD_ANDROID $(INCLUDES)
+DEPFLAGS ?= -MMD -MP
+
+LDFLAGS ?= -pie
+ifeq ($(PLATFORM), windows)
+LDFLAGS += -mconsole
+endif
+SO_LDFLAGS := -shared
+ifeq ($(PLATFORM), linux)
+ASAN_FLAGS :=
+#-fsanitize=address
+#-fsanitize=thread
+endif
+ifeq ($(PLATFORM), windows)
+ASAN_FLAGS :=
+endif
+
+LIBS ?= -lm -lcrypto
+ifeq ($(TERMUX), 1)
+LIBS += $(PREFIX)/lib/libandroid-shmem.a -llog
+endif
+ifeq ($(PLATFORM), windows)
+LIBS += -lws2_32
+endif
+ifeq ($(PLATFORM), linux)
+LIBS +=
+endif
+
+STRIP ?= strip
+STRIPFLAGS ?= -g -s
+
+# Shell commands
+ECHO := echo
+PRINTF := printf
+RM := rm -f
+TOUCH := touch -c
+EXEC := exec
+MKDIR := mkdir -p
+RMRF := rm -rf
+7Z := 7z
+
+# Executable file Prefix/Suffix
+EXEPREFIX :=
+EXESUFFIX :=
+ifeq ($(PLATFORM),windows)
+EXESUFFIX := .exe
+endif
+
+SO_PREFIX :=
+SO_SUFFIX := .so
+ifeq ($(PLATFORM),windows)
+SO_SUFFIX := .dll
+endif
+
+# Directories
+OBJDIR := obj
+BINDIR := bin
+
+# Test sources and objects
+
+# Sources and objects
+_sus_hook_handler := libsuskeymaster/handler.cpp
+
+C_SRCS := $(wildcard */*/*.c) $(wildcard */*.c) $(wildcard *.c)
+CXX_SRCS := $(filter-out $(_sus_hook_handler), $(wildcard */*/*/*.cpp) $(wildcard */*/*.cpp) $(wildcard */*.cpp) $(wildcard *.cpp))
+_all_srcs := $(C_SRCS) $(CXX_SRCS)
+
+C_OBJS := $(patsubst %.c,$(OBJDIR)/%.c.o,$(shell basename -a $(C_SRCS)))
+CXX_OBJS := $(patsubst %.cpp,$(OBJDIR)/%.cpp.o,$(shell basename -a $(CXX_SRCS)))
+_all_objs := $(C_OBJS) $(CXX_OBJS)
+
+DEPS := $(patsubst %.o,%.d,$(_all_objs))
+
+# Executables
+EXE := $(BINDIR)/$(EXEPREFIX)suskeymaster$(EXESUFFIX)
+EXEARGS :=
+
+.PHONY: all trace release strip clean mostlyclean update run br tests tests-release build-tests compile-tests build-tests-release compile-tests-release run-tests debug-run bdr test-hooks
+.NOTPARALLEL: all trace release br bdr build-tests build-tests-release
+
+# Build targets
+all: CFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
+all: CXXFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
+all: LDFLAGS += $(ASAN_FLAGS)
+all: $(OBJDIR) $(BINDIR) $(EXE)
+
+trace: CFLAGS = -g -O0 -Wall -DCGD_ENABLE_TRACE $(ASAN_FLAGS)
+trace: CXXFLAGS = -g -O0 -Wall -DCGD_ENABLE_TRACE $(ASAN_FLAGS)
+trace: LDFLAGS += $(ASAN_FLAGS)
+trace: $(OBJDIR) $(BINDIR) $(EXE)
+
+release: CFLAGS = -O3 -Werror -flto -DNDEBUG -DCGD_BUILDTYPE_RELEASE
+release: CXXFLAGS = -O3 -Werror -flto -DNDEBUG -DCGD_BUILDTYPE_RELEASE
+release: LDFLAGS += -flto
+release: clean $(OBJDIR) $(BINDIR) $(EXE) tests-release mostlyclean strip
+
+br: all run
+
+# Output executable rules
+$(EXE): $(_all_objs)
+	@$(PRINTF) "LD 	%-30s %-30s\n" "$(EXE)" "<= $^"
+	@$(LD) $(LDFLAGS) -o $(EXE) $(_all_objs) $(LIBS)
+
+# Output directory rules
+$(OBJDIR):
+	@$(ECHO) "MKDIR	$(OBJDIR)"
+	@$(MKDIR) $(OBJDIR)
+
+$(BINDIR):
+	@$(ECHO) "MKDIR	$(BINDIR)"
+	@$(MKDIR) $(BINDIR)
+
+# Generic compilation targets
+$(OBJDIR)/%.c.o: %.c Makefile.host
+	@$(PRINTF) "CC	%-30s %-30s\n" "$@" "<= $<"
+	@$(CC) $(DEPFLAGS) $(COMMON_CFLAGS) $(CFLAGS) -c -o $@ $<
+
+$(OBJDIR)/%.c.o: */%.c Makefile.host
+	@$(PRINTF) "CC	%-30s %-30s\n" "$@" "<= $<"
+	@$(CC) $(DEPFLAGS) $(COMMON_CFLAGS) $(CFLAGS) -c -o $@ $<
+
+$(OBJDIR)/%.c.o: */*/%.c Makefile.host
+	@$(PRINTF) "CC	%-30s %-30s\n" "$@" "<= $<"
+	@$(CC) $(DEPFLAGS) $(COMMON_CFLAGS) $(CFLAGS) -c -o $@ $<
+
+$(OBJDIR)/%.c.o: */*/*/%.c Makefile.host
+	@$(PRINTF) "CC	%-30s %-30s\n" "$@" "<= $<"
+	@$(CC) $(DEPFLAGS) $(COMMON_CFLAGS) $(CFLAGS) -c -o $@ $<
+
+$(OBJDIR)/%.cpp.o: %.cpp Makefile.host
+	@$(PRINTF) "CXX	%-30s %-30s\n" "$@" "<= $<"
+	@$(CXX) $(DEPFLAGS) $(COMMON_CXXFLAGS) $(CXXFLAGS) -c -o $@ $<
+
+$(OBJDIR)/%.cpp.o: */%.cpp Makefile.host
+	@$(PRINTF) "CXX	%-30s %-30s\n" "$@" "<= $<"
+	@$(CXX) $(DEPFLAGS) $(COMMON_CXXFLAGS) $(CXXFLAGS) -c -o $@ $<
+
+$(OBJDIR)/%.cpp.o: */*/%.cpp Makefile.host
+	@$(PRINTF) "CXX	%-30s %-30s\n" "$@" "<= $<"
+	@$(CXX) $(DEPFLAGS) $(COMMON_CXXFLAGS) $(CXXFLAGS) -c -o $@ $<
+
+$(OBJDIR)/%.cpp.o: */*/*/%.cpp Makefile.host
+	@$(PRINTF) "CXX	%-30s %-30s\n" "$@" "<= $<"
+	@$(CXX) $(DEPFLAGS) $(COMMON_CXXFLAGS) $(CXXFLAGS) -c -o $@ $<
+
+# Special compilation targets
+
+# Test preparation targets
+
+# Test execution targets
+#
+# ANSI escape sequences (for printing colored text)
+GREEN := \033[0;32m
+RED := \033[0;31m
+COL_RESET := \033[0m
+
+# Test compilation targets
+
+# Cleanup targets
+mostlyclean:
+	@$(ECHO) "RM	$(OBJS) $(DEPS)"
+	@$(RM) $(OBJS) $(DEPS)
+
+clean:
+	@$(ECHO) "RM	$(OBJS) $(DEPS) $(EXE) $(BINDIR) $(OBJDIR)"
+	@$(RM) $(OBJS) $(DEPS) $(EXE)
+	@$(RMRF) $(OBJDIR) $(BINDIR)
+
+# Output execution targets
+run:
+	@$(ECHO) "EXEC	$(EXE) $(EXEARGS)"
+	@$(EXEC) $(EXE) $(EXEARGS)
+
+debug-run:
+	@$(ECHO) "EXEC	$(EXE) $(EXEARGS)"
+	@bash -c '$(EXEC) -a debug $(EXE) $(EXEARGS)'
+
+bdr: all debug-run
+
+# Miscellaneous targets
+strip:
+	@$(ECHO) "STRIP	$(EXE)"
+	@$(STRIP) $(STRIPFLAGS) $(EXE)
+
+update:
+	@$(ECHO) "TOUCH	$(SRCS)"
+	@$(TOUCH) $(SRCS)
+
+-include $(DEPS)

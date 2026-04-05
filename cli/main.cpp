@@ -1130,7 +1130,7 @@ static void print_cmd_usage(const cli_command& c)
     }
     std::cout << std::endl;
 
-    for (const std::string& s : c.description)
+    for (const char *s : c.description)
         std::cout << "    " << s << std::endl;
 
     std::cout << std::endl;

@@ -12,7 +12,9 @@
 #include <stdbool.h>
 #include <stdatomic.h>
 #include <string.h>
+#ifdef SUSKEYMASTER_BUILD_ANDROID
 #include <android/log.h>
+#endif /* SUSKEYMASTER_BUILD_ANDROID */
 
 #define MODULE_NAME "log"
 
@@ -22,9 +24,11 @@ static void write_msg_to_file(FILE *fp,
 static void write_msg_to_membuf(struct ringbuffer *membuf,
     const char *linefmt, const char *module_name,
     const char *fmt, va_list vlist, bool strip_escape_sequences);
+#ifdef SUSKEYMASTER_BUILD_ANDROID
 static void write_msg_to_android_log(enum s_log_level level,
     const char *linefmt, const char *module_name,
     const char *fmt, va_list vlist, bool strip_escape_sequences);
+#endif /* SUSKEYMASTER_BUILD_ANDROID */
 
 static enum linefmt_ret {
     LINEFMT_END,
@@ -34,7 +38,7 @@ static enum linefmt_ret {
 } linefmt_next_token(const char *linefmt, u64 *linefmt_index_p,
     char *short_buf, u64 short_buf_size);
 
-static _Noreturn void do_abort_v(const char *module_name,
+static CGD_NORETURN void do_abort_v(const char *module_name,
     const char *function_name, const char *fmt, va_list vlist);
 
 static void read_output_config(struct s_log_output_cfg *o,
@@ -135,12 +139,19 @@ static struct ringbuffer g_default_err_membuf = {
     .write_index = ATOMIC_VAR_INIT(0),
 };
 
+static const enum s_log_output_type g_default_output_type =
+#if !defined(SUSKEYMASTER_BUILD_ANDROID)
+S_LOG_OUTPUT_MEMORYBUF;
+#else
+S_LOG_OUTPUT_ANDROID_LOG;
+#endif /* !defined(SUSKEYMASTER_BUILD_ANDROID) */
+
 /* The actual configuration variable that's read from and written to */
 static struct output g_output_cfgs[S_LOG_N_LEVELS_] = {
 #define default_output_config_template(out_membuf)                          \
     {                                                                       \
         .cfg_lock = SPINLOCK_INIT,                                          \
-        .type = S_LOG_OUTPUT_ANDROID_LOG,                                   \
+        .type = g_default_output_type,                                      \
         .membuf = &out_membuf,                                              \
     }
 
@@ -204,17 +215,19 @@ void s_logv(enum s_log_level level, const char *module_name,
             linefmt_string, module_name, fmt, fmt_list,
             output->strip_esc_sequences);
         break;
+#ifdef SUSKEYMASTER_BUILD_ANDROID
     case S_LOG_OUTPUT_ANDROID_LOG:
         write_msg_to_android_log(level,
                 linefmt_string, module_name, fmt, fmt_list,
                 output->strip_esc_sequences);
         break;
+#endif /* SUSKEYMASTER_BUILD_ANDROID */
     case S_LOG_OUTPUT_NONE:
         break;
     }
 }
 
-_Noreturn void s_abort(const char *module_name, const char *function_name,
+CGD_NORETURN void s_abort(const char *module_name, const char *function_name,
     const char *fmt, ...)
 {
     va_list vlist;
@@ -385,6 +398,7 @@ static void write_msg_to_membuf(struct ringbuffer *membuf,
     }
 }
 
+#ifdef SUSKEYMASTER_BUILD_ANDROID
 static void write_msg_to_android_log(enum s_log_level level,
     const char *linefmt, const char *module_name,
     const char *fmt, va_list vlist, bool strip_esc_sequences)
@@ -463,6 +477,7 @@ static void write_msg_to_android_log(enum s_log_level level,
 
     __android_log_print(prio, CGD_LOG_BUILD_TAG, "%s", full_msg_buf);
 }
+#endif /* SUSKEYMASTER_BUILD_ANDROID */
 
 static enum linefmt_ret linefmt_next_token(const char *linefmt,
     u64 *linefmt_index_p, char *short_buf, u64 short_buf_size)
@@ -514,7 +529,7 @@ static enum linefmt_ret linefmt_next_token(const char *linefmt,
 }
 
 
-static _Noreturn void do_abort_v(const char *module_name,
+static CGD_NORETURN void do_abort_v(const char *module_name,
     const char *function_name, const char *fmt, va_list vlist)
 {
     FILE *err_fp = NULL;
@@ -525,7 +540,9 @@ static _Noreturn void do_abort_v(const char *module_name,
         break;
     case S_LOG_OUTPUT_MEMORYBUF:
     case S_LOG_OUTPUT_NONE:
+#ifdef SUSKEYMASTER_BUILD_ANDROID
     case S_LOG_OUTPUT_ANDROID_LOG:
+#endif /* SUSKEYMASTER_BUILD_ANDROID */
         err_fp = stderr;
         break;
     }
@@ -557,7 +574,9 @@ static void read_output_config(struct s_log_output_cfg *o,
         case S_LOG_OUTPUT_MEMORYBUF:
             o->out.membuf = o->out.membuf;
             break;
+#ifdef SUSKEYMASTER_BUILD_ANDROID
         case S_LOG_OUTPUT_ANDROID_LOG:
+#endif /* SUSKEYMASTER_BUILD_ANDROID */
         case S_LOG_OUTPUT_NONE:
             break;
     }
@@ -651,7 +670,9 @@ static i32 try_init_new_output(enum s_log_level level,
         }
         o->buf = i->out.membuf;
         break;
+#ifdef SUSKEYMASTER_BUILD_ANDROID
     case S_LOG_OUTPUT_ANDROID_LOG:
+#endif /* SUSKEYMASTER_BUILD_ANDROID */
     case S_LOG_OUTPUT_NONE:
         break;
     }
@@ -684,7 +705,9 @@ static void store_new_output(struct output *o,
     case S_LOG_OUTPUT_MEMORYBUF:
         o->membuf = i_tmp_data->buf;
         break;
+#ifdef SUSKEYMASTER_BUILD_ANDROID
     case S_LOG_OUTPUT_ANDROID_LOG:
+#endif /* SUSKEYMASTER_BUILD_ANDROID */
     case S_LOG_OUTPUT_NONE:
         break;
     }
@@ -717,7 +740,9 @@ static void copy_old_data(union tmp_output_data *new_output,
             u_min(cfg->membuf->buf_size, new_output->buf->buf_size)
         );
         break;
+#ifdef SUSKEYMASTER_BUILD_ANDROID
     case S_LOG_OUTPUT_ANDROID_LOG:
+#endif /* SUSKEYMASTER_BUILD_ANDROID */
         break;
     case S_LOG_OUTPUT_NONE:
         break;

@@ -345,6 +345,7 @@ static i32 set_keyusage(X509 *x509, const struct KM_KeyDescription_v3 *desc)
             case KM_PURPOSE_ENCRYPT:
             case KM_PURPOSE_DECRYPT:
                 val |= KU_DATA_ENCIPHERMENT;
+            /* fallthrough*/
             case KM_PURPOSE_WRAP_KEY:
                 val |= KU_KEY_ENCIPHERMENT;
                 break;

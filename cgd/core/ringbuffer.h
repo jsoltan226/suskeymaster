@@ -18,6 +18,7 @@ extern "C" {
  *
  * Thanks to atomic operations, the writes can be safely performed
  * from multiple threads simultaneously. */
+#ifndef __cplusplus
 struct ringbuffer {
     _Atomic bool initialized_; /* Sanity check to avoid double frees */
 
@@ -31,6 +32,9 @@ struct ringbuffer {
      * are not happenning simultaneously from multiple threads */
     spinlock_t write_lock;
 };
+#else
+struct ringbuffer;
+#endif /* __cplusplus */
 
 /* Initializes a new ringbuffer of size `buf_size`.
  * Returns `NULL` on failure. */

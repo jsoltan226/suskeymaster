@@ -515,8 +515,6 @@ ErrorCode HidlSusKeymaster4::abort(uint64_t operationHandle)
 
 #undef check_hal_ok
 
-extern "C" {
-
 using namespace ::android::hardware::keymaster::V4_0;
 using namespace ::android::hardware;
 
@@ -669,6 +667,8 @@ static constexpr enum KM_ErrorCode from_hidl_error(ErrorCode e)
 /* -------------------------------------------------------------------------
  * Opaque handle
  * ---------------------------------------------------------------------- */
+
+extern "C" {
 
 struct hidl_suskeymaster4 {
     HidlSusKeymaster4 impl;

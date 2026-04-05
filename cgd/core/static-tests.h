@@ -1,5 +1,7 @@
 #ifndef __cplusplus
 
+#include <assert.h>
+
 #ifndef __STDC__
 #error Please use a standard C compiler!
 #endif /* __STDC__ */
@@ -15,15 +17,15 @@
 
 #endif /* __cplusplus */
 
-_Static_assert(sizeof(float) == 4, "Sizeof float32 must be 4 bytes (32 bits)");
-_Static_assert(sizeof(double) == 8, "Sizeof float64 must be 8 bytes (64 bits)");
+static_assert(sizeof(float) == 4, "Sizeof float32 must be 4 bytes (32 bits)");
+static_assert(sizeof(double) == 8, "Sizeof float64 must be 8 bytes (64 bits)");
 
-_Static_assert(sizeof(char) == 1, "Sizeof char must be 1 byte (8 bits)");
+static_assert(sizeof(char) == 1, "Sizeof char must be 1 byte (8 bits)");
 #if 0
-_Static_assert(sizeof(void *) == 8, "Sizeof void * must be 8 bytes (64 bits)");
+static_assert(sizeof(void *) == 8, "Sizeof void * must be 8 bytes (64 bits)");
 #endif /* 0 */
 
-_Static_assert(sizeof(void (*)(void)) == sizeof(void *),
+static_assert(sizeof(void (*)(void)) == sizeof(void *),
     "The size of a function pointer must be the same "
     "as that of a normal (data) pointer");
 

@@ -40,10 +40,6 @@ cc_library_static {
         host: {
             enabled: true,
             cflags: [ "-DSUSKEYMASTER_BUILD_HOST", "-USUSKEYMASTER_BUILD_ANDROID" ],
-            static_libs: [
-                "liblog",
-                "libutils"
-            ],
         },
         android_arm64: {
             cflags: [ "-USUSKEYMASTER_BUILD_HOST", "-DSUSKEYMASTER_BUILD_ANDROID" ],

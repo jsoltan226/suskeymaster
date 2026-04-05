@@ -489,6 +489,7 @@ bool key_desc_parse_auth_list(struct KM_AuthorizationList_v3 *out,
             out->samsung.__isSamsungKey_present =
                 out->samsung.isSamsungKey = true;
             *p += field_len;
+            break;
         case __KM_TAG_MASK(KM_TAG_SAMSUNG_ATTESTATION_ROOT):
             out->samsung.__samsungAttestationRoot_present = parse_octet_string(
                     p, field_len, &out->samsung.samsungAttestationRoot
@@ -498,10 +499,12 @@ bool key_desc_parse_auth_list(struct KM_AuthorizationList_v3 *out,
             out->samsung.__samsungAttestationRoot_present = true;
             out->samsung.samsungAttestIntegrity = true;
             *p += field_len;
+            break;
         case __KM_TAG_MASK(KM_TAG_KNOX_OBJECT_PROTECTION_REQUIRED):
             out->samsung.__knoxObjectProtectionRequired_present = true;
             out->samsung.knoxObjectProtectionRequired = true;
             *p += field_len;
+            break;
         case __KM_TAG_MASK(KM_TAG_KNOX_CREATOR_ID):
             out->samsung.__knoxCreatorId_present = parse_octet_string(p,
                     field_len, &out->samsung.knoxCreatorId);
@@ -548,6 +551,7 @@ bool key_desc_parse_auth_list(struct KM_AuthorizationList_v3 *out,
         case __KM_TAG_MASK(KM_TAG_PROV_GAC_EC3):
             out->samsung.__provGacEc3_present = parse_octet_string(p, field_len,
                     &out->samsung.provGacEc3);
+            break;
         case __KM_TAG_MASK(KM_TAG_PROV_GAK_EC):
             out->samsung.__provGakEc_present = parse_octet_string(p, field_len,
                     &out->samsung.provGakEc);
@@ -567,6 +571,7 @@ bool key_desc_parse_auth_list(struct KM_AuthorizationList_v3 *out,
         case __KM_TAG_MASK(KM_TAG_PROV_GAC_RSA3):
             out->samsung.__provGacRsa3_present = parse_octet_string(p,
                     field_len, &out->samsung.provGacRsa3);
+            break;
         case __KM_TAG_MASK(KM_TAG_PROV_GAK_RSA):
             out->samsung.__provGakRsa_present = parse_octet_string(p, field_len,
                     &out->samsung.provGakRsa);

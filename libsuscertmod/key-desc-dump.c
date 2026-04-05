@@ -771,7 +771,7 @@ static void dump_u64_arr(const char *prefix, const char *postfix,
 
     for (u32 i = 0; i < vector_size(arr) - 1; i++) {
         r = snprintf(tmp_buf + write_index, 256 - write_index - 1,
-                "0x%016lx, ", arr[i]
+                "0x%016llx, ", (long long int)arr[i]
         );
         if (r <= 0 || r >= 256)
             continue;
@@ -779,7 +779,7 @@ static void dump_u64_arr(const char *prefix, const char *postfix,
         write_index += r;
     }
     (void) snprintf(tmp_buf + write_index, 256 - write_index - 1,
-            "0x%016lx", arr[vector_size(arr) - 1]);
+            "0x%016llx", (long long int)arr[vector_size(arr) - 1]);
 
     log_proc("%s%s%s", prefix, tmp_buf, postfix);
 }

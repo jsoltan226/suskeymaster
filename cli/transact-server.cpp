@@ -491,6 +491,7 @@ static EVP_PKEY * extract_x509_public_key(hidl_vec<uint8_t> const& x509_der)
     const uint8_t *p = NULL;
 
     EVP_PKEY *ret = NULL;
+    const RSA *rsa = NULL;
     int bits = 0;
     bool ok = false;
 
@@ -501,12 +502,12 @@ static EVP_PKEY * extract_x509_public_key(hidl_vec<uint8_t> const& x509_der)
         goto err;
     }
 
-    if (EVP_PKEY_base_id(ret) != EVP_PKEY_RSA) {
+    if ((rsa = EVP_PKEY_get0_RSA(ret)) == NULL) {
         std::cerr << "The key is not an RSA key" << std::endl;
         goto err;
     }
 
-    bits = EVP_PKEY_bits(ret);
+    bits = RSA_bits(rsa);
     if (bits != 2048) {
         std::cerr << "Invalid RSA key size (" << bits << " - expected 2048)" << std::endl;
         goto err;
@@ -967,7 +968,7 @@ static i32 measure_integer_size(struct certmod::key_desc_measure_ctx *ctx, i64 v
 static i32 measure_octet_string_size(struct certmod::key_desc_measure_ctx *ctx,
         hidl_vec<uint8_t> const& str)
 {
-    if (ctx == NULL || !ctx->initialized_ || str == NULL) {
+    if (ctx == NULL || !ctx->initialized_) {
         std::cerr << "Invalid parameters!";
         return -1;
     }

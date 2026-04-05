@@ -1,13 +1,18 @@
 #ifndef S_LOG_H_
 #define S_LOG_H_
 
+#include "int.h"
 #include "ringbuffer.h"
 #include "static-tests.h"
 
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdbool.h>
-#include "int.h"
+#ifdef __cplusplus
+#define CGD_NORETURN [[noreturn]]
+#else
+#define CGD_NORETURN _Noreturn
+#endif /* __cplusplus */
 
 #ifdef __cplusplus
 extern "C" {
@@ -186,7 +191,7 @@ void s_logv(enum s_log_level level, const char *module_name,
 /* abort()s the program, while printing `error_msg_fmt` along with the
  * `module_name` and `function_name` to an error stream.
  * Don't call this function directly; use `s_log_fatal` instead. */
-_Noreturn void s_abort(const char *module_name, const char *function_name,
+CGD_NORETURN void s_abort(const char *module_name, const char *function_name,
     const char *error_msg_fmt, ...);
 
 /* A wrapper around `s_abort`.
@@ -244,8 +249,10 @@ struct s_log_output_cfg {
          * See `core/ringbuffer` for more details. */
         S_LOG_OUTPUT_MEMORYBUF,
 
+#ifdef SUSKEYMASTER_BUILD_ANDROID
         /* The messages are logged to the android log buffer */
         S_LOG_OUTPUT_ANDROID_LOG,
+#endif /* SUSKEYMASTER_BUILD_ANDROID */
 
         /* The log level is completely disabled;
          * any messages using it are ignored. */

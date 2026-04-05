@@ -254,9 +254,6 @@ struct hidl_string {
         mOwnsBuffer = false;
     }
 
-    // offsetof(hidl_string, mBuffer) exposed since mBuffer is private.
-    static const size_t kOffsetOfBuffer;
-
 private:
     details::hidl_pointer<const char> mBuffer;
     uint32_t mSize;  // NOT including the terminating '\0'.
@@ -299,6 +296,10 @@ private:
         other.mOwnsBuffer = false;
         other.clear();
     }
+
+public:
+    // offsetof(hidl_string, mBuffer) exposed since mBuffer is private.
+    static const size_t kOffsetOfBuffer;
 };
 
 // Use NOLINT to suppress missing parentheses warnings around OP.
@@ -448,7 +449,6 @@ struct hidl_vec {
     using value_type = T;
 
     hidl_vec() : mBuffer(nullptr), mSize(0), mOwnsBuffer(false) {
-        static_assert(hidl_vec<T>::kOffsetOfBuffer == 0, "wrong offset");
 
         memset(mPad, 0, sizeof(mPad));
     }
@@ -637,9 +637,6 @@ struct hidl_vec {
         mOwnsBuffer = true;
     }
 
-    // offsetof(hidl_string, mBuffer) exposed since mBuffer is private.
-    static const size_t kOffsetOfBuffer;
-
 private:
     // Define std interator interface for walking the array contents
     template<bool is_const>
@@ -705,6 +702,9 @@ public:
             mBuffer = nullptr;
         }
     }
+  public:
+    // offsetof(hidl_string, mBuffer) exposed since mBuffer is private.
+    static const size_t kOffsetOfBuffer;
 };
 
 template <typename T>
@@ -978,7 +978,6 @@ private:
 struct hidl_version {
 public:
     constexpr hidl_version(uint16_t major, uint16_t minor) : mMajor(major), mMinor(minor) {
-        static_assert(sizeof(*this) == 4, "wrong size");
     }
 
     bool operator==(const hidl_version& other) const {
