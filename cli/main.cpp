@@ -317,6 +317,33 @@ static const std::vector<cli_command> cmds = {
     }
 },
 {
+    { "upgrade" },
+    {
+        "Upgrades a key blob generated on a system with older security patch levels, ",
+        "enabling its usage on the current system."
+    },
+    HAL_NEEDED,
+    {
+        { "in_keyblob_to_upgrade", INPUT_FILE, MANDATORY,
+            "The key blob to be upgraded"
+        },
+        { "out_upgraded_keyblob", OUTPUT_FILE, MANDATORY,
+            "The file to which the new (upgraded) keyblob will be written"
+        },
+        { "upgrade_params", KEY_PARAMETERS, OPTIONAL,
+            "Any parameters required to complete the `upgradeKey` operation, "
+                "including APPLICATION_ID and/or APPLICATION_DATA, if applicable."
+        }
+    },
+    [](arg_map_t& a) {
+        return cli::hal_ops::upgrade_key(g_hal,
+                a["in_keyblob_to_upgrade"].in_bytes(),
+                a["upgrade_params"].in_key_params(),
+                a["out_upgraded_keyblob"].out_bytes()
+        );
+    }
+},
+{
     { "__line_break__" }, {}, HAL_NOT_NEEDED, {}, {}
 },
 {

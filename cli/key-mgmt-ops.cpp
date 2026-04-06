@@ -292,6 +292,21 @@ int export_key(HidlSusKeymaster4& hal,
     return 0;
 }
 
+int upgrade_key(HidlSusKeymaster4& hal,
+        hidl_vec<uint8_t> const& in_keyblob_to_upgrade,
+        hidl_vec<KeyParameter> const& in_upgrade_params,
+        hidl_vec<uint8_t>& out_upgraded_keyblob)
+{
+    ErrorCode e = hal.upgradeKey(in_keyblob_to_upgrade, in_upgrade_params, out_upgraded_keyblob);
+    if (e != ErrorCode::OK) {
+        std::cerr << "upgradeKey operation failed: "
+            << static_cast<int32_t>(e) << " (" << toString(e) << ")" << std::endl;
+        return 1;
+    }
+    std::cout << "Successfully upgraded key blob" << std::endl;
+    return 0;
+}
+
 } /* namespace hal_ops */
 } /* namespace cli */
 } /* namespace suskeymaster */

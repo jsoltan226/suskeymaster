@@ -38,6 +38,11 @@ int export_key(HidlSusKeymaster4& hal,
     hidl_vec<uint8_t>& out_public_key_x509,
     hidl_vec<KeyParameter> const& in_application_id_data);
 
+int upgrade_key(HidlSusKeymaster4& hal,
+    hidl_vec<uint8_t> const& in_keyblob_to_upgrade,
+    hidl_vec<KeyParameter> const& in_upgrade_params,
+    hidl_vec<uint8_t>& out_upgraded_keyblob);
+
 namespace crypto {
     int encrypt(HidlSusKeymaster4& hal, hidl_vec<uint8_t> const& plaintext,
             hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& encrypt_params,
