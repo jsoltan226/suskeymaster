@@ -47,13 +47,13 @@ i32 sus_cert_sign(VECTOR(u8 const) tbs_der, VECTOR(u8) *out_sig,
             keyblob, params, NULL, NULL, &op_handle);
     if (e != KM_OK)
         goto_error("BEGIN operation failed: %d (%s)",
-                e, KM_ErrorCodeToString(e));
+                e, KM_ErrorCode_toString(e));
 
     e = hidl_suskeymaster4_finish(hidl_km, op_handle, NULL, tbs_der,
             NULL, NULL, NULL, NULL, out_sig);
     if (e != KM_OK)
         goto_error("FINISH operation failed: %d (%s)",
-                e, KM_ErrorCodeToString(e));
+                e, KM_ErrorCode_toString(e));
 
     op_handle = 0;
     hidl_suskeymaster4_destroy(&hidl_km);

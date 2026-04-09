@@ -40,6 +40,9 @@ cc_library_static {
         host: {
             enabled: true,
             cflags: [ "-DSUSKEYMASTER_BUILD_HOST", "-USUSKEYMASTER_BUILD_ANDROID" ],
+            shared_libs: [
+                "libcrypto"
+            ],
         },
         android_arm64: {
             cflags: [ "-USUSKEYMASTER_BUILD_HOST", "-DSUSKEYMASTER_BUILD_ANDROID" ],
@@ -49,6 +52,9 @@ cc_library_static {
                 "libhidltransport",
                 "libhidlbase",
                 "android.hardware.keymaster@4.0",
+            ],
+            static_libs: [
+                "libcrypto_sus_prebuilt"
             ],
         },
         android_arm: { enabled: false },

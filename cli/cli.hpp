@@ -100,6 +100,18 @@ namespace transact {
 
 } /* namespace transact */
 
+namespace samsung {
+    namespace ekey {
+        int list_tags(hidl_vec<uint8_t> const& in_keyblob);
+
+        int add_tags(hidl_vec<uint8_t> const& in_keyblob,
+                hidl_vec<KeyParameter> const& in_tags_to_add, hidl_vec<uint8_t>& out_keyblob);
+
+        int del_tags(hidl_vec<uint8_t> const& in_keyblob,
+                hidl_vec<KeyParameter> const& in_tags_to_del, hidl_vec<uint8_t>& out_keyblob);
+    } /* namespace ekey */
+} /* namespace samsung */
+
 
 static inline void extract_application_id_and_data(hidl_vec<KeyParameter> const& params,
         hidl_vec<uint8_t>& out_application_id, hidl_vec<uint8_t>& out_application_data)

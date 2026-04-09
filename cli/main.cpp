@@ -705,6 +705,75 @@ static const std::vector<cli_command> cmds = {
                 a["out_keyblob"].out_bytes()
         );
     }
+},
+{
+    { "__line_break__" }, {}, HAL_NOT_NEEDED, {}, {}
+},
+{
+    { "samsung", "ekey", "list-tags" },
+    {
+        "Prints out values of tags attached to a samsung keymaster encrypted key blob"
+    },
+    HAL_NOT_NEEDED,
+    {
+        {
+            "in_keyblob", INPUT_FILE, MANDATORY,
+            "The key blob whose tags are to be listed"
+        }
+    },
+    [](arg_map_t& a) {
+        return cli::samsung::ekey::list_tags(a["in_keyblob"].in_bytes());
+    }
+},
+{
+    { "samsung", "ekey", "add-tags" },
+    {
+        "Adds tags to a samsung keymaster encrypted key blob"
+    },
+    HAL_NOT_NEEDED,
+    {
+        {
+            "in_keyblob", INPUT_FILE, MANDATORY,
+            "The key blob to add the tags to"
+        },
+        {
+            "out_keyblob", OUTPUT_FILE, MANDATORY,
+            "The file to which the key blob with the added parameters will be written"
+        },
+        {
+            "tags", KEY_PARAMETERS, MANDATORY,
+            "A space-separated list of key parameters (tags) to add"
+        }
+    },
+    [](arg_map_t& a) {
+        return cli::samsung::ekey::add_tags(a["in_keyblob"].in_bytes(),
+                a["tags"].in_key_params(), a["out_keyblob"].out_bytes());
+    }
+},
+{
+    { "samsung", "ekey", "del-tags" },
+    {
+        "Deletes tags from a samsung keymaster encrypted key blob"
+    },
+    HAL_NOT_NEEDED,
+    {
+        {
+            "in_keyblob", INPUT_FILE, MANDATORY,
+            "The key blob to delete the tags from"
+        },
+        {
+            "out_keyblob", OUTPUT_FILE, MANDATORY,
+            "The file to which the key blob with the deleted parameters will be written"
+        },
+        {
+            "tags", KEY_PARAMETERS, MANDATORY,
+            "A space-separated list of key parameters (tags) to delete"
+        }
+    },
+    [](arg_map_t& a) {
+        return cli::samsung::ekey::del_tags(a["in_keyblob"].in_bytes(),
+                a["tags"].in_key_params(), a["out_keyblob"].out_bytes());
+    }
 }
 };
 
