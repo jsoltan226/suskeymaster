@@ -126,277 +126,53 @@ ASN1_SEQUENCE(KM_PARAM_LIST_SEQ) = {
 } ASN1_SEQUENCE_END(KM_PARAM_LIST_SEQ)
 IMPLEMENT_ASN1_FUNCTIONS(KM_PARAM_LIST_SEQ)
 
-static bool unwrap_asn1_sequence(const unsigned char **p, long len,
-        const unsigned char **out_start, const unsigned char **out_end,
-        long *out_len)
-{
-    if (out_start != NULL) *out_start = NULL;
-    if (out_end != NULL) *out_end = NULL;
-    if (out_len != NULL) *out_len = 0;
+ASN1_SEQUENCE(KM_SAMSUNG_PARAM) = {
+    ASN1_SIMPLE(KM_SAMSUNG_PARAM, tag, ASN1_INTEGER),
+    ASN1_EXP_OPT(KM_SAMSUNG_PARAM, i, ASN1_INTEGER, 0),
+    ASN1_EXP_OPT(KM_SAMSUNG_PARAM, b, ASN1_OCTET_STRING, 1)
+} ASN1_SEQUENCE_END(KM_SAMSUNG_PARAM)
+IMPLEMENT_ASN1_FUNCTIONS(KM_SAMSUNG_PARAM)
 
-    long seq_len = 0;
-    i32 asn1_tag = 0, asn1_class = 0;
-    const unsigned char *start = *p;
+ASN1_SEQUENCE(KM_SAMSUNG_INDATA) = {
+    ASN1_SIMPLE(KM_SAMSUNG_INDATA, ver, ASN1_INTEGER),
+    ASN1_SIMPLE(KM_SAMSUNG_INDATA, km_ver, ASN1_INTEGER),
+    ASN1_SIMPLE(KM_SAMSUNG_INDATA, cmd, ASN1_INTEGER),
+    ASN1_SIMPLE(KM_SAMSUNG_INDATA, pid, ASN1_INTEGER),
 
-    i32 ret = ASN1_get_object(p, &seq_len, &asn1_tag, &asn1_class, len);
-    if (ret & 0x80) {
-        s_log_error("Couldn't get DER SEQUENCE object");
-        return false;
-    }
+    ASN1_EXP_OPT(KM_SAMSUNG_INDATA, int0, ASN1_INTEGER, 0),
+    ASN1_EXP_OPT(KM_SAMSUNG_INDATA, long0, ASN1_INTEGER, 1),
+    ASN1_EXP_OPT(KM_SAMSUNG_INDATA, long1, ASN1_INTEGER, 2),
+    ASN1_EXP_OPT(KM_SAMSUNG_INDATA, bin0, ASN1_OCTET_STRING, 3),
+    ASN1_EXP_OPT(KM_SAMSUNG_INDATA, bin1, ASN1_OCTET_STRING, 4),
+    ASN1_EXP_OPT(KM_SAMSUNG_INDATA, bin2, ASN1_OCTET_STRING, 5),
+    ASN1_EXP_OPT(KM_SAMSUNG_INDATA, key, ASN1_OCTET_STRING, 6),
 
-    if (asn1_class != V_ASN1_UNIVERSAL || asn1_tag != V_ASN1_SEQUENCE) {
-        s_log_error("DER object is not a SEQUENCE");
-        return false;
-    }
+    ASN1_EXP_SET_OF_OPT(KM_SAMSUNG_INDATA, par, KM_SAMSUNG_PARAM, 8)
+} ASN1_SEQUENCE_END(KM_SAMSUNG_INDATA)
+IMPLEMENT_ASN1_FUNCTIONS(KM_SAMSUNG_INDATA)
 
-    if (*p + seq_len > start + len) {
-        s_log_error("DER SEQUENCE overruns buffer!");
-        return false;
-    }
+ASN1_SEQUENCE(KM_SAMSUNG_OUTDATA) = {
+    ASN1_SIMPLE(KM_SAMSUNG_OUTDATA, ver, ASN1_INTEGER),
+    ASN1_SIMPLE(KM_SAMSUNG_OUTDATA, cmd, ASN1_INTEGER),
+    ASN1_SIMPLE(KM_SAMSUNG_OUTDATA, pid, ASN1_INTEGER),
+    ASN1_SIMPLE(KM_SAMSUNG_OUTDATA, err, ASN1_INTEGER),
 
-    if (out_start != NULL) *out_start = *p;
-    if (out_end != NULL) *out_end = *p + seq_len;
-    if (out_len != NULL) *out_len = seq_len;
+    ASN1_EXP_OPT(KM_SAMSUNG_OUTDATA, int0, ASN1_INTEGER, 0),
+    ASN1_EXP_OPT(KM_SAMSUNG_OUTDATA, long0, ASN1_INTEGER, 1),
+    ASN1_EXP_OPT(KM_SAMSUNG_OUTDATA, bin0, ASN1_OCTET_STRING, 2),
+    ASN1_EXP_OPT(KM_SAMSUNG_OUTDATA, bin1, ASN1_OCTET_STRING, 3),
+    ASN1_EXP_SET_OF_OPT(KM_SAMSUNG_OUTDATA, par, KM_SAMSUNG_PARAM, 4),
 
-    return true;
-}
+    ASN1_IMP_SEQUENCE_OF(KM_SAMSUNG_OUTDATA, log, ASN1_OCTET_STRING, 5)
+} ASN1_SEQUENCE_END(KM_SAMSUNG_OUTDATA)
+IMPLEMENT_ASN1_FUNCTIONS(KM_SAMSUNG_OUTDATA)
 
-KM_SAMSUNG_KM_PARAM_SEQ * KM_SAMSUNG_KM_PARAM_SEQ_new(void)
-{
-    KM_SAMSUNG_KM_PARAM_SEQ *ret = OPENSSL_malloc(sizeof(*ret));
-    if (ret == NULL) {
-        s_log_error("OPENSSL_malloc failed!");
-        return NULL;
-    }
-
-    ret->tag = ASN1_INTEGER_new();
-    if (ret->tag == NULL) {
-        s_log_error("Failed to allocate a new ASN.1 INTEGER");
-        KM_SAMSUNG_KM_PARAM_SEQ_free(ret);
-        return NULL;
-    }
-
-    ret->val_int = ASN1_INTEGER_new();
-    if (ret->val_int == NULL) {
-        s_log_error("Failed to allocate a new ASN.1 INTEGER");
-        KM_SAMSUNG_KM_PARAM_SEQ_free(ret);
-        return NULL;
-    }
-    ret->val_str = ASN1_OCTET_STRING_new();
-    if (ret->val_str == NULL) {
-        s_log_error("Failed to allocate a new ASN.1 OCTET_STRING");
-        KM_SAMSUNG_KM_PARAM_SEQ_free(ret);
-        return NULL;
-    }
-    ret->flags = 0;
-
-    return ret;
-}
-
-void KM_SAMSUNG_KM_PARAM_SEQ_free(KM_SAMSUNG_KM_PARAM_SEQ *par)
-{
-    if (par == NULL)
-        return;
-
-    par->flags = 0;
-    if (par->val_str != NULL) {
-        ASN1_INTEGER_free(par->val_str);
-        par->val_str = NULL;
-    }
-    if (par->val_int != NULL) {
-        ASN1_INTEGER_free(par->val_int);
-        par->val_int = NULL;
-    }
-    if (par->tag != NULL) {
-        ASN1_INTEGER_free(par->tag);
-        par->tag = NULL;
-    }
-}
-
-static int get_is_intval(const ASN1_INTEGER *tag, bool *out)
-{
-    int64_t tag_val = 0;
-
-    if (!ASN1_INTEGER_get_int64(&tag_val, tag)) {
-        s_log_error("Failed to get the value of the tag ASN.1 INTEGER");
-        return 1;
-    }
-
-    switch ((enum KM_TagType)__KM_TAG_TYPE_MASK(tag_val)) {
-        case KM_TAG_TYPE_BOOL:
-        case KM_TAG_TYPE_ENUM:
-        case KM_TAG_TYPE_ENUM_REP:
-        case KM_TAG_TYPE_UINT:
-        case KM_TAG_TYPE_UINT_REP:
-        case KM_TAG_TYPE_ULONG:
-        case KM_TAG_TYPE_ULONG_REP:
-        case KM_TAG_TYPE_DATE:
-            *out = true;
-            return 0;
-
-        case KM_TAG_TYPE_BYTES:
-        case KM_TAG_TYPE_BIGNUM:
-            *out = false;
-            return 0;
-
-        default:
-        case KM_TAG_TYPE_INVALID:
-            s_log_error("Invalid keymaster tag: 0x%016llx",
-                    (long long unsigned)tag_val);
-            return 1;
-    }
-}
-
-KM_SAMSUNG_KM_PARAM_SEQ *
-d2i_KM_SAMSUNG_KM_PARAM_SEQ(const unsigned char **p, long len)
-{
-    if (p == NULL || *p == NULL || len <= 0) {
-        s_log_error("%s: Invalid parameters", __func__);
-        return NULL;
-    }
-
-    KM_SAMSUNG_KM_PARAM_SEQ *ret = NULL;
-
-    const unsigned char *end = NULL;
-    long inner_len = 0;
-
-    if (!unwrap_asn1_sequence(p, len, NULL, &end, &inner_len))
-        goto_error("Failed to unwrap the ASN.1 SEQUENCE");
-
-    ret = OPENSSL_malloc(sizeof(KM_SAMSUNG_KM_PARAM_SEQ));
-    if (ret == NULL)
-        goto_error("Failed to allocate a new KM_PARAM sequence");
-    ret->tag = ret->val_int = ret->val_str = NULL;
-    ret->flags = 0;
-
-    ret->tag = d2i_ASN1_INTEGER(NULL, p, inner_len);
-    if (ret->tag == NULL)
-        goto_error("Failed to parse the tag ASN.1 INTEGER");
-
-    bool is_intval;
-    if (get_is_intval(ret->tag, &is_intval))
-        goto err;
-
-    long field_len = 0;
-    int exp_tag = 0;
-    int class = 0;
-
-    int r = ASN1_get_object(p, &field_len,
-            &exp_tag, &class, end - *p);
-    if (r & 0x80) {
-        goto_error("ASN1_get_object failed");
-        return NULL;
-    } else if (!(r & V_ASN1_CONSTRUCTED)) {
-        s_log_error("Missing V_ASN1_CONSTRUCTED bit");
-        return NULL;
-    } else if (class != V_ASN1_CONTEXT_SPECIFIC) {
-        s_log_error("Expected V_ASN1_CONTEXT_SPECIFIC class, "
-                "got 0x%x", class);
-        return NULL;
-    }
-    ret->flags = (uint32_t)exp_tag;
-
-    if (is_intval) {
-        ret->val_int = d2i_ASN1_INTEGER(NULL, p, inner_len);
-        if (ret->val_int == NULL)
-            goto_error("Expected ASN.1 INTEGER value, but d2i failed");
-    } else {
-        ret->val_str = d2i_ASN1_OCTET_STRING(NULL, p, inner_len);
-        if (ret->val_str == NULL)
-            goto_error("Expected ASN.1 OCTET_STRING value, but d2i failed");
-    }
-
-    if (*p != end)
-        goto_error("Parsed an incorrect number of bytes (delta = %lld)",
-                (long long int)(*p - end));
-
-    return ret;
-
-err:
-    if (ret != NULL) {
-        KM_SAMSUNG_KM_PARAM_SEQ_free(ret);
-        ret = NULL;
-    }
-    return NULL;
-}
-
-int i2d_KM_SAMSUNG_KM_PARAM_SEQ(const KM_SAMSUNG_KM_PARAM_SEQ *par, unsigned char **p)
-{
-    bool is_intval = false;
-    int tag_int_len = 0;
-    int val_inner_len = 0, val_outer_len = 0;
-    int total_inner_len = 0, total_outer_len = 0;
-    {
-        tag_int_len = i2d_ASN1_INTEGER(par->tag, NULL);
-        if (tag_int_len < 0) {
-            s_log_error("Failed to measure the size of the "
-                    "ASN.1 INTEGER parameter tag");
-            return -1;
-        }
-
-        if (get_is_intval(par->tag, &is_intval))
-            return -1;
-
-        if (is_intval) {
-            val_inner_len = i2d_ASN1_INTEGER(par->val_int, NULL);
-        } else {
-            val_inner_len = i2d_ASN1_OCTET_STRING(par->val_str, NULL);
-        }
-        if (val_inner_len < 0) {
-            s_log_error("Failed to measure the size of the ASN.1 %s "
-                    "param value", (is_intval ? "INTEGER" : "OCTET_STRING"));
-            return -1;
-        }
-
-        val_outer_len = ASN1_object_size(true, val_inner_len, par->flags);
-
-        total_inner_len = tag_int_len + val_outer_len;
-        total_outer_len = ASN1_object_size(true, total_inner_len, 0);
-        if (total_outer_len <= 0) {
-            s_log_error("Invalid final length: %d", total_outer_len);
-            return -1;
-        }
-    }
-    if (p == NULL)
-        return total_outer_len;
-
-    {
-        unsigned char *const end = *p + total_outer_len;
-        int r = 0;
-
-        ASN1_put_object(p, true, total_inner_len,
-                V_ASN1_SEQUENCE, V_ASN1_UNIVERSAL);
-
-        r = i2d_ASN1_INTEGER(par->tag, p);
-        if (r != tag_int_len) {
-            goto_error("Failed to serialize the ASN.1 INTEGER param tag (%d)",
-                    r);
-        }
-
-        ASN1_put_object(p, true, val_inner_len,
-                par->flags, V_ASN1_CONTEXT_SPECIFIC);
-
-        if (is_intval)
-            r = i2d_ASN1_INTEGER(par->val_int, p);
-        else
-            r = i2d_ASN1_OCTET_STRING(par->val_str, p);
-
-        if (r != val_inner_len) {
-            goto_error("Failed to serialize the ASN.1 %s param value (%d)",
-                    is_intval ? "INTEGER" : "OCTET_STRING", r);
-        }
-
-        if (*p != end) {
-            goto_error("Wrote an incorrect amount of bytes (delta: %lld)",
-                    (long long int)(*p - end));
-        }
-    }
-
-    return total_outer_len;
-
-err:
-    return -1;
-}
+ASN1_SEQUENCE(KM_SAMSUNG_EKEY_BLOB) = {
+    ASN1_SIMPLE(KM_SAMSUNG_EKEY_BLOB, enc_ver, ASN1_INTEGER),
+    ASN1_SIMPLE(KM_SAMSUNG_EKEY_BLOB, ekey, ASN1_OCTET_STRING),
+    ASN1_SET_OF(KM_SAMSUNG_EKEY_BLOB, enc_par, KM_SAMSUNG_PARAM)
+} ASN1_SEQUENCE_END(KM_SAMSUNG_EKEY_BLOB)
+IMPLEMENT_ASN1_FUNCTIONS(KM_SAMSUNG_EKEY_BLOB)
 
 const char * KM_TagType_toString(uint32_t tt)
 {

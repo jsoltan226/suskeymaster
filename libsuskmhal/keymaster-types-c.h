@@ -5,8 +5,10 @@
 #include <stdbool.h>
 #include <core/vector.h>
 #include <string.h>
+#include <openssl/asn1.h>
 #include <openssl/asn1t.h>
 #include <openssl/crypto.h>
+#include <openssl/safestack.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -1700,14 +1702,6 @@ struct KM_RootOfTrust_v3 {
     VECTOR(u8) verifiedBootHash;
 };
 
-typedef struct KM_root_of_trust_seq {
-    ASN1_OCTET_STRING *verifiedBootKey;
-    ASN1_BOOLEAN deviceLocked;
-    ASN1_ENUMERATED *verifiedBootState;
-    ASN1_OCTET_STRING *verifiedBootHash;
-} KM_ROOT_OF_TRUST_SEQ;
-DECLARE_ASN1_FUNCTIONS(KM_ROOT_OF_TRUST_SEQ);
-
 #define __KM_OPTIONAL(field) field; bool __##field##_present
 typedef int64_t KM_DateTime_t;
 
@@ -1830,6 +1824,58 @@ struct KM_AuthorizationList_v3 {
     } samsung;
 };
 
+/* The C struct representation of the `KeyDescription` ASN.1 sequence
+ * that stores the result of an Android Key Attestation request.
+ *
+ * This struct, and all of its sub-structs and enums
+ * (`AuthorizationList`, `RootOfTrust`, `SecurityLevel` and `VerifiedBootState`)
+ * reflect version 3 of the Android Attestation Extension.
+ *
+ * For more information and detailed documentation, see
+ *  https://source.android.com/docs/security/features/keystore/attestation#attestation-v3
+ */
+struct KM_KeyDescription_v3 {
+    int64_t attestationVersion;
+    enum KM_SecurityLevel attestationSecurityLevel;
+    int64_t keymasterVersion;
+    enum KM_SecurityLevel keymasterSecurityLevel;
+    VECTOR(uint8_t) attestationChallenge;
+    VECTOR(uint8_t) uniqueId;
+    struct KM_AuthorizationList_v3 softwareEnforced;
+    struct KM_AuthorizationList_v3 hardwareEnforced;
+};
+
+typedef const char * (*KM_enum_toString_proc_t)(int);
+
+const char * KM_TagType_toString(uint32_t tt);
+const char * KM_Tag_toString(uint32_t t);
+
+const char * KM_ErrorCode_toString(int o);
+const char * KM_SecurityLevel_toString(int sl);
+const char * KM_VerifiedBootState_toString(int vb);
+const char * KM_KeyPurpose_toString(int kp);
+const char * KM_Algorithm_toString(int alg);
+const char * KM_BlockMode_toString(int bm);
+const char * KM_Digest_toString(int dig);
+const char * KM_PaddingMode_toString(int pm);
+const char * KM_EcCurve_toString(int ec);
+const char * KM_KeyOrigin_toString(int ko);
+const char * KM_KeyBlobUsageRequirements_toString(int kbur);
+const char * KM_KeyDerivationFunction_toString(int kdf);
+
+#ifdef __cplusplus
+} /* namespace kmhal */
+} /* namespace suskeymaster */
+#endif /* __cplusplus */
+
+typedef struct KM_root_of_trust_seq {
+    ASN1_OCTET_STRING *verifiedBootKey;
+    ASN1_BOOLEAN deviceLocked;
+    ASN1_ENUMERATED *verifiedBootState;
+    ASN1_OCTET_STRING *verifiedBootHash;
+} KM_ROOT_OF_TRUST_SEQ;
+DECLARE_ASN1_FUNCTIONS(KM_ROOT_OF_TRUST_SEQ);
+
 #define ASN1_SET_OF_INTEGER STACK_OF(ASN1_INTEGER)
 
 typedef struct KM_param_list_seq {
@@ -1940,65 +1986,66 @@ typedef struct KM_param_list_seq {
     ASN1_OCTET_STRING *             provSakEc;
     ASN1_OCTET_STRING *             provSakEcVtoken;
 } KM_PARAM_LIST_SEQ;
-DECLARE_ASN1_FUNCTIONS(KM_PARAM_LIST_SEQ);
+DECLARE_ASN1_FUNCTIONS(KM_PARAM_LIST_SEQ)
 
-typedef struct KM_samsung_km_param_seq {
+typedef struct KM_samsung_param {
     ASN1_INTEGER *tag;
-    ASN1_INTEGER *val_int;
-    ASN1_OCTET_STRING *val_str;
-    uint32_t flags;
-} KM_SAMSUNG_KM_PARAM_SEQ;
+    ASN1_INTEGER *i;
+    ASN1_OCTET_STRING *b;
+} KM_SAMSUNG_PARAM;
+DECLARE_ASN1_FUNCTIONS(KM_SAMSUNG_PARAM)
+DEFINE_STACK_OF(KM_SAMSUNG_PARAM)
+/* DECLARE_DUP_FUNCTION doesn't exist in boringssl */
+static inline KM_SAMSUNG_PARAM * KM_SAMSUNG_PARAM_dup(const KM_SAMSUNG_PARAM *x)
+{
+    return (KM_SAMSUNG_PARAM *)ASN1_item_dup(
+            (const ASN1_ITEM *)ASN1_ITEM_rptr(KM_SAMSUNG_PARAM),
+            (void *)x
+    );
+}
 
-KM_SAMSUNG_KM_PARAM_SEQ * KM_SAMSUNG_KM_PARAM_SEQ_new(void);
-void KM_SAMSUNG_KM_PARAM_SEQ_free(KM_SAMSUNG_KM_PARAM_SEQ *par);
+typedef struct KM_samsung_indata {
+    ASN1_INTEGER *ver;
+    ASN1_INTEGER *km_ver;
+    ASN1_INTEGER *cmd;
+    ASN1_INTEGER *pid;
 
-KM_SAMSUNG_KM_PARAM_SEQ *
-d2i_KM_SAMSUNG_KM_PARAM_SEQ(const unsigned char **p, long len);
+    ASN1_INTEGER *int0;
+    ASN1_INTEGER *long0;
+    ASN1_INTEGER *long1;
+    ASN1_OCTET_STRING *bin0;
+    ASN1_OCTET_STRING *bin1;
+    ASN1_OCTET_STRING *bin2;
+    ASN1_OCTET_STRING *key;
 
-int i2d_KM_SAMSUNG_KM_PARAM_SEQ(const KM_SAMSUNG_KM_PARAM_SEQ *par, unsigned char **out_p);
+    STACK_OF(KM_SAMSUNG_KM_PARAM_SEQ) *par;
+} KM_SAMSUNG_INDATA;
+DECLARE_ASN1_FUNCTIONS(KM_SAMSUNG_INDATA)
 
-/* The C struct representation of the `KeyDescription` ASN.1 sequence
- * that stores the result of an Android Key Attestation request.
- *
- * This struct, and all of its sub-structs and enums
- * (`AuthorizationList`, `RootOfTrust`, `SecurityLevel` and `VerifiedBootState`)
- * reflect version 3 of the Android Attestation Extension.
- *
- * For more information and detailed documentation, see
- *  https://source.android.com/docs/security/features/keystore/attestation#attestation-v3
- */
-struct KM_KeyDescription_v3 {
-    int64_t attestationVersion;
-    enum KM_SecurityLevel attestationSecurityLevel;
-    int64_t keymasterVersion;
-    enum KM_SecurityLevel keymasterSecurityLevel;
-    VECTOR(uint8_t) attestationChallenge;
-    VECTOR(uint8_t) uniqueId;
-    struct KM_AuthorizationList_v3 softwareEnforced;
-    struct KM_AuthorizationList_v3 hardwareEnforced;
-};
+typedef struct KM_samsung_outdata {
+    ASN1_INTEGER *ver;
+    ASN1_INTEGER *cmd;
+    ASN1_INTEGER *pid;
+    ASN1_INTEGER *err;
 
-typedef const char * (*KM_enum_toString_proc_t)(int);
+    ASN1_INTEGER *int0;
+    ASN1_INTEGER *long0;
+    ASN1_OCTET_STRING *bin0;
+    ASN1_OCTET_STRING *bin1;
+    STACK_OF(KM_SAMSUNG_PARAM) *par;
 
-const char * KM_TagType_toString(uint32_t tt);
-const char * KM_Tag_toString(uint32_t t);
+    STACK_OF(ASN1_OCTET_STRING) *log;
+} KM_SAMSUNG_OUTDATA;
+DECLARE_ASN1_FUNCTIONS(KM_SAMSUNG_OUTDATA)
 
-const char * KM_ErrorCode_toString(int o);
-const char * KM_SecurityLevel_toString(int sl);
-const char * KM_VerifiedBootState_toString(int vb);
-const char * KM_KeyPurpose_toString(int kp);
-const char * KM_Algorithm_toString(int alg);
-const char * KM_BlockMode_toString(int bm);
-const char * KM_Digest_toString(int dig);
-const char * KM_PaddingMode_toString(int pm);
-const char * KM_EcCurve_toString(int ec);
-const char * KM_KeyOrigin_toString(int ko);
-const char * KM_KeyBlobUsageRequirements_toString(int kbur);
-const char * KM_KeyDerivationFunction_toString(int kdf);
+typedef struct KM_samsung_ekey_blob {
+    ASN1_INTEGER *enc_ver;
+    ASN1_OCTET_STRING *ekey;
+    STACK_OF(KM_SAMSUNG_PARAM) *enc_par;
+} KM_SAMSUNG_EKEY_BLOB;
+DECLARE_ASN1_FUNCTIONS(KM_SAMSUNG_EKEY_BLOB)
 
 #ifdef __cplusplus
-} /* namespace kmhal */
-} /* namespace suskeymaster */
 } /* extern "C" */
 #endif /* __cplusplus */
 
