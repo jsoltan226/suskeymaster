@@ -1,3 +1,5 @@
+#include <cstdlib>
+#include <openssl/crypto.h>
 #define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
 #include <core/log.h>
@@ -83,13 +85,10 @@ static void dump_datetime(const char *field_name, const ASN1_INTEGER *d)
 
 static void datetime_to_str(char *buf, u32 buf_size, int64_t dt);
 
-static int deserialize_ekey_blob(const hidl_vec<uint8_t>& ekey,
-        int64_t& out_blob_ver, ASN1_OCTET_STRING *& out_encrypted_data,
-        hidl_vec<KM_SAMSUNG_PARAM *>& out_par);
-
-static int serialize_ekey_blob(int64_t blob_ver, const ASN1_OCTET_STRING *encrypted_data,
-        const hidl_vec<KM_SAMSUNG_PARAM *>& par,
-        hidl_vec<uint8_t>& out_ekey);
+static int deserialize_ekey_blob_and_params(const hidl_vec<uint8_t>& ekey,
+        KM_SAMSUNG_EKEY_BLOB *& out, hidl_vec<KM_SAMSUNG_PARAM *> *out_opt_par);
+static int serialize_ekey_blob(KM_SAMSUNG_EKEY_BLOB *& ekey,
+        hidl_vec<uint8_t>& out_ekey_der);
 
 static int ekey_params_to_param_list(const hidl_vec<KM_SAMSUNG_PARAM *>& ekey_params,
         KM_PARAM_LIST_SEQ **out_param_list);
@@ -98,13 +97,12 @@ int list_tags(const hidl_vec<uint8_t> &in_keyblob)
 {
     int ret = -1;
 
-    int64_t blob_ver = 0;
-    ASN1_OCTET_STRING *encrypted_data = NULL;
+    KM_SAMSUNG_EKEY_BLOB *ekey = NULL;
     hidl_vec<KM_SAMSUNG_PARAM *> ekey_params;
 
     KM_PARAM_LIST_SEQ *param_list = NULL;
 
-    if (deserialize_ekey_blob(in_keyblob, blob_ver, encrypted_data, ekey_params))
+    if (deserialize_ekey_blob_and_params(in_keyblob, ekey, &ekey_params))
         goto_error("Failed to deserialize the encrypted key blob!");
 
     if (ekey_params_to_param_list(ekey_params, &param_list))
@@ -123,9 +121,9 @@ err:
         KM_SAMSUNG_PARAM_free(ekey_params[i]);
         ekey_params[i] = NULL;
     }
-    if (encrypted_data != NULL) {
-        ASN1_OCTET_STRING_free(encrypted_data);
-        encrypted_data = NULL;
+    if (ekey != NULL) {
+        KM_SAMSUNG_EKEY_BLOB_free(ekey);
+        ekey = NULL;
     }
 
     return ret;
@@ -213,21 +211,28 @@ static int make_octet_string_param(KM_SAMSUNG_PARAM **out_par,
     return 0;
 }
 
+static int push_param(STACK_OF(KM_SAMSUNG_PARAM) *paramset,
+        KM_SAMSUNG_PARAM *par)
+{
+    if (sk_KM_SAMSUNG_PARAM_push(paramset, par) <= 0) {
+        s_log_error("Failed to push a key parameter to the set");
+        return 1;
+    }
+
+    return 0;
+}
+
 int add_tags(const hidl_vec<uint8_t> &in_keyblob,
         const hidl_vec<KeyParameter> &in_tags_to_add, hidl_vec<uint8_t> &out_keyblob)
 {
     int ret = 1;
     KM_SAMSUNG_PARAM * curr = NULL;
 
-    int64_t blob_ver;
-    ASN1_OCTET_STRING *encrypted_data;
+    KM_SAMSUNG_EKEY_BLOB *ekey = NULL;
     hidl_vec<KM_SAMSUNG_PARAM *> blob_params;
     std::unordered_map<int64_t, std::vector<KM_SAMSUNG_PARAM *>> blob_params_map;
 
-    std::vector<KM_SAMSUNG_PARAM *> new_params;
-    hidl_vec<KM_SAMSUNG_PARAM *> new_blob_params;
-
-    if (deserialize_ekey_blob(in_keyblob, blob_ver, encrypted_data, blob_params))
+    if (deserialize_ekey_blob_and_params(in_keyblob, ekey, &blob_params))
         goto_error("Couldn't deserialize the encrypted key blob");
 
     for (uint32_t i = 0; i < blob_params.size(); i++) {
@@ -273,7 +278,8 @@ int add_tags(const hidl_vec<uint8_t> &in_keyblob,
                     if (make_integer_param(&new_par, kp.tag, kp.f.longInteger))
                         goto err;
 
-                    new_params.push_back(new_par);
+                    if (push_param(ekey->enc_par, new_par))
+                        goto err;
                 } else {
                     s_log_warn("Repeatable tag 0x%08lx (%s) with value 0x%016llx "
                             "already exists; not adding",
@@ -315,16 +321,12 @@ int add_tags(const hidl_vec<uint8_t> &in_keyblob,
                     goto err;
             }
 
-            new_params.push_back(new_par);
+            if (push_param(ekey->enc_par, new_par))
+                goto err;
         }
     }
 
-    new_blob_params = hidl_vec<KM_SAMSUNG_PARAM *>(blob_params);
-    new_blob_params.resize(blob_params.size() + new_params.size());
-    for (uint32_t i = 0; i < new_params.size(); i++)
-        new_blob_params[blob_params.size() + i] = new_params[i];
-
-    if (serialize_ekey_blob(blob_ver, encrypted_data, new_blob_params, out_keyblob))
+    if (serialize_ekey_blob(ekey, out_keyblob))
         goto_error("Couldn't serialize the new encrypted key blob!");
 
     s_log_info("Successfully serialized new encrypted key blob");
@@ -332,7 +334,6 @@ int add_tags(const hidl_vec<uint8_t> &in_keyblob,
     ret = 0;
 
 err:
-    new_blob_params.resize(0);
     if (curr != NULL) {
         KM_SAMSUNG_PARAM_free(curr);
         curr = NULL;
@@ -342,23 +343,126 @@ err:
         KM_SAMSUNG_PARAM_free(par);
         par = NULL;
     }
-    for (KM_SAMSUNG_PARAM *&par : new_params) {
-        KM_SAMSUNG_PARAM_free(par);
-        par = NULL;
-    }
 
-    if (encrypted_data != NULL) {
-        ASN1_OCTET_STRING_free(encrypted_data);
-        encrypted_data = NULL;
+    if (ekey != NULL) {
+        KM_SAMSUNG_EKEY_BLOB_free(ekey);
+        ekey = NULL;
     }
 
     return ret;
 }
 
+static int km_tag_cmp(KeyParameter const& kp, KM_SAMSUNG_PARAM *p)
+{
+    if (p == NULL)
+        return 1;
+
+    int64_t pt;
+    if (!ASN1_INTEGER_get_int64(&pt, p->tag)) {
+        s_log_error("%s: Couldn't get the tag value for p", __func__);
+        return -1;
+    }
+    pt &= 0x00000000FFFFFFFF;
+
+    if (kp.tag == static_cast<Tag>(pt)) {
+        if (!is_repeatable(pt))
+            return 0;
+
+        if (is_integer_param(pt)) {
+            if (p->i == NULL)
+                return 1;
+
+            return kp.f.longInteger - ASN1_INTEGER_get(p->i);
+        } else {
+            if (p->b == NULL ||
+                    kp.blob.data() == NULL || ASN1_STRING_get0_data(p->b) == NULL)
+                return 1;
+
+            const size_t s = std::min(
+                    kp.blob.size(),
+                    static_cast<size_t>(std::max(0, ASN1_STRING_length(p->b)))
+            );
+            return memcmp(kp.blob.data(), ASN1_STRING_get0_data(p->b), s);
+        }
+    }
+
+    return static_cast<int>(kp.tag) - pt;
+}
+
 int del_tags(const hidl_vec<uint8_t> &in_keyblob,
         const hidl_vec<KeyParameter> &in_tags_to_del, hidl_vec<uint8_t> &out_keyblob)
 {
-    return -1;
+    KM_SAMSUNG_EKEY_BLOB *ekey = NULL;
+    int ret = 1;
+
+    if (deserialize_ekey_blob_and_params(in_keyblob, ekey, nullptr))
+        goto_error("Failed to deserialize the encrypted key blob");
+
+    for (const auto& kp : in_tags_to_del) {
+        bool found = false;
+        for (int i = sk_KM_SAMSUNG_PARAM_num(ekey->enc_par) - 1; i >= 0; i--) {
+            KM_SAMSUNG_PARAM *p =
+                sk_KM_SAMSUNG_PARAM_value(ekey->enc_par, i);
+            if (p == NULL)
+                goto_error("Couldn't get the value of an encryption parameter");
+
+            const int64_t t = static_cast<int64_t>(kp.tag);
+            if (!km_tag_cmp(kp, p)) {
+                if (is_integer_param(t)) {
+                    uint64_t v;
+                    if (!ASN1_INTEGER_get_uint64(&v, p->i))
+                        goto_error("Couldn't get the value "
+                                "of an ASN.1 INTEGER");
+
+                    s_log_info("Deleting tag 0x%08lx (%s) "
+                            "(with INTEGER value 0x%llx)...",
+                            (long unsigned)t, KM_Tag_toString((uint32_t)t),
+                            (long long unsigned)v
+                    );
+                } else {
+                    s_log_info("Deleting tag 0x%08lx (%s) "
+                            "(with OCTET_STRING value)...",
+                            (long unsigned)t, KM_Tag_toString((uint32_t)t)
+                    );
+                }
+
+                KM_SAMSUNG_PARAM *const removed =
+                    sk_KM_SAMSUNG_PARAM_delete(ekey->enc_par, i);
+                if (removed == NULL)
+                    goto_error("Failed to delete tag @ idx %i", i);
+                KM_SAMSUNG_PARAM_free(removed);
+
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            const int64_t t = static_cast<int64_t>(kp.tag);
+            if (is_repeatable(t)) {
+                s_log_warn("No repeatable tag 0x%08lx (%s) "
+                        "with the value 0x%08lx was found!",
+                        (long unsigned)t, KM_Tag_toString((uint32_t)kp.tag),
+                       (long unsigned)kp.f.longInteger);
+            } else {
+                s_log_warn("No tag 0x%08lx (%s) was found!",
+                        (long unsigned)t, KM_Tag_toString((uint32_t)t));
+            }
+        }
+    }
+
+    if (serialize_ekey_blob(ekey, out_keyblob))
+        goto_error("Failed to serialize the new encrypted key blob");
+
+    s_log_info("Successfully serialized new encrypted key blob");
+    ret = EXIT_SUCCESS;
+
+err:
+    if (ekey != NULL) {
+        KM_SAMSUNG_EKEY_BLOB_free(ekey);
+        ekey = NULL;
+    }
+
+    return ret;
 }
 
 static void dump_param_list(const KM_PARAM_LIST_SEQ *ps)
@@ -1003,170 +1107,104 @@ static void datetime_to_str(char *buf, u32 buf_size, int64_t dt)
     }
 }
 
-static int deserialize_ekey_blob(const hidl_vec<uint8_t>& ekey,
-        int64_t& out_blob_ver, ASN1_OCTET_STRING *& out_encrypted_data,
-        hidl_vec<KM_SAMSUNG_PARAM *>& out_par)
+static int deserialize_ekey_blob_and_params(const hidl_vec<uint8_t>& ekey,
+        KM_SAMSUNG_EKEY_BLOB *& out, hidl_vec<KM_SAMSUNG_PARAM *> *out_par)
 {
-    out_blob_ver = 0;
-    out_encrypted_data = NULL;
-    out_par.resize(0);
-
     const unsigned char *p = ekey.data();
     long len = (long)ekey.size();
     KM_SAMSUNG_EKEY_BLOB *ekey_blob = NULL;
 
-    int64_t ret_blob_ver = 0;
-    ASN1_OCTET_STRING *ret_encrypted_data = NULL;
-    int n_params = 0;
+    if (out_par)
+        out_par->resize(0);
 
     ekey_blob = d2i_KM_SAMSUNG_EKEY_BLOB(NULL, &p, len);
     if (ekey_blob == NULL)
         goto_error("Failed to d2i the encrypted key blob");
 
-    if (!ASN1_INTEGER_get_int64(&ret_blob_ver, ekey_blob->enc_ver))
-        goto_error("Couldn't get the encrypted key blob version INTEGER");
-    s_log_info("Encrypted key blob version: %lli", (long long int)ret_blob_ver);
-
-    ret_encrypted_data = ASN1_OCTET_STRING_dup(ekey_blob->ekey);
-    if (ret_encrypted_data == NULL)
-        goto_error("Failed to duplicate the encrypted key data");
-
-    n_params = sk_KM_SAMSUNG_PARAM_num(ekey_blob->enc_par);
-    if (n_params < 0)
-        goto_error("Couldn't get the number of encryption parameters");
-
-    for (int i = 0; i < n_params; i++) {
-        KM_SAMSUNG_PARAM *p =
-            sk_KM_SAMSUNG_PARAM_value(ekey_blob->enc_par, i);
-        if (p == NULL)
-            goto_error("Couldn't get the value of an encryption parameter");
-
-        p = KM_SAMSUNG_PARAM_dup(p);
-        if (p == NULL)
-            goto_error("Couldn't duplicate an encryption parameter");
-
-        out_par.resize(out_par.size() + 1);
-        out_par[out_par.size() - 1] = p;
+    {
+        int64_t blob_ver = 0;
+        if (!ASN1_INTEGER_get_int64(&blob_ver, ekey_blob->enc_ver))
+            goto_error("Couldn't get the encrypted key blob version INTEGER");
+        s_log_info("Encrypted key blob version: %lli", (long long int)blob_ver);
     }
 
-    KM_SAMSUNG_EKEY_BLOB_free(ekey_blob);
-    ekey_blob = NULL;
+    if (out_par) {
+        int n_params = sk_KM_SAMSUNG_PARAM_num(ekey_blob->enc_par);
+        if (n_params < 0)
+            goto_error("Couldn't get the number of encryption parameters");
 
-    out_blob_ver = ret_blob_ver;
-    out_encrypted_data = ret_encrypted_data;
+        for (int i = 0; i < n_params; i++) {
+            KM_SAMSUNG_PARAM *p =
+                sk_KM_SAMSUNG_PARAM_value(ekey_blob->enc_par, i);
+            if (p == NULL)
+                goto_error("Couldn't get the value of an encryption parameter");
+
+            p = KM_SAMSUNG_PARAM_dup(p);
+            if (p == NULL)
+                goto_error("Couldn't duplicate an encryption parameter");
+
+            out_par->resize(out_par->size() + 1);
+            (*out_par)[out_par->size() - 1] = p;
+        }
+    }
+
+    out = ekey_blob;
 
     return 0;
 
 err:
-    for (size_t i = 0; i < out_par.size(); i++) {
-        KM_SAMSUNG_PARAM_free(out_par[i]);
-        out_par[i] = NULL;
-    }
-    out_par.resize(0);
-
-    if (ret_encrypted_data != NULL) {
-        ASN1_OCTET_STRING_free(ret_encrypted_data);
-        ret_encrypted_data = NULL;
+    if (out_par) {
+        for (size_t i = 0; i < out_par->size(); i++) {
+            KM_SAMSUNG_PARAM_free((*out_par)[i]);
+            (*out_par)[i] = NULL;
+        }
+        out_par->resize(0);
     }
 
     if (ekey_blob != NULL) {
         KM_SAMSUNG_EKEY_BLOB_free(ekey_blob);
         ekey_blob = NULL;
     }
+    out = NULL;
 
     return 1;
 }
 
-static int serialize_ekey_blob(int64_t blob_ver, const ASN1_OCTET_STRING *encrypted_data,
-        const hidl_vec<KM_SAMSUNG_PARAM *>& par,
-        hidl_vec<uint8_t>& out_ekey)
+static int serialize_ekey_blob(KM_SAMSUNG_EKEY_BLOB *& ekey,
+        hidl_vec<uint8_t>& out_ekey_der)
 {
-    ASN1_INTEGER *blob_ver_asn1 = NULL;
+    int length = 0;
+    unsigned char *der = NULL;
 
-    int blob_ver_asn1_size = 0,
-        encrypted_data_size = 0,
-        inner_param_set_size = 0, outer_param_set_size = 0;
-    int total_inner_size = 0, total_outer_size = 0;
+    length = i2d_KM_SAMSUNG_EKEY_BLOB(ekey, NULL);
+    if (length <= 0)
+        goto_error("Couldn't measure the length of the new ekey blob DER");
 
-    int r = 0;
-
-    unsigned char *p = NULL, *end = NULL;
-
-    hidl_vec<int> param_sizes(par.size());
-
-    blob_ver_asn1 = ASN1_INTEGER_new();
-    if (blob_ver_asn1 == NULL)
-        goto_error("Failed to allocate a new ASN.1 INTEGER");
-
-    if (!ASN1_INTEGER_set_int64(blob_ver_asn1, blob_ver))
-        goto_error("Failed to set the value of an ASN.1 INTEGER");
-
+    der = (unsigned char *)OPENSSL_malloc(length);
+    if (der == NULL)
+        goto_error("Failed to allocate the new ekey blob DER");
 
     {
-
-        blob_ver_asn1_size = i2d_ASN1_INTEGER(blob_ver_asn1, NULL);
-        if (blob_ver_asn1_size < 0)
-            goto_error("Failed to measure the size of an ASN.1 INTEGER");
-
-        encrypted_data_size = i2d_ASN1_OCTET_STRING(encrypted_data, NULL);
-        if (encrypted_data_size < 0)
-            goto_error("Failed to measure the size of an ASN.1 OCTET_STRING");
-
-        for (uint32_t i = 0; i < par.size(); i++) {
-            r = i2d_KM_SAMSUNG_PARAM(par[i], NULL);
-            if (r < 0)
-                goto_error("Failed to measure the size "
-                        "of a serialized key parameter");
-
-            param_sizes[i] = r;
-            inner_param_set_size += r;
+        unsigned char *p = der;
+        if (i2d_KM_SAMSUNG_EKEY_BLOB(ekey, &p) != length ||
+                p != der + length)
+        {
+            OPENSSL_free(der);
+            goto_error("Failed to serialize the new ekey blob DER");
         }
-        outer_param_set_size = ASN1_object_size(true,
-                inner_param_set_size, V_ASN1_SET);
-
-        total_inner_size =
-            blob_ver_asn1_size +
-            encrypted_data_size +
-            outer_param_set_size;
-        total_outer_size = ASN1_object_size(true,
-                total_inner_size, V_ASN1_SEQUENCE);
     }
 
-    {
-        out_ekey.resize(total_outer_size);
-        p = out_ekey.data();
-        end = out_ekey.data() + total_outer_size;
+    out_ekey_der.resize(length);
+    memcpy(out_ekey_der.data(), der, length);
+    OPENSSL_free(der);
 
-        ASN1_put_object(&p, true,
-                total_inner_size, V_ASN1_SEQUENCE, V_ASN1_UNIVERSAL);
-
-        if (i2d_ASN1_INTEGER(blob_ver_asn1, &p) != blob_ver_asn1_size)
-            goto_error("Failed to serialize the blob version INTEGER");
-
-        if (i2d_ASN1_OCTET_STRING(encrypted_data, &p) != encrypted_data_size)
-            goto_error("Failed to serialize the encrypted data OCTET_STRING");
-
-        ASN1_put_object(&p, true,
-                inner_param_set_size, V_ASN1_SET, V_ASN1_UNIVERSAL);
-        for (uint32_t i = 0; i < par.size(); i++) {
-            if (i2d_KM_SAMSUNG_PARAM(par[i], &p) != param_sizes[i])
-                goto_error("Failed to serialize a key parameter");
-        }
-
-        if (p != end)
-            goto_error("Wrote an incorrect amount of bytes (delta: %lld)",
-                    (long long int)(p - end));
-    }
-
-    ASN1_INTEGER_free(blob_ver_asn1);
-    blob_ver_asn1 = NULL;
     return 0;
 
 err:
-    out_ekey.resize(0);
-    if (blob_ver_asn1 != NULL) {
-        ASN1_INTEGER_free(blob_ver_asn1);
-        blob_ver_asn1 = NULL;
+    out_ekey_der.resize(0);
+    if (der != NULL) {
+        OPENSSL_free(der);
+        der = NULL;
     }
 
     return 1;
@@ -1375,9 +1413,12 @@ static int ekey_params_to_param_list(const hidl_vec<KM_SAMSUNG_PARAM *>& ekey_pa
 
             bval &= 0x00000000FFFFFFFF;
             if (bval != 0) {
-                if (*target.b != NULL)
-                    goto_error("Value already exists for tag 0x%08lx (%s)",
+                if (*target.b != NULL) {
+                    s_log_warn("Value already exists for tag 0x%08lx (%s); "
+                            "not adding",
                             (long unsigned)tag, KM_Tag_toString((uint32_t)tag));
+                    break;
+                }
 
                 *target.b = ASN1_NULL_new();
                 if (*target.b == NULL)
@@ -1390,6 +1431,15 @@ static int ekey_params_to_param_list(const hidl_vec<KM_SAMSUNG_PARAM *>& ekey_pa
             break;
 
         case TARGET_INTEGER:
+            if (*target.i != NULL) {
+                s_log_warn("Value for INTEGER tag 0x%08lx (%s) already exists "
+                        "with value 0x%08lx, freeing...",
+                        (long unsigned) tag, KM_Tag_toString((uint32_t)tag),
+                        (long unsigned)ASN1_INTEGER_get(*target.i)
+                );
+                ASN1_INTEGER_free(*target.i);
+            }
+
             *target.i = ASN1_INTEGER_dup(curr->i);
             if (*target.i == NULL)
                 goto_error("Failed to duplicate an ASN.1 INTEGER");
@@ -1406,12 +1456,42 @@ static int ekey_params_to_param_list(const hidl_vec<KM_SAMSUNG_PARAM *>& ekey_pa
                     goto_error("Failed to create a new ASN.1 INTEGER set");
             }
 
+            {
+                bool found = false;
+                const int n_ints = sk_ASN1_INTEGER_num(*target.iset);
+                for (int i = 0; i < n_ints; i++) {
+                    const ASN1_INTEGER *curr =
+                        sk_ASN1_INTEGER_value(*target.iset, i);
+                    if (!ASN1_INTEGER_cmp(curr, istmp)) {
+                        s_log_warn("Repeatable tag 0x%08lx (%s) "
+                                "with value 0x%08lx already exists; "
+                                "not adding",
+                                (long unsigned)tag,
+                                KM_Tag_toString((uint32_t)tag),
+                                (long unsigned)ASN1_INTEGER_get(curr)
+                        );
+                        found = true;
+                        break;
+                    }
+                }
+                if (found)
+                    break;
+            }
+
             if (sk_ASN1_INTEGER_push(*target.iset, istmp) <= 0)
                 goto_error("Failed to push an ASN.1 INTEGER to the set");
 
             break;
 
         case TARGET_OCTET_STRING:
+            if (*target.str != NULL) {
+                s_log_warn("Value for OCTET_STRING tag 0x%08lx (%s) "
+                        "already exists; freeing...",
+                        (long unsigned) tag, KM_Tag_toString((uint32_t)tag)
+                );
+                ASN1_OCTET_STRING_free(*target.str);
+            }
+
             *target.str = ASN1_OCTET_STRING_dup(curr->b);
             if (*target.str == NULL)
                 goto_error("Failed to duplicate an ASN.1 OCTET_STRING");
