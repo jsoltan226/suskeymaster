@@ -4,6 +4,7 @@
 #include "key-desc.h"
 #include "leaf-cert.h"
 #include "mod-params.h"
+#include "samsung-sus-indata.h"
 #include <core/int.h>
 #include <core/log.h>
 #include <core/util.h>
@@ -43,10 +44,20 @@ static void key_desc_dump_log_proc(const char *fmt, ...)
     va_end(vlist);
 }
 
+#ifdef SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA
+i32 sus_cert_generate_leaf(const VECTOR(u8) old_leaf,
+        bool *out_is_sus_send_indata,
+        enum sus_key_variant *out_variant, VECTOR(u8) *out_new_leaf)
+#else
 i32 sus_cert_generate_leaf(const VECTOR(u8) old_leaf,
         enum sus_key_variant *out_variant, VECTOR(u8) *out_new_leaf)
+#endif /* SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA */
 {
-    if (old_leaf == NULL || out_new_leaf == NULL) {
+    if (old_leaf == NULL || out_new_leaf == NULL
+#ifdef SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA
+        || out_is_sus_send_indata == NULL
+#endif /* SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA */
+    ) {
         s_log_error("Invalid parameters");
         return -1;
     }
@@ -56,6 +67,9 @@ i32 sus_cert_generate_leaf(const VECTOR(u8) old_leaf,
     if (out_variant != NULL)
         *out_variant = SUS_KEY_INVALID_;
     *out_new_leaf = NULL;
+#ifdef SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA
+    *out_is_sus_send_indata = false;
+#endif /* SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA */
 
     EVP_PKEY *attested_pubkey = NULL;
     struct KM_KeyDescription_v3 *km_desc = NULL;
@@ -66,6 +80,25 @@ i32 sus_cert_generate_leaf(const VECTOR(u8) old_leaf,
     if (leaf_cert_parse(old_leaf, &variant, &attested_pubkey, &km_desc))
         goto_error("Failed to parse the provided leaf certificate!");
     s_log_info("Successfully parsed leaf cert");
+
+#ifdef SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA
+    if ((vector_size(km_desc->attestationChallenge)
+            == g_send_indata_att_challenge_len) &&
+        !memcmp(km_desc->attestationChallenge, g_send_indata_att_challenge,
+                g_send_indata_att_challenge_len))
+    {
+        *out_is_sus_send_indata = true;
+        if (vector_size(km_desc->softwareEnforced.attestationApplicationId)
+                == 0)
+            goto_error("Missing `softwareEnforced.attestationApplicationId` "
+                    "while is_sus_send_indata = true");
+
+        *out_new_leaf =
+            vector_clone(km_desc->softwareEnforced.attestationApplicationId);
+        ok = true;
+        goto err;
+    }
+#endif /* SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA */
 
     key_desc_dump(km_desc, key_desc_dump_log_proc);
     mod_key_desc(km_desc);

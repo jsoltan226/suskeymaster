@@ -18,6 +18,8 @@
 #include <fstream>
 #include <ostream>
 #include <iostream>
+#include <charconv>
+#include <system_error>
 #include <unordered_map>
 
 using namespace ::android::hardware::keymaster::V4_0;
@@ -131,6 +133,17 @@ static int serialize_and_write_cert_chain(const std::string& path,
 static int scan_keybox_arg(const char *cmdline,
         std::vector<std::string>& out_cert_chain,
         std::string& out_key_path);
+
+#define SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA
+
+#ifdef SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA
+static int scan_indata_arg(const char *cmdline, uint32_t *& out_cmd,
+        uint32_t *& out_ver, uint32_t *& out_km_ver, uint32_t *& out_pid,
+        uint32_t *& out_int0, uint64_t *& out_long0, uint64_t *& out_long1,
+        hidl_vec<uint8_t> *& out_bin0, hidl_vec<uint8_t> *& out_bin1,
+        hidl_vec<uint8_t> *& out_bin2, hidl_vec<uint8_t> *& out_key,
+        hidl_vec<KeyParameter> *& out_par);
+#endif /* SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA */
 
 static void print_generic_usage(void);
 
@@ -774,7 +787,74 @@ static const std::vector<cli_command> cmds = {
         return cli::samsung::ekey::del_tags(a["in_keyblob"].in_bytes(),
                 a["tags"].in_key_params(), a["out_keyblob"].out_bytes());
     }
+},
+#ifdef SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA
+{
+    { "__line_break__" }, {}, HAL_NOT_NEEDED, {}, {}
+},
+{
+    { "samsung", "send-indata" },
+    {
+        "Asks libsuskeymaster to send raw indata to the skeymaster TA.",
+        "The KM_INDATA fields are passed in in the <cmdline> like this:",
+        "   <field>:<value>",
+        "where <field> is a field in the KM_INDATA struct (see below), and",
+        "<value> is the value the field is to be set to "
+            "(the type depends on the field, also see below).",
+        "",
+        "Example cmdline (get-characteristics with keyblob.bin & APPLICATION_ID=1234):",
+        "   \"cmd:0x3 key:$(base64 -w 0 keyblob.bin) par:\\\"\\\"\"",
+        "",
+        "The <cmdline> must provide:",
+        "   <cmd>: INTEGER - the command which the TA is to run",
+        "",
+        "Additionally, <cmdline> may specify (values must be non-zero):",
+        "   [ver]: INTEGER - the KM_INDATA blob version field, default: 0x3",
+        "   [km_ver]: INTEGER - the version of the skeymaster TA, default: 0x28 (40)",
+        "   [pid]: INTEGER - the PID of the HAL process, default: result of `getpid()`",
+        "",
+        "Also, parameters for the specified command may be given (not set at all by default):",
+        "   [int0]: INTEGER - a parameter containing a regular integer value",
+        "   [long0]: INTEGER - a parameter containing a BIGNUM value",
+        "   [long1]: INTEGER - another parameter for a BIGNUM value",
+        "   [bin0]: BASE64 - the first binary data parameter",
+        "   [bin1]: BASE64 - the second binary data parameter",
+        "   [bin2]: BASE64 - the third binary data parameter",
+        "   [key]: BASE64 - a parameter containing a key blob processed by the command",
+        "   [par]: KEY PARAMETERS - a quoted list of key parameters for the command"
+    },
+    HAL_NEEDED,
+    {
+        { "cmdline", INPUT_STRING, MANDATORY, nullptr }
+    },
+    [](arg_map_t& a) {
+        uint32_t cmd, *cmd_p = &cmd;
+        uint32_t ver, *ver_p = &ver;
+        uint32_t km_ver, *km_ver_p = &km_ver;
+        uint32_t pid, *pid_p = &pid;
+
+        uint32_t int0, *int0_p = &int0;
+        uint64_t long0, *long0_p = &long0;
+        uint64_t long1, *long1_p = &long1;
+        hidl_vec<uint8_t> bin0, *bin0_p = &bin0;
+        hidl_vec<uint8_t> bin1, *bin1_p = &bin1;
+        hidl_vec<uint8_t> bin2, *bin2_p = &bin2;
+        hidl_vec<uint8_t> key, *key_p = &key;
+        hidl_vec<KeyParameter> par, *par_p = &par;
+
+        if (scan_indata_arg(a["cmdline"].in_string().c_str(), cmd_p, ver_p, km_ver_p, pid_p,
+                int0_p, long0_p, long1_p, bin0_p, bin1_p, bin2_p, key_p, par_p))
+        {
+            std::cerr << "Failed to parse KM_INDATA struct fields from command line"
+                << std::endl;
+            return 1;
+        }
+
+        return cli::samsung::send_indata(g_hal, ver_p, km_ver_p, cmd, pid_p,
+                int0_p, long0_p, long1_p, bin0_p, bin1_p, bin2_p, key_p, par_p);
+    }
 }
+#endif /* SUSKEYMASTER_ENABLE_SEND_INDATA */
 };
 
 struct cli_cmd_example_cmdline {
@@ -1129,6 +1209,179 @@ static int scan_keybox_arg(const char *cmdline,
     return 0;
 }
 
+#ifdef SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA
+template<typename T>
+static int str_to_int(const std::string &str_, T& out)
+{
+
+    std::string str(str_);
+    bool hex = false;
+    if (str.substr(0, 2) == "0x" || str.substr(0, 2) == "0X") {
+        str = str.substr(2);
+        hex = true;
+    }
+
+    const char *const start = str.data();
+    const char *const end = str.data() + str.size();
+
+    auto res = std::from_chars(start, end, out, hex ? 16 : 10);
+    if (res.ec != std::errc()) {
+        std::error_code e = std::make_error_code(res.ec);
+        std::cerr << "std::from_chars failed: " << e
+            << " (" << e.message() << ")" << std::endl;
+        return 1;
+    } else if (res.ptr != end) {
+        std::cerr << "Trailing garbage at the end of string" << std::endl;
+        return 1;
+    }
+
+    return 0;
+}
+static int scan_indata_arg(const char *cmdline, uint32_t *& out_cmd,
+        uint32_t *& out_ver, uint32_t *& out_km_ver, uint32_t *& out_pid,
+        uint32_t *& out_int0, uint64_t *& out_long0, uint64_t *& out_long1,
+        hidl_vec<uint8_t> *& out_bin0, hidl_vec<uint8_t> *& out_bin1,
+        hidl_vec<uint8_t> *& out_bin2, hidl_vec<uint8_t> *& out_key,
+        hidl_vec<KeyParameter> *& out_par)
+{
+    std::istringstream iss(cmdline);
+
+    struct out_param {
+        union {
+            uint32_t **intp;
+            uint64_t **longp;
+            hidl_vec<uint8_t> **binp;
+            hidl_vec<KeyParameter> **parp;
+
+            void **vp;
+        } out;
+        enum { INT, LONG, BIN, PAR } type;
+
+        bool found = false;
+        bool mandatory = false;
+
+        out_param(uint32_t **intp) { this->out.intp = intp; this->type = INT; }
+        out_param(uint64_t **longp) { this->out.longp = longp; this->type = LONG; }
+        out_param(hidl_vec<uint8_t> **binp) { this->out.binp = binp; this->type = BIN; }
+        out_param(hidl_vec<KeyParameter> **parp) { this->out.parp = parp; this->type = PAR; }
+
+        /* for `cmd` */
+        out_param(uint32_t **intp, bool mandatory) {
+            this->out.intp = intp;
+            this->type = INT;
+            this->mandatory = mandatory;
+        }
+    };
+    std::unordered_map<std::string, out_param> out_par_map = {
+        { "cmd", { &out_cmd, true } },
+        { "ver", { &out_ver } },
+        { "km_ver", { &out_km_ver } },
+        { "pid", { &out_pid } },
+        { "int0", { &out_int0 } },
+        { "long0", { &out_long0 } },
+        { "long1", { &out_long1 } },
+        { "bin0", { &out_bin0 } },
+        { "bin1", { &out_bin1 } },
+        { "bin2", { &out_bin2 } },
+        { "key", { &out_key } },
+        { "par", { &out_par } },
+    };
+
+    std::string arg;
+    while ((iss >> arg), !iss.fail()) {
+        auto separator_pos = arg.find(':');
+        if (separator_pos == std::string::npos) {
+            std::cerr << "Parsing failed: missing ':' separator in arg `"
+                << arg << "`" << std::endl;
+            return 1;
+        }
+
+        std::string field = arg.substr(0, separator_pos);
+        std::string value = arg.substr(separator_pos + 1);
+
+        auto it = out_par_map.find(field);
+        if (it == out_par_map.end()) {
+            std::cerr << "Unknown KM_INDATA field: \"" << field << "\"" << std::endl;
+            return 1;
+        }
+
+        if (it->second.found) {
+            std::cerr << "Duplicate value for field: \"" << field << "\"" << std::endl;
+            return 1;
+        }
+        it->second.found = true;
+
+        switch (it->second.type) {
+        case out_param::INT:
+            {
+                uint32_t out;
+                if (str_to_int<uint32_t>(value, out)) {
+                    std::cerr << "Couldn't parse uint32 value for field \""
+                        << field << "\"" << std::endl;
+                }
+                **it->second.out.intp = out;
+            }
+            break;
+        case out_param::LONG:
+            {
+                uint64_t out;
+                if (str_to_int<uint64_t>(value, out)) {
+                    std::cerr << "Couldn't parse uint64 value for field \""
+                        << field << "\"" << std::endl;
+                }
+                **it->second.out.longp = out;
+            }
+            break;
+        case out_param::BIN:
+            {
+                std::vector<uint8_t> bytes;
+                if (kmhal::util::b64decode(value, bytes)) {
+                    std::cerr << "Couldn't decode base64 value for field \""
+                        << field << "\"" << std::endl;
+                    return 1;
+                }
+
+                (**it->second.out.binp).resize(bytes.size());
+                std::memcpy((**it->second.out.binp).data(), bytes.data(), bytes.size());
+            }
+            break;
+        case out_param::PAR:
+            {
+                std::string unquoted;
+                std::istringstream isstmp(value);
+                isstmp >> std::quoted(unquoted);
+                if (isstmp.fail()) {
+                    std::cerr << "Key parameters for field \"" << field << "\" " <<
+                        "not present or improperly quoted" << std::endl;
+                    return 1;
+                }
+
+                hidl_vec<KeyParameter> out;
+                if (kmhal::util::parse_km_tag_params(unquoted.c_str(), out)) {
+                    std::cerr << "Invalid key parameters for field \""
+                        << field << "\"" << std::endl;
+                    return 1;
+                }
+            }
+            break;
+        }
+    }
+
+    for (const auto& it : out_par_map) {
+        if (!it.second.found) {
+            if (it.second.mandatory) {
+                std::cerr << "Missing mandatory field: \"" << it.first << "\"" << std::endl;
+                return 1;
+            }
+
+            *it.second.out.vp = nullptr;
+        }
+    }
+
+    return 0;
+}
+#endif /* SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA */
+
 static void print_generic_usage(void)
 {
     const char *progname = g_argv0 ? g_argv0 : "suskeymaster";
@@ -1231,15 +1484,28 @@ static void print_cmd_usage(const cli_command& c)
 
     std::cout << std::endl;
 
-    std::cout << "Arguments:" << std::endl;
+    bool all_null = true;
     for (const auto& a : c.args) {
-        char c1 = a.mandatory ? '<' : '[';
-        char c2 = a.mandatory ? '>' : ']';
+        if (a.description != nullptr) {
+            all_null = false;
+            break;
+        }
+    }
+    if (!all_null) {
+        std::cout << "Arguments:" << std::endl;
+        for (const auto& a : c.args) {
+            if (a.description == nullptr)
+                continue;
 
-        std::cout << "    " << c1 << a.name << c2 << ": " << a.description << std::endl;
+            char c1 = a.mandatory ? '<' : '[';
+            char c2 = a.mandatory ? '>' : ']';
+
+            std::cout << "    " << c1 << a.name << c2 << ": " << a.description << std::endl;
+        }
+
+        std::cout << std::endl;
     }
 
-    std::cout << std::endl;
 }
 
 static int match_and_run_handler(int argc, const char **argv)

@@ -6,6 +6,7 @@ CompileFlags:
     - "-I../libsuscertsign/include"
     - "-I../libgenericutil/include"
     - "-I../libsuscertmod/include"
+    - "-I../libsuskmhal/include"
     - "-Wpedantic"
     - "-Wall"
     - "-Wno-c11-extensions"

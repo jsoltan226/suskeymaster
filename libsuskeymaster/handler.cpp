@@ -1,9 +1,11 @@
 #define HIDL_DISABLE_INSTRUMENTATION
 #include "handler.hpp"
+#include "run-sus-samsung-indata.hpp"
 #include <core/int.h>
 #include <core/vector.h>
 #include <libsuscertmod/keybox.h>
 #include <libsuscertmod/certmod.h>
+#include <libsuscertmod/samsung-sus-indata.h>
 #include <android/log.h>
 #include <android/hardware/keymaster/4.0/types.h>
 #include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
@@ -95,13 +97,27 @@ int sus_keymaster_hack_cert_chain(hidl_vec<hidl_vec<uint8_t>>& cert_chain)
 
     enum certmod::sus_key_variant variant = certmod::SUS_KEY_INVALID_;
     VECTOR(u8) new_leaf = NULL;
+#ifdef SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA
+    bool sus_send_indata = false;
+    if (certmod::sus_cert_generate_leaf(old_leaf, &sus_send_indata, &variant, &new_leaf)) {
+#else
     if (certmod::sus_cert_generate_leaf(old_leaf, &variant, &new_leaf)) {
+#endif /* SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA */
         __android_log_print(ANDROID_LOG_ERROR, "SUS", "Failed to hack the leaf cert!");
         vector_destroy(&old_leaf);
         return 1;
     }
 
     vector_destroy(&old_leaf);
+
+#ifdef SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA
+    if (sus_send_indata) {
+        __android_log_print(ANDROID_LOG_INFO, "SUS", "Running sus_send_indata handler...");
+        int r = run_sus_samsung_indata(new_leaf, cert_chain);
+        vector_destroy(&new_leaf);
+        return r;
+    }
+#endif /* SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA */
 
     const struct certmod::keybox *kb = NULL;
     if (certmod::keybox_read_lock_current(&kb)) {

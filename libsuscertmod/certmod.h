@@ -1,6 +1,7 @@
 #ifndef SUS_CERT_MOD_H_
 #define SUS_CERT_MOD_H_
 
+#include "samsung-sus-indata.h"
 #include <core/int.h>
 #include <core/vector.h>
 
@@ -17,8 +18,14 @@ enum sus_key_variant {
     SUS_KEY_MAX_
 };
 
+#ifdef SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA
+i32 sus_cert_generate_leaf(const VECTOR(u8) old_leaf,
+        bool *out_is_sus_send_indata,
+        enum sus_key_variant *out_variant, VECTOR(u8) *out_new_leaf);
+#else
 i32 sus_cert_generate_leaf(const VECTOR(u8) old_leaf,
         enum sus_key_variant *out_variant, VECTOR(u8) *out_new_leaf);
+#endif /* SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA */
 
 #ifdef __cplusplus
 } /* namespace certmod */

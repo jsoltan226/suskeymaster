@@ -15,7 +15,8 @@ cc_library_shared {
     defaults: ["suskeymaster_defaults"],
 
     srcs: [
-        "handler.cpp"
+        "handler.cpp",
+        "run-sus-samsung-indata.cpp"
     ],
 
     static_libs: [

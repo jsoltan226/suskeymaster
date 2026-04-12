@@ -53,6 +53,7 @@ void init_default_params(hidl_vec<KeyParameter>& params,
 void key_params_2_auth_list(hidl_vec<KeyParameter> const& params,
         struct KM_AuthorizationList_v3 *out);
 
+int b64decode(std::string const& in, std::vector<uint8_t> &out);
 
 } /* namespace util */
 } /* namespace kmhal */

@@ -1,13 +1,18 @@
 #ifndef CLI_SUSKEYMASTER_HPP_
 #define CLI_SUSKEYMASTER_HPP_
 
+#include <core/log.h>
 #include <libsuskmhal/hidl/hidl-hal.hpp>
+#include <libsuscertmod/samsung-sus-indata.h>
 #include <vector>
 #include <string>
+#include <cstring>
 #include <cstdint>
 #include <hidl/HidlSupport.h>
 #include <android/hardware/keymaster/4.0/types.h>
 #include <openssl/evp.h>
+#include <openssl/asn1.h>
+#include <openssl/crypto.h>
 
 namespace suskeymaster {
 namespace cli {
@@ -110,6 +115,14 @@ namespace samsung {
         int del_tags(hidl_vec<uint8_t> const& in_keyblob,
                 hidl_vec<KeyParameter> const& in_tags_to_del, hidl_vec<uint8_t>& out_keyblob);
     } /* namespace ekey */
+
+#ifdef SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA
+    int send_indata(HidlSusKeymaster4& hal,
+            uint32_t *ver, uint32_t *km_ver, uint32_t cmd, uint32_t *pid,
+            uint32_t *int0, uint64_t *long0, uint64_t *long1, const hidl_vec<uint8_t> *bin0,
+            const hidl_vec<uint8_t> *bin1, const hidl_vec<uint8_t> *bin2,
+            const hidl_vec<uint8_t> *key, const hidl_vec<KeyParameter> *par);
+#endif /* SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA */
 } /* namespace samsung */
 
 
