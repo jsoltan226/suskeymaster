@@ -11,8 +11,10 @@
 #include <unordered_map>
 #include <string.h>
 #include <openssl/asn1.h>
+#include <openssl/x509.h>
 #include <openssl/asn1t.h>
 #include <openssl/crypto.h>
+#include <openssl/safestack.h>
 
 #define MODULE_NAME "samsung-utils"
 
@@ -350,13 +352,13 @@ int send_indata(HidlSusKeymaster4& hal,
 {
     hidl_vec<uint8_t> tmp_keyblob;
     {
-        hidl_vec<KeyParameter> par(1);
-        par[0].tag = Tag::ALGORITHM;
-        par[0].f.algorithm = Algorithm::EC;
+        hidl_vec<KeyParameter> partmp(1);
+        partmp[0].tag = Tag::ALGORITHM;
+        partmp[0].f.algorithm = Algorithm::EC;
 
         /* the hal_ops::generate_key wrapper will automatically fill in the
          * required default generation parameters */
-        if (cli::hal_ops::generate_key(hal, par, tmp_keyblob)) {
+        if (cli::hal_ops::generate_key(hal, partmp, tmp_keyblob)) {
             s_log_error("Failed to generate the ephemeral attested keyblob");
             return 1;
         }
@@ -372,16 +374,16 @@ int send_indata(HidlSusKeymaster4& hal,
             return 1;
         }
 
-        hidl_vec<KeyParameter> par(2);
-        par[0].tag = Tag::ATTESTATION_CHALLENGE;
-        par[0].blob = hidl_vec<uint8_t>(
+        hidl_vec<KeyParameter> partmp(2);
+        partmp[0].tag = Tag::ATTESTATION_CHALLENGE;
+        partmp[0].blob = hidl_vec<uint8_t>(
             certmod::g_send_indata_att_challenge,
             certmod::g_send_indata_att_challenge + certmod::g_send_indata_att_challenge_len
         );
-        par[1].tag = Tag::ATTESTATION_APPLICATION_ID;
-        par[1].blob = indata_der;
+        partmp[1].tag = Tag::ATTESTATION_APPLICATION_ID;
+        partmp[1].blob = indata_der;
 
-        ErrorCode e = hal.attestKey(tmp_keyblob, par, cert_chain);
+        ErrorCode e = hal.attestKey(tmp_keyblob, partmp, cert_chain);
         if (e != ErrorCode::OK) {
             s_log_error("Failed to attest the ephemeral key: %d (%s)",
                     static_cast<int>(e), toString(e).c_str());
@@ -575,12 +577,12 @@ static int deserialize_and_dump_outdata(hidl_vec<hidl_vec<uint8_t>> const& cert_
 
     if (e != ErrorCode::OK) {
         ret = 1;
-        goto_error("Keymaster returned error: %d (%s)",
+        s_log_error("Keymaster returned error: %d (%s)",
                 static_cast<int>(e), toString(e).c_str());
+    } else {
+        ret = 0;
     }
-
     dump_outdata(outdata);
-    ret = 0;
 
 err:
     if (outdata != NULL) {
@@ -626,8 +628,28 @@ static void dump_outdata(const KM_SAMSUNG_OUTDATA *o)
         }
     }
 
-    if (o->log)
-        s_log_info(SINGLE_INDENT ".log = { /* check logcat */ },");
+    if (o->log) {
+        s_log_info(SINGLE_INDENT ".log = {");
+        int n_strs = sk_ASN1_OCTET_STRING_num(o->log);
+        if (n_strs < 0) {
+            s_log_error("Failed to get the number of OCTET_STRINGs "
+                    "in the stack");
+        } else {
+            for (int i = 0; i < n_strs; i++) {
+                const ASN1_OCTET_STRING *str =
+                    sk_ASN1_OCTET_STRING_value(o->log, i);
+                if (str == NULL) {
+                    s_log_error("Failed to get an OCTET_STRING from the stack");
+                    break;
+                }
+
+                s_log_info(SINGLE_INDENT SINGLE_INDENT "\"%s\"%s",
+                        (const char *)ASN1_STRING_get0_data(str),
+                        (i < n_strs - 1) ? "," : "");
+            }
+        }
+        s_log_info(SINGLE_INDENT "}");
+    }
 
     s_log_info("};");
     s_log_info("=====  END KM_OUTDATA DUMP  =====");
@@ -1309,16 +1331,10 @@ static void dump_u64_arr(const char *field_name, const ASN1_SET_OF_INTEGER *arr,
 static void dump_enum_val(const char *field_name, const ASN1_INTEGER *e,
         KM_enum_toString_proc_t get_str_proc, uint8_t indent)
 {
-    int64_t i = 0;
     char indent_buf[1024];
     sprint_indent(indent_buf, indent);
 
-    if (ASN1_INTEGER_get_int64(&i, e) == 0) {
-        s_log_error("[%s] Couldn't get the value "
-                "of an ASN.1 INTEGER (as int64_t)", field_name);
-        return;
-    }
-    i &= 0x00000000FFFFFFFF;
+    const int i = ASN1_INTEGER_get(e);
 
     s_log_info("%s.%s = %lld, // %s", indent_buf, field_name,
             (long long int)i, get_str_proc((int)i));

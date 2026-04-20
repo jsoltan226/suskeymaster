@@ -104,16 +104,8 @@ static VECTOR(u8) get_keyblob_from_current_keybox(enum sus_key_variant variant)
 
 static VECTOR(struct KM_KeyParameter) init_params(enum sus_key_variant variant)
 {
-    VECTOR(u8) app_id = vector_new(u8);
-    vector_resize(&app_id, sizeof("suskeymaster") - 1);
-    memcpy(app_id, "suskeymaster", sizeof("suskeymaster") - 1);
-
     VECTOR(struct KM_KeyParameter) params = vector_new(struct KM_KeyParameter);
 
-    vector_push_back(&params, (struct KM_KeyParameter) {
-            .tag = KM_TAG_APPLICATION_ID,
-            .blob = app_id
-    });
     vector_push_back(&params, (struct KM_KeyParameter) {
             .tag = KM_TAG_DIGEST,
             .f.digest = KM_DIGEST_SHA_2_256

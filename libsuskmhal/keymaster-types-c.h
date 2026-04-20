@@ -890,8 +890,14 @@ enum KM_Tag {
      * has failed and should be cleaned up. */
     KM_TAG_OPERATION_FAILED = KM_TAG_TYPE_BOOL | 5030u,
 
-    /* Used to validate datetime requirements in `begin()` **/
+    /* Used to validate datetime requirements in `begin()`,
+     * tracks the `softwareEnforced` Tag::CREATION_DATETIME **/
     KM_TAG_INTERNAL_CURRENT_DATETIME = KM_TAG_TYPE_DATE | 800u,
+
+    /* Added to the keyblob params alongside the standard *_PATCHLEVEL tags */
+    KM_TAG_INTERNAL_OS_VERSION = KM_TAG_TYPE_UINT | 805,
+    KM_TAG_INTERNAL_OS_PATCHLEVEL = KM_TAG_TYPE_UINT | 806,
+    KM_TAG_INTERNAL_VENDOR_PATCHLEVEL = KM_TAG_TYPE_UINT | 818,
 
     /** Encrypted key blob serialization/deserialization related tags **/
 
@@ -912,7 +918,8 @@ enum KM_Tag {
     /* A flag indicating that the encrypted key blob should be upgraded to a new version */
     KM_TAG_EKEY_BLOB_DO_UPGRADE = KM_TAG_TYPE_UINT | 5005u,
 
-    /* Both of these are HMAC'd to derive a key encryption key,
+    /* Used for HMAC keys.
+     * Both of these are HMAC'd to derive a key encryption key,
      * which is what's actually used to wrap/unwrap the encrypted key blob.
      * The resulting pkek is added as the key blob's APPLICATION_ID. */
     KM_TAG_EKEY_BLOB_PASSWORD = KM_TAG_TYPE_BYTES | 5006u,
@@ -923,7 +930,11 @@ enum KM_Tag {
     KM_TAG_EKEY_BLOB_ENC_VER = KM_TAG_TYPE_UINT | 5008u,
 
     /* A tag indicating that the inner encrypted key blob
-     * is not wrapped in an ASN.1 container */
+     * is not wrapped in an ASN.1 container.
+     * Originally meant for HMAC keys,
+     * however it can be applied to normal keys as well.
+     * The presence of this tag during key generation/import disables the use
+     * of `KM_TAG_EKEY_BLOB_UNIQ_KDM` for the blob entirely. */
     KM_TAG_EKEY_BLOB_RAW = KM_TAG_TYPE_UINT | 5009u,
 
     /* A per-encryption unique random value,
@@ -2036,6 +2047,7 @@ typedef struct KM_samsung_outdata {
 
     STACK_OF(ASN1_OCTET_STRING) *log;
 } KM_SAMSUNG_OUTDATA;
+DEFINE_STACK_OF(ASN1_OCTET_STRING)
 DECLARE_ASN1_FUNCTIONS(KM_SAMSUNG_OUTDATA)
 
 typedef struct KM_samsung_ekey_blob {

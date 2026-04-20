@@ -126,7 +126,8 @@ int generate_key(HidlSusKeymaster4& hal,
     case Algorithm::RSA:
         defaults = {
             { Tag::ALGORITHM, Algorithm::RSA },
-            { Tag::DIGEST, { Digest::NONE, Digest::SHA_2_256 } },
+            { Tag::DIGEST, { Digest::NONE, Digest::SHA_2_256 } },\
+            { Tag::PURPOSE, { KeyPurpose::VERIFY } },
             /* Only 2048-bit keys are guaranteed to be supported
              * by both TEE and STRONGBOX devices */
             { Tag::KEY_SIZE, 2048 },
@@ -146,6 +147,7 @@ int generate_key(HidlSusKeymaster4& hal,
         kmhal::util::init_default_params(params, {
             { Tag::ALGORITHM, Algorithm::EC },
             { Tag::DIGEST, { Digest::SHA_2_256 } },
+            { Tag::PURPOSE, { KeyPurpose::VERIFY } },
             { Tag::EC_CURVE, EcCurve::P_256 },
             { Tag::NO_AUTH_REQUIRED, true }
         });

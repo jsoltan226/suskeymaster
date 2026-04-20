@@ -1,3 +1,4 @@
+#include <cctype>
 #define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
 #include <core/log.h>
@@ -802,7 +803,7 @@ static const std::vector<cli_command> cmds = {
         "<value> is the value the field is to be set to "
             "(the type depends on the field, also see below).",
         "",
-        "Example cmdline (get-characteristics with keyblob.bin & APPLICATION_ID=1234):",
+        "Example cmdline (get-characteristics with keyblob.bin):",
         "   \"cmd:0x3 key:$(base64 -w 0 keyblob.bin) par:\\\"\\\"\"",
         "",
         "The <cmdline> must provide:",
@@ -1288,7 +1289,10 @@ static int scan_indata_arg(const char *cmdline, uint32_t *& out_cmd,
     };
 
     std::string arg;
-    while ((iss >> arg), !iss.fail()) {
+    auto argstartpos = iss.tellg();
+    while (argstartpos = iss.tellg(), std::getline(iss, arg, ' ')) {
+        const bool is_end = iss.eof();
+
         auto separator_pos = arg.find(':');
         if (separator_pos == std::string::npos) {
             std::cerr << "Parsing failed: missing ':' separator in arg `"
@@ -1298,6 +1302,22 @@ static int scan_indata_arg(const char *cmdline, uint32_t *& out_cmd,
 
         std::string field = arg.substr(0, separator_pos);
         std::string value = arg.substr(separator_pos + 1);
+        char qc = 0;
+        if (value.length() > 0 && (qc = value[0], (qc == '"' || qc == '\'' || qc == '`'))) {
+            std::string tmp, tmp2;
+
+            if (!iss.seekg(argstartpos) ||
+                !std::getline(iss, tmp, qc) ||
+                (!std::getline(iss, tmp, qc) && !is_end) ||
+                (std::getline(iss, tmp2, ' '), tmp2.size() > 0))
+            {
+                std::cerr << "Invalid quoted value in field "
+                    << "\"" << field << "\" " << std::endl;
+                return 1;
+            }
+
+            value = tmp;
+        }
 
         auto it = out_par_map.find(field);
         if (it == out_par_map.end()) {
@@ -1347,21 +1367,14 @@ static int scan_indata_arg(const char *cmdline, uint32_t *& out_cmd,
             break;
         case out_param::PAR:
             {
-                std::string unquoted;
-                std::istringstream isstmp(value);
-                isstmp >> std::quoted(unquoted);
-                if (isstmp.fail()) {
-                    std::cerr << "Key parameters for field \"" << field << "\" " <<
-                        "not present or improperly quoted" << std::endl;
-                    return 1;
-                }
-
                 hidl_vec<KeyParameter> out;
-                if (kmhal::util::parse_km_tag_params(unquoted.c_str(), out)) {
+                if (kmhal::util::parse_km_tag_params(value.c_str(), out)) {
                     std::cerr << "Invalid key parameters for field \""
                         << field << "\"" << std::endl;
                     return 1;
                 }
+
+                **it->second.out.parp = out;
             }
             break;
         }

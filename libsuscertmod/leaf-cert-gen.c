@@ -486,6 +486,7 @@ static i32 construct_tbs_der(const struct KM_KeyDescription_v3 *km_desc,
 
     OPENSSL_free(der);
     der = NULL;
+    ret = 0;
 
 err:
     /* both `der` and `der_ret` are guaranteed to be uninitialized
