@@ -3,7 +3,7 @@
 
 #define HIDL_DISABLE_INSTRUMENTATION
 
-#include "../keymaster-types-c.h"
+#include "keymaster-types-c.h"
 #include <vector>
 #include <cstdint>
 #include <hidl/HidlSupport.h>
@@ -50,8 +50,7 @@ private:
 void init_default_params(hidl_vec<KeyParameter>& params,
     std::vector<struct km_default> const& defaults);
 
-void key_params_2_auth_list(hidl_vec<KeyParameter> const& params,
-        struct KM_AuthorizationList_v3 *out);
+KM_PARAM_LIST * key_params_2_param_list(hidl_vec<KeyParameter> const& params);
 
 int b64decode(std::string const& in, std::vector<uint8_t> &out);
 

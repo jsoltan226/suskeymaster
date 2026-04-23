@@ -5,7 +5,7 @@
 #include <libsuscertmod/leaf-cert.h>
 #include <libsuskmhal/hidl/hidl-hal.hpp>
 #include <libsuskmhal/util/km-params.hpp>
-#include <libsuskmhal/keymaster-types-c.h>
+#include <libsuskmhal/util/keymaster-types-c.h>
 #include <hidl/HidlSupport.h>
 #include <android/hardware/keymaster/4.0/types.h>
 #include <ctime>
@@ -47,18 +47,30 @@ int get_key_characteristics(HidlSusKeymaster4& hal,
         return 1;
     }
 
-    struct kmhal::KM_KeyDescription_v3 *key_desc = certmod::key_desc_new();
-    if (key_desc == NULL) {
-        std::cerr << "Failed to allocate a new key description" << std::endl;
-        return EXIT_FAILURE;
-    }
+    {
+        kmhal::util::KM_PARAM_LIST *sw_par = NULL, *hw_par = NULL;
 
-    kmhal::util::key_params_2_auth_list(kc.softwareEnforced,
-            &key_desc->softwareEnforced);
-    kmhal::util::key_params_2_auth_list(kc.hardwareEnforced,
-            &key_desc->hardwareEnforced);
-    certmod::key_desc_dump(key_desc, pr_info);
-    certmod::key_desc_destroy(&key_desc);
+        sw_par = kmhal::util::key_params_2_param_list(kc.softwareEnforced);
+        if (sw_par == NULL) {
+            std::cerr << "Failed to convert softwareEnforced key param vec to a param list"
+                << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        hw_par = kmhal::util::key_params_2_param_list(kc.hardwareEnforced);
+        if (hw_par == NULL) {
+            std::cerr << "Failed to convert hardwareEnforced key param vec to a param list"
+                << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        std::cout << "===== BEGIN KEY CHARACTERISTICS DUMP =====" << std::endl;
+        std::cout << "KeyCharacteristics kc = {" << std::endl;
+        kmhal::util::KM_dump_param_list(pr_info, sw_par, 1, "softwareEnforced");
+        kmhal::util::KM_dump_param_list(pr_info, hw_par, 1, "hardwareEnforced");
+        std::cout << "};" << std::endl;
+        std::cout << "=====  END KEY CHARACTERISTICS DUMP  =====" << std::endl;
+    }
 
     return EXIT_SUCCESS;
 }
@@ -126,8 +138,6 @@ int generate_key(HidlSusKeymaster4& hal,
     case Algorithm::RSA:
         defaults = {
             { Tag::ALGORITHM, Algorithm::RSA },
-            { Tag::DIGEST, { Digest::NONE, Digest::SHA_2_256 } },\
-            { Tag::PURPOSE, { KeyPurpose::VERIFY } },
             /* Only 2048-bit keys are guaranteed to be supported
              * by both TEE and STRONGBOX devices */
             { Tag::KEY_SIZE, 2048 },
@@ -146,8 +156,6 @@ int generate_key(HidlSusKeymaster4& hal,
     case Algorithm::EC:
         kmhal::util::init_default_params(params, {
             { Tag::ALGORITHM, Algorithm::EC },
-            { Tag::DIGEST, { Digest::SHA_2_256 } },
-            { Tag::PURPOSE, { KeyPurpose::VERIFY } },
             { Tag::EC_CURVE, EcCurve::P_256 },
             { Tag::NO_AUTH_REQUIRED, true }
         });
@@ -194,8 +202,6 @@ int generate_key(HidlSusKeymaster4& hal,
         kmhal::util::init_default_params(params, {
             { Tag::ALGORITHM, Algorithm::HMAC },
             { Tag::KEY_SIZE, 256 },
-            { Tag::PURPOSE, { KeyPurpose::SIGN, KeyPurpose::VERIFY } },
-            { Tag::DIGEST, { Digest::SHA_2_256 } },
             { Tag::MIN_MAC_LENGTH, 256 },
             { Tag::NO_AUTH_REQUIRED, true }
         });

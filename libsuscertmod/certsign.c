@@ -2,7 +2,7 @@
 #include "keybox.h"
 #include "certmod.h"
 #include <libsuskmhal/hidl/hidl-hal-c.h>
-#include <libsuskmhal/keymaster-types-c.h>
+#include <libsuskmhal/util/keymaster-types-c.h>
 #include <core/int.h>
 #include <core/log.h>
 #include <core/util.h>

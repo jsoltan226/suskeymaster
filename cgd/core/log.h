@@ -1,9 +1,10 @@
 #ifndef S_LOG_H_
 #define S_LOG_H_
 
+#include "static-tests.h"
+
 #include "int.h"
 #include "ringbuffer.h"
-#include "static-tests.h"
 
 #include <stdio.h>
 #include <stdarg.h>

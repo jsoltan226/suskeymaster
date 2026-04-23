@@ -1,7 +1,7 @@
 #define HIDL_DISABLE_INSTRUMENTATION
 #include "hidl-hal-c.h"
 #include "hidl-hal.hpp"
-#include "../keymaster-types-c.h"
+#include "../util/keymaster-types-c.h"
 #include <core/vector.h>
 #include <hidl/HidlSupport.h>
 #include <android/hardware/keymaster/4.0/types.h>

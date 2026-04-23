@@ -6,7 +6,7 @@
 #include <core/log.h>
 #include <core/util.h>
 #include <core/math.h>
-#include <libsuskmhal/keymaster-types-c.h>
+#include <libsuskmhal/util/keymaster-types-c.h>
 #include <stdbool.h>
 #include <openssl/ec.h>
 #include <openssl/rsa.h>
@@ -30,7 +30,7 @@ static i32 ec_pubkey_sanity(const EVP_PKEY *key);
 i32 leaf_cert_parse(const VECTOR(u8) cert,
         enum sus_key_variant *out_variant,
         EVP_PKEY **out_subj_pubkey,
-        struct KM_KeyDescription_v3 **out_km_desc
+        KM_KEY_DESC_V3 **out_km_desc
 )
 {
     bool ok = false;
@@ -77,7 +77,7 @@ i32 leaf_cert_parse(const VECTOR(u8) cert,
     i32 km_ext_index = 0;
     /* const */ X509_EXTENSION *km_ext = NULL;
     ASN1_OCTET_STRING *km_ext_str = NULL;
-    struct KM_KeyDescription_v3 *km_desc = NULL;
+    KM_KEY_DESC_V3 *km_desc = NULL;
 
     i32 keyusage_ext_index = 0;
     /* const */ X509_EXTENSION *keyusage_ext = NULL;
@@ -240,21 +240,22 @@ i32 leaf_cert_parse(const VECTOR(u8) cert,
     if (km_desc == NULL)
         goto_error("Failed to parse the X509 attestation extension data!");
 
-    /* Check that the KeyUsage extension exists */
+    /* Check the KeyUsage extension, if it exists */
     keyusage_ext_index = X509_get_ext_by_NID(x509, NID_key_usage, -1);
-    if (keyusage_ext_index < 0)
-        goto_error("Couldn't find the KeyUsage extension!");
+    if (keyusage_ext_index < 0) {
+        s_log_debug("Couldn't find the KeyUsage extension!");
+    } else {
+        keyusage_ext = X509_get_ext(x509, keyusage_ext_index);
+        if (keyusage_ext == NULL)
+            goto_error("Couldn't retrieve the KeyUsage extension!");
 
-    keyusage_ext = X509_get_ext(x509, keyusage_ext_index);
-    if (keyusage_ext == NULL)
-        goto_error("Couldn't retrieve the KeyUsage extension!");
+        if (X509_EXTENSION_get_critical(keyusage_ext) != 1)
+            s_log_warn("The KeyUsage extension is not `critical`!");
 
-    if (X509_EXTENSION_get_critical(keyusage_ext) != 1)
-        s_log_warn("The KeyUsage extension is not `critical`!");
-
-    keyusage_ext_data = X509_EXTENSION_get_data(keyusage_ext);
-    if (keyusage_ext_data == NULL)
-        goto_error("Couldn't get the KeyUsage extension data!");
+        keyusage_ext_data = X509_EXTENSION_get_data(keyusage_ext);
+        if (keyusage_ext_data == NULL)
+            goto_error("Couldn't get the KeyUsage extension data!");
+    }
 
 
     /* The remaining field:
@@ -272,15 +273,17 @@ err:
 
     if (out_subj_pubkey != NULL && ok) {
         *out_subj_pubkey = subj_pubkey;
-    } else {
+    } else if (out_subj_pubkey != NULL) {
         EVP_PKEY_free(subj_pubkey);
         subj_pubkey = NULL;
     }
 
-    if (out_km_desc != NULL && ok)
+    if (out_km_desc != NULL && ok) {
         *out_km_desc = km_desc;
-    else
-        key_desc_destroy(&km_desc);
+    } else if (out_km_desc != NULL) {
+        KM_KEY_DESC_V3_free(km_desc);
+        km_desc = NULL;
+    }
 
     if (km_ext_oid != NULL) {
         ASN1_OBJECT_free(km_ext_oid);

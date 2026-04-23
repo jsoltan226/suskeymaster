@@ -3,7 +3,7 @@
 #include "cli.hpp"
 #include <libsuskmhal/hidl/hidl-hal.hpp>
 #include <libsuskmhal/util/km-params.hpp>
-#include <libsuskmhal/keymaster-types-c.h>
+#include <libsuskmhal/util/keymaster-types-c.h>
 #include <android/hardware/keymaster/4.0/types.h>
 #include <cstdio>
 #include <iostream>

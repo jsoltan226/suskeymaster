@@ -1,7 +1,7 @@
 #ifndef SUSKEYMASTER_HIDL_HAL_C_H_
 #define SUSKEYMASTER_HIDL_HAL_C_H_
 
-#include "../keymaster-types-c.h"
+#include "../util/keymaster-types-c.h"
 #include <core/vector.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -11,6 +11,7 @@ extern "C" {
 namespace suskeymaster {
 namespace kmhal {
 namespace hidl {
+using namespace ::suskeymaster::kmhal::util;
 #endif /* (defined(__cplusplus)) */
 
 struct hidl_suskeymaster4;

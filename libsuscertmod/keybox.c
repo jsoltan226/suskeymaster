@@ -8,7 +8,7 @@
 #include <core/log.h>
 #include <core/util.h>
 #include <core/vector.h>
-#include <libsuskmhal/keymaster-types-c.h>
+#include <libsuskmhal/util/keymaster-types-c.h>
 #include <time.h>
 #include <errno.h>
 #include <string.h>

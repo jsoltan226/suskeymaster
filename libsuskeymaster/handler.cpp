@@ -97,12 +97,8 @@ int sus_keymaster_hack_cert_chain(hidl_vec<hidl_vec<uint8_t>>& cert_chain)
 
     enum certmod::sus_key_variant variant = certmod::SUS_KEY_INVALID_;
     VECTOR(u8) new_leaf = NULL;
-#ifdef SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA
     bool sus_send_indata = false;
     if (certmod::sus_cert_generate_leaf(old_leaf, &sus_send_indata, &variant, &new_leaf)) {
-#else
-    if (certmod::sus_cert_generate_leaf(old_leaf, &variant, &new_leaf)) {
-#endif /* SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA */
         __android_log_print(ANDROID_LOG_ERROR, "SUS", "Failed to hack the leaf cert!");
         vector_destroy(&old_leaf);
         return 1;
@@ -117,6 +113,8 @@ int sus_keymaster_hack_cert_chain(hidl_vec<hidl_vec<uint8_t>>& cert_chain)
         vector_destroy(&new_leaf);
         return r;
     }
+#else
+    (void) sus_send_indata;
 #endif /* SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA */
 
     const struct certmod::keybox *kb = NULL;

@@ -12,9 +12,9 @@
 extern "C" {
 #endif /* __cplusplus */
 
-#define u_min(a, b) (a < b ? a : b)
-#define u_max(a, b) (a > b ? a : b)
-#define u_clamp(x, min, max) (u_min(u_max(x, min), max))
+#define u_min(a, b) ((a) < (b) ? (a) : (b))
+#define u_max(a, b) ((a) > (b) ? (a) : (b))
+#define u_clamp(x, min, max) (u_min(u_max((x), (min)), (max)))
 
 /* The simplest collision checking implementation;
  * returns true if 2 rectangles overlap
@@ -22,6 +22,7 @@ extern "C" {
  * Note that the rects' `w` and `h` fields must be small enough
  * for an `int` (`i32`) to not overflow.
  */
+__attribute__((unused))
 static inline bool u_collision(
     const rect_t *r1,
     const rect_t *r2
@@ -36,6 +37,7 @@ static inline bool u_collision(
 }
 
 /* Converts a fixed point 16.16 number to float 32 */
+__attribute__((unused))
 static inline f32 u_fp1616_to_f32(const i32 num)
 {
     f32 ret = (f32)num;
@@ -43,6 +45,7 @@ static inline f32 u_fp1616_to_f32(const i32 num)
     return ret;
 }
 
+__attribute__((unused))
 static inline void u_rect_from_pixel_data(
     const struct pixel_flat_data *data,
     rect_t *o

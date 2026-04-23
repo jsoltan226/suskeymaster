@@ -1,6 +1,6 @@
 #define HIDL_DISABLE_INSTRUMENTATION
 #include "km-params.hpp"
-#include "../keymaster-types-c.h"
+#include "keymaster-types-c.h"
 #include <hidl/HidlSupport.h>
 #include <android/hardware/keymaster/4.0/types.h>
 #include <string>
@@ -11,6 +11,7 @@
 #include <charconv>
 #include <system_error>
 #include <unordered_map>
+#include <openssl/asn1.h>
 
 namespace suskeymaster {
 namespace kmhal {
@@ -842,247 +843,306 @@ static bool is_valid_intval_for_enum(Tag t, uint32_t val)
     }
 }
 
-void key_params_2_auth_list(hidl_vec<KeyParameter> const& params,
-        struct KM_AuthorizationList_v3 *out)
+static int push_int(STACK_OF(ASN1_INTEGER) **st, uint64_t val)
 {
-    /* holy macro */
-#define push_enum(type_, field_, val_) do {                     \
-    if (out->field_ == NULL)  {                                 \
-        out->field_ = vector_new(type_);                        \
-    }                                                           \
-    out->__##field_##_present = true;                           \
-    vector_push_back(&out->field_, (type_)val_);                \
-} while (0)
-#define push_long(field_, kp_) do {                         \
-    if (out->field_ == NULL)                                \
-        *(uint64_t **)&out->field_ = vector_new(uint64_t);  \
-    out->__##field_##_present = true;                       \
-    vector_push_back(&out->field_, kp_.f.longInteger);      \
-} while (0)
-#define copy_bytes(field_, kp_) do {                            \
-    if (out->field_ == NULL)                                    \
-        out->field_ = vector_new(u8);                           \
-    out->__##field_##_present = true;                           \
-    vector_resize(&out->field_, kp_.blob.size());               \
-    memcpy(out->field_, kp_.blob.data(), kp_.blob.size());      \
-} while (0)
-#define assign_enum(type_, field_, val_) do {   \
-    out->__##field_##_present = true;           \
-    out->field_ = (type_)val_;                  \
-} while (0)
-#define assign_int(field_, kp_) do {        \
-    out->__##field_##_present = true;       \
-    out->field_ = kp_.f.integer;            \
-} while (0)
-#define assign_long(field_, kp_) do {       \
-    out->__##field_##_present = true;       \
-    out->field_ = kp_.f.longInteger;        \
-} while (0)
-#define assign_bool(field_, kp_) do {       \
-    out->__##field_##_present = true;       \
-    out->field_ = kp_.f.boolValue;          \
-} while (0)
-#define assign_datetime(field_, kp_) do {   \
-    out->__##field_##_present = true;       \
-    out->field_ = kp_.f.dateTime;           \
-} while (0)
+    if (*st == NULL) {
+        *st = sk_ASN1_INTEGER_new_null();
+        if (*st == NULL) {
+            std::cerr << "Failed to allocate a new STACK_OF ASN1_INTEGERs";
+            return 1;
+        }
+    }
+
+    ASN1_INTEGER *i = ASN1_INTEGER_new();
+    if (i == NULL) {
+        std::cerr << "Failed to allocate a new ASN.1 INTEGER";
+        return 1;
+    }
+
+    if (!ASN1_INTEGER_set_uint64(i, val)) {
+        ASN1_INTEGER_free(i);
+        std::cerr << "Failed to set the value of an ASN.1 INTEGER";
+        return 1;
+    }
+
+    if (sk_ASN1_INTEGER_push(*st, i) <= 0) {
+        ASN1_INTEGER_free(i);
+        std::cerr << "Failed to push an ASN1_INTEGER to the stack";
+        return 1;
+    }
+
+    return 0;
+}
+
+static int assign_int(ASN1_INTEGER **i, uint64_t val)
+{
+    if (*i != NULL) {
+        std::cerr << "INTEGER value already exists!" << std::endl;
+        return 1;
+    }
+
+    *i = ASN1_INTEGER_new();
+    if (*i == NULL) {
+        std::cerr << "Failed to allocate a new ASN.1 INTEGER" << std::endl;
+        return 1;
+    }
+
+    if (!ASN1_INTEGER_set_uint64(*i, val)) {
+        std::cerr << "Failed to set the value of an ASN.1 INTEGER";
+        return 1;
+    }
+
+    return 0;
+}
+
+static int assign_octet_string(ASN1_OCTET_STRING **s, hidl_vec<uint8_t> const& bytes)
+{
+    if (*s != NULL) {
+        std::cerr << "OCTET_STRING value already exists!" << std::endl;
+        return 1;
+    }
+
+    *s = ASN1_OCTET_STRING_new();
+    if (*s == NULL) {
+        std::cerr << "Failed to allocate a new ASN.1 OCTET_STRING" << std::endl;
+        return 1;
+    }
+
+    /* copies the data from `bytes` so no need to duplicate */
+    if (!ASN1_OCTET_STRING_set(*s, bytes.data(), (int)bytes.size())) {
+        std::cerr << "Failed to set the value of an ASN.1 OCTET_STRING";
+        return 1;
+    }
+
+    return 0;
+}
+
+static int assign_bool(ASN1_NULL **b)
+{
+    if (*b != NULL) {
+        std::cerr << "Value already exists!" << std::endl;
+        return 1;
+    }
+
+    if ((*b = ASN1_NULL_new()), *b == NULL) {
+        std::cerr << "Failed to allocate a new ASN.1 NULL (KM boolean value)" << std::endl;
+        return 1;
+    }
+
+    return 0;
+}
+
+KM_PARAM_LIST * key_params_2_param_list(hidl_vec<KeyParameter> const& params)
+{
+    KM_PARAM_LIST *ret = KM_PARAM_LIST_new();
+    if (ret == NULL) {
+        std::cerr << "Failed to allocate a new param list" << std::endl;
+        goto err;
+    }
 
     for (auto const& kp : params) {
+
+#define try_push_int(field_) do {                                                   \
+    if (push_int(&ret->field_, kp.f.longInteger)) {                                 \
+        std::cerr << "Failed to push a repeatable INTEGER tag \""                   \
+            << toString(kp.tag) << "\" value " << kp.f.longInteger << std::endl;    \
+        goto err;                                                                   \
+    }                                                                               \
+} while (0)
+
+#define try_assign_int(field_) do {                                                 \
+    if (assign_int(&ret->field_, kp.f.longInteger)) {                               \
+        std::cerr << "Failed to assign an INTEGER tag \""                           \
+            << toString(kp.tag) << "\" value " << kp.f.longInteger << std::endl;    \
+        goto err;                                                                   \
+    }                                                                               \
+} while (0)
+
+#define try_assign_bytes(field_) do {                                               \
+    if (assign_octet_string(&ret->field_, kp.blob)) {                               \
+        std::cerr << "Failed to assign an OCTET_STRING tag \""                      \
+            << toString(kp.tag) << "\" value " << std::endl;                        \
+        goto err;                                                                   \
+    }                                                                               \
+} while (0)
+
+#define try_assign_bool(field_) do {                                                \
+    /* only create ASN1_NULL boolean values if `true` */                            \
+    if (kp.f.boolValue && assign_bool(&ret->field_)) {                              \
+        std::cerr << "Failed to assign a BOOLEAN tag \""                            \
+            << toString(kp.tag) << "\" value" << std::endl;                         \
+        goto err;                                                                   \
+    }                                                                               \
+} while (0)
+
         switch (kp.tag) {
-        case Tag::PURPOSE: push_enum(KM_KeyPurpose, purpose, kp.f.purpose); break;
-        case Tag::ALGORITHM: assign_enum(KM_Algorithm, algorithm, kp.f.algorithm); break;
-        case Tag::KEY_SIZE: assign_int(keySize, kp); break;
-        case Tag::BLOCK_MODE: push_enum(KM_BlockMode, blockMode, kp.f.blockMode); break;
-        case Tag::DIGEST: push_enum(KM_Digest, digest, kp.f.digest); break;
-        case Tag::PADDING: push_enum(KM_PaddingMode, padding, kp.f.paddingMode); break;
-        case Tag::CALLER_NONCE: assign_bool(callerNonce, kp); break;
-        case Tag::MIN_MAC_LENGTH: assign_int(minMacLength, kp); break;
-        case Tag::EC_CURVE: assign_enum(KM_EcCurve, ecCurve, kp.f.ecCurve); break;
-        case Tag::RSA_PUBLIC_EXPONENT: assign_long(rsaPublicExponent, kp); break;
-        case Tag::INCLUDE_UNIQUE_ID: assign_bool(includeUniqueId, kp); break;
-        case Tag::BLOB_USAGE_REQUIREMENTS:
-            assign_enum(KM_KeyBlobUsageRequirements,
-                    keyBlobUsageRequirements, kp.f.keyBlobUsageRequirements);
-            break;
-        case Tag::BOOTLOADER_ONLY: assign_bool(bootloaderOnly, kp); break;
-        case Tag::ROLLBACK_RESISTANCE: assign_bool(rollbackResistance, kp); break;
-        case Tag::HARDWARE_TYPE: assign_int(hardwareType, kp); break;
-        case Tag::ACTIVE_DATETIME: assign_datetime(activeDateTime, kp); break;
-        case Tag::ORIGINATION_EXPIRE_DATETIME:
-            assign_datetime(originationExpireDateTime, kp);
-            break;
-        case Tag::USAGE_EXPIRE_DATETIME: assign_datetime(usageExpireDateTime, kp); break;
-        case Tag::MIN_SECONDS_BETWEEN_OPS: assign_int(minSecondsBetweenOps, kp); break;
-        case Tag::MAX_USES_PER_BOOT: assign_int(maxUsesPerBoot, kp); break;
-        case Tag::USER_ID: assign_int(userId, kp); break;
-        case Tag::USER_SECURE_ID: push_long(userSecureId, kp); break;
-        case Tag::NO_AUTH_REQUIRED: assign_bool(noAuthRequired, kp); break;
-        case Tag::USER_AUTH_TYPE: assign_long(userAuthType, kp); break;
-        case Tag::AUTH_TIMEOUT: assign_int(authTimeout, kp); break;
-        case Tag::ALLOW_WHILE_ON_BODY: assign_bool(allowWhileOnBody, kp); break;
-        case Tag::TRUSTED_USER_PRESENCE_REQUIRED: assign_bool(trustedUserPresenceReq, kp); break;
-        case Tag::TRUSTED_CONFIRMATION_REQUIRED: assign_bool(trustedConfirmationReq, kp); break;
-        case Tag::UNLOCKED_DEVICE_REQUIRED: assign_bool(unlockedDeviceReq, kp); break;
-        case Tag::APPLICATION_ID: copy_bytes(applicationId, kp); break;
-        case Tag::APPLICATION_DATA: copy_bytes(applicationData, kp); break;
-        case Tag::CREATION_DATETIME: assign_datetime(creationDateTime, kp); break;
-        case Tag::ORIGIN: assign_enum(KM_KeyOrigin, keyOrigin, kp.f.origin); break;
+        case Tag::PURPOSE: try_push_int(purpose); break;
+        case Tag::ALGORITHM: try_assign_int(algorithm); break;
+        case Tag::KEY_SIZE: try_assign_int(keySize); break;
+        case Tag::BLOCK_MODE: try_push_int(blockMode); break;
+        case Tag::DIGEST: try_push_int(digest); break;
+        case Tag::PADDING: try_push_int(padding); break;
+        case Tag::CALLER_NONCE: try_assign_bool(callerNonce); break;
+        case Tag::MIN_MAC_LENGTH: try_assign_int(minMacLength); break;
+        case Tag::EC_CURVE: try_assign_int(ecCurve); break;
+        case Tag::RSA_PUBLIC_EXPONENT: try_assign_int(rsaPublicExponent); break;
+        case Tag::INCLUDE_UNIQUE_ID: try_assign_bool(includeUniqueId); break;
+        case Tag::BLOB_USAGE_REQUIREMENTS: try_assign_int(keyBlobUsageRequirements); break;
+        case Tag::BOOTLOADER_ONLY: try_assign_bool(bootloaderOnly); break;
+        case Tag::ROLLBACK_RESISTANCE: try_assign_bool(rollbackResistance); break;
+        case Tag::HARDWARE_TYPE: try_assign_int(hardwareType); break;
+        case Tag::ACTIVE_DATETIME: try_assign_int(activeDateTime); break;
+        case Tag::ORIGINATION_EXPIRE_DATETIME: try_assign_int(originationExpireDateTime); break;
+        case Tag::USAGE_EXPIRE_DATETIME: try_assign_int(usageExpireDateTime); break;
+        case Tag::MIN_SECONDS_BETWEEN_OPS: try_assign_int(minSecondsBetweenOps); break;
+        case Tag::MAX_USES_PER_BOOT: try_assign_int(maxUsesPerBoot); break;
+        case Tag::USER_ID: try_assign_int(userId); break;
+        case Tag::USER_SECURE_ID: try_push_int(userSecureId); break;
+        case Tag::NO_AUTH_REQUIRED: try_assign_bool(noAuthRequired); break;
+        case Tag::USER_AUTH_TYPE: try_assign_int(userAuthType); break;
+        case Tag::AUTH_TIMEOUT: try_assign_int(authTimeout); break;
+        case Tag::ALLOW_WHILE_ON_BODY: try_assign_bool(allowWhileOnBody); break;
+        case Tag::TRUSTED_USER_PRESENCE_REQUIRED: try_assign_bool(trustedUserPresenceReq); break;
+        case Tag::TRUSTED_CONFIRMATION_REQUIRED: try_assign_bool(trustedConfirmationReq); break;
+        case Tag::UNLOCKED_DEVICE_REQUIRED: try_assign_bool(unlockedDeviceReq); break;
+        case Tag::APPLICATION_ID: try_assign_bytes(applicationId); break;
+        case Tag::APPLICATION_DATA: try_assign_bytes(applicationData); break;
+        case Tag::CREATION_DATETIME: try_assign_int(creationDateTime); break;
+        case Tag::ORIGIN: try_assign_int(keyOrigin); break;
         case Tag::ROOT_OF_TRUST:
-            std::cerr << "WARNING: ROOT_OF_TRUST value in parameters; "
-                "setting `rootOfTrustBytes` instead of `rootOfTrust`" << std::endl;
-            copy_bytes(rootOfTrustBytes, kp);
+        {
+            if (ret->rootOfTrust != NULL) {
+                std::cerr << "rootOfTrust value already exists!" << std::endl;
+                goto err;
+            }
+
+            std::cerr << "WARNING: Tag::ROOT_OF_TRUST value; "
+                "attempting to deserialize `kp.blob`..." << std::endl;
+
+            const unsigned char *p = kp.blob.data();
+            const unsigned char *const end = kp.blob.data() + kp.blob.size();
+
+            ret->rootOfTrust = d2i_KM_ROOT_OF_TRUST_V3(NULL, &p, kp.blob.size());
+            if (ret->rootOfTrust == NULL || p != end) {
+                std::cerr << "Failed to deserialize ROOT_OF_TRUST DER" << std::endl;
+                goto err;
+            }
+
             break;
-        case Tag::OS_VERSION: assign_int(osVersion, kp); break;
-        case Tag::OS_PATCHLEVEL: assign_int(osPatchLevel, kp); break;
-        case Tag::UNIQUE_ID: copy_bytes(uniqueId, kp); break;
-        case Tag::ATTESTATION_CHALLENGE: copy_bytes(attestationChallenge, kp); break;
-        case Tag::ATTESTATION_APPLICATION_ID: copy_bytes(attestationApplicationId, kp); break;
-        case Tag::ATTESTATION_ID_BRAND: copy_bytes(attestationIdBrand, kp); break;
-        case Tag::ATTESTATION_ID_DEVICE: copy_bytes(attestationIdDevice, kp); break;
-        case Tag::ATTESTATION_ID_PRODUCT: copy_bytes(attestationIdProduct, kp); break;
-        case Tag::ATTESTATION_ID_SERIAL: copy_bytes(attestationIdSerial, kp); break;
-        case Tag::ATTESTATION_ID_IMEI: copy_bytes(attestationIdImei, kp); break;
-        case Tag::ATTESTATION_ID_MEID: copy_bytes(attestationIdMeid, kp); break;
-        case Tag::ATTESTATION_ID_MANUFACTURER: copy_bytes(attestationIdManufacturer, kp); break;
-        case Tag::ATTESTATION_ID_MODEL: copy_bytes(attestationIdModel, kp); break;
-        case Tag::VENDOR_PATCHLEVEL: assign_int(vendorPatchLevel, kp); break;
-        case Tag::BOOT_PATCHLEVEL: assign_int(bootPatchLevel, kp); break;
-        case Tag::ASSOCIATED_DATA: copy_bytes(associatedData, kp); break;
-        case Tag::NONCE: copy_bytes(nonce, kp); break;
-        case Tag::MAC_LENGTH: assign_int(macLength, kp); break;
-        case Tag::RESET_SINCE_ID_ROTATION: assign_bool(resetSinceIdRotation, kp); break;
-        case Tag::CONFIRMATION_TOKEN: copy_bytes(confirmationToken, kp); break;
-
-#undef push_enum
-#undef push_long
-#undef copy_bytes
-#undef assign_enum
-#undef assign_bool
-#undef assign_int
-#undef assign_long
-#undef assign_datetime
-
-#define push_enum(type_, field_, val_) do {                     \
-    if (out->samsung.field_ == NULL)  {                         \
-        &out->samsung.field_ = vector_new(type_));              \
-    }                                                           \
-    out->samsung.__##field_##_present = true;                   \
-    vector_push_back(&out->samsung.field_, val_);               \
-} while (0)
-#define push_long(field_, kp_) do {                                 \
-    if (out->samsungfield_ == NULL)                                 \
-        *(uint64_t **)&out->samsungfield_ = vector_new(uint64_t);   \
-    out->samsung.__##field_##_present = true;                       \
-    vector_push_back(&out->samsung.field_, kp_.f.longInteger);      \
-} while (0)
-#define copy_bytes(field_, kp_) do {                                    \
-    out->samsung.__##field_##_present = true;                           \
-    if (out->samsung.field_ == NULL)                                    \
-        out->samsung.field_ = vector_new(u8);                           \
-    vector_resize(&out->samsung.field_, kp_.blob.size());               \
-    memcpy(out->samsung.field_, kp_.blob.data(), kp_.blob.size());      \
-} while (0)
-#define assign_enum(type_, field_, val_) do {   \
-    out->samsung.__##field_##_present = true;   \
-    out->samsung.field_ = (type_)val_;          \
-} while (0)
-#define assign_int(field_, kp_) do {            \
-    out->samsung.__##field_##_present = true;   \
-    out->samsung.field_ = kp_.f.integer;        \
-} while (0)
-#define assign_long(field_, kp_) do {           \
-    out->samsung.__##field_##_present = true;   \
-    out->samsung.field_ = kp_.f.longInteger;    \
-} while (0)
-#define assign_bool(field_, kp_) do {           \
-    out->samsung.__##field_##_present = true;   \
-    out->samsung.field_ = kp_.f.boolValue;      \
-} while (0)
-#define assign_datetime(field_, kp_) do {       \
-    out->samsung.__##field_##_present = true;   \
-    out->samsung.field_ = kp_.f.dateTime;       \
-} while (0)
-
-        case SamsungTag::AUTH_TOKEN: copy_bytes(authToken, kp); break;
-        case SamsungTag::VERIFICATION_TOKEN: copy_bytes(verificationToken, kp); break;
-        case SamsungTag::ALL_USERS: assign_bool(allUsers, kp); break;
-        case SamsungTag::ECIES_SINGLE_HASH_MODE: assign_bool(eciesSingleHashMode, kp); break;
-        case SamsungTag::KDF:
-            assign_enum(KM_KeyDerivationFunction, kdf, kp.f.keyDerivationFunction);
-            break;
-        case SamsungTag::EXPORTABLE: assign_bool(exportable, kp); break;
-        case SamsungTag::KEY_AUTH: assign_bool(keyAuth, kp); break;
-        case SamsungTag::OP_AUTH: assign_bool(opAuth, kp); break;
-        case SamsungTag::OPERATION_HANDLE: assign_long(operationHandle, kp); break;
-        case SamsungTag::OPERATION_FAILED: assign_bool(operationFailed, kp); break;
+        }
+        case Tag::OS_VERSION: try_assign_int(osVersion); break;
+        case Tag::OS_PATCHLEVEL: try_assign_int(osPatchLevel); break;
+        case Tag::UNIQUE_ID: try_assign_bytes(uniqueId); break;
+        case Tag::ATTESTATION_CHALLENGE: try_assign_bytes(attestationChallenge); break;
+        case Tag::ATTESTATION_APPLICATION_ID: try_assign_bytes(attestationApplicationId); break;
+        case Tag::ATTESTATION_ID_BRAND: try_assign_bytes(attestationIdBrand); break;
+        case Tag::ATTESTATION_ID_DEVICE: try_assign_bytes(attestationIdDevice); break;
+        case Tag::ATTESTATION_ID_PRODUCT: try_assign_bytes(attestationIdProduct); break;
+        case Tag::ATTESTATION_ID_SERIAL: try_assign_bytes(attestationIdSerial); break;
+        case Tag::ATTESTATION_ID_IMEI: try_assign_bytes(attestationIdImei); break;
+        case Tag::ATTESTATION_ID_MEID: try_assign_bytes(attestationIdMeid); break;
+        case Tag::ATTESTATION_ID_MANUFACTURER: try_assign_bytes(attestationIdManufacturer); break;
+        case Tag::ATTESTATION_ID_MODEL: try_assign_bytes(attestationIdModel); break;
+        case Tag::VENDOR_PATCHLEVEL: try_assign_int(vendorPatchLevel); break;
+        case Tag::BOOT_PATCHLEVEL: try_assign_int(bootPatchLevel); break;
+        case Tag::ASSOCIATED_DATA: try_assign_bytes(associatedData); break;
+        case Tag::NONCE: try_assign_bytes(nonce); break;
+        case Tag::MAC_LENGTH: try_assign_int(macLength); break;
+        case Tag::RESET_SINCE_ID_ROTATION: try_assign_bool(resetSinceIdRotation); break;
+        case Tag::CONFIRMATION_TOKEN: try_assign_bytes(confirmationToken); break;
+        case SamsungTag::AUTH_TOKEN: try_assign_bytes(authToken); break;
+        case SamsungTag::VERIFICATION_TOKEN: try_assign_bytes(verificationToken); break;
+        case SamsungTag::ALL_USERS: try_assign_bool(allUsers); break;
+        case SamsungTag::ECIES_SINGLE_HASH_MODE: try_assign_bool(eciesSingleHashMode); break;
+        case SamsungTag::KDF: try_assign_int(kdf); break;
+        case SamsungTag::EXPORTABLE: try_assign_bool(exportable); break;
+        case SamsungTag::KEY_AUTH: try_assign_bool(keyAuth); break;
+        case SamsungTag::OP_AUTH: try_assign_bool(opAuth); break;
+        case SamsungTag::OPERATION_HANDLE: try_assign_int(operationHandle); break;
+        case SamsungTag::OPERATION_FAILED: try_assign_bool(operationFailed); break;
         case SamsungTag::INTERNAL_CURRENT_DATETIME:
-            assign_datetime(internalCurrentDateTime, kp);
+            try_assign_int(internalCurrentDateTime);
             break;
-        case SamsungTag::EKEY_BLOB_IV: copy_bytes(ekeyBlobIV, kp); break;
-        case SamsungTag::EKEY_BLOB_AUTH_TAG: copy_bytes(ekeyBlobAuthTag, kp); break;
+        case SamsungTag::EKEY_BLOB_IV: try_assign_bytes(ekeyBlobIV); break;
+        case SamsungTag::EKEY_BLOB_AUTH_TAG: try_assign_bytes(ekeyBlobAuthTag); break;
         case SamsungTag::EKEY_BLOB_CURRENT_USES_PER_BOOT:
-            assign_int(ekeyBlobCurrentUsesPerBoot, kp);
+            try_assign_int(ekeyBlobCurrentUsesPerBoot);
             break;
         case SamsungTag::EKEY_BLOB_LAST_OP_TIMESTAMP:
-            assign_long(ekeyBlobLastOpTimestamp, kp);
+            try_assign_int(ekeyBlobLastOpTimestamp);
             break;
-        case SamsungTag::EKEY_BLOB_DO_UPGRADE: assign_int(ekeyBlobDoUpgrade, kp); break;
-        case SamsungTag::EKEY_BLOB_PASSWORD: copy_bytes(ekeyBlobPassword, kp); break;
-        case SamsungTag::EKEY_BLOB_SALT: copy_bytes(ekeyBlobSalt, kp); break;
-        case SamsungTag::EKEY_BLOB_ENC_VER: assign_int(ekeyBlobEncVer, kp); break;
-        case SamsungTag::EKEY_BLOB_RAW: assign_int(ekeyBlobRaw, kp); break;
-        case SamsungTag::EKEY_BLOB_UNIQ_KDM: copy_bytes(ekeyBlobUniqKDM, kp); break;
-        case SamsungTag::EKEY_BLOB_INC_USE_COUNT: assign_int(ekeyBlobIncUseCount, kp); break;
-        case SamsungTag::SAMSUNG_REQUESTING_TA: copy_bytes(samsungRequestingTA, kp); break;
-        case SamsungTag::SAMSUNG_ROT_REQUIRED: assign_bool(samsungRotRequired, kp); break;
-        case SamsungTag::USE_SECURE_PROCESSOR: assign_bool(useSecureProcessor, kp); break;
-        case SamsungTag::STORAGE_KEY: assign_bool(storageKey, kp); break;
-        case SamsungTag::INTEGRITY_STATUS: assign_int(integrityStatus, kp); break;
-        case SamsungTag::IS_SAMSUNG_KEY: assign_bool(isSamsungKey, kp); break;
-        case SamsungTag::SAMSUNG_ATTESTATION_ROOT: copy_bytes(samsungAttestationRoot, kp); break;
-        case SamsungTag::SAMSUNG_ATTEST_INTEGRITY: assign_bool(samsungAttestIntegrity, kp); break;
+        case SamsungTag::EKEY_BLOB_DO_UPGRADE: try_assign_int(ekeyBlobDoUpgrade); break;
+        case SamsungTag::EKEY_BLOB_PASSWORD: try_assign_bytes(ekeyBlobPassword); break;
+        case SamsungTag::EKEY_BLOB_SALT: try_assign_bytes(ekeyBlobSalt); break;
+        case SamsungTag::EKEY_BLOB_ENC_VER: try_assign_int(ekeyBlobEncVer); break;
+        case SamsungTag::EKEY_BLOB_RAW: try_assign_int(ekeyBlobRaw); break;
+        case SamsungTag::EKEY_BLOB_UNIQ_KDM: try_assign_bytes(ekeyBlobUniqKDM); break;
+        case SamsungTag::EKEY_BLOB_INC_USE_COUNT: try_assign_int(ekeyBlobIncUseCount); break;
+        case SamsungTag::SAMSUNG_REQUESTING_TA: try_assign_bytes(samsungRequestingTA); break;
+        case SamsungTag::SAMSUNG_ROT_REQUIRED: try_assign_bool(samsungRotRequired); break;
+        case SamsungTag::USE_SECURE_PROCESSOR: try_assign_bool(useSecureProcessor); break;
+        case SamsungTag::STORAGE_KEY: try_assign_bool(storageKey); break;
+        case SamsungTag::INTEGRITY_STATUS: try_assign_int(integrityStatus); break;
+        case SamsungTag::IS_SAMSUNG_KEY: try_assign_bool(isSamsungKey); break;
+        case SamsungTag::SAMSUNG_ATTESTATION_ROOT:
+            try_assign_bytes(samsungAttestationRoot);
+            break;
+        case SamsungTag::SAMSUNG_ATTEST_INTEGRITY:
+            try_assign_bool(samsungAttestIntegrity);
+            break;
         case SamsungTag::KNOX_OBJECT_PROTECTION_REQUIRED:
-            assign_bool(knoxObjectProtectionRequired, kp);
+            try_assign_bool(knoxObjectProtectionRequired);
             break;
-        case SamsungTag::KNOX_CREATOR_ID: copy_bytes(knoxCreatorId, kp); break;
-        case SamsungTag::KNOX_ADMINISTRATOR_ID: copy_bytes(knoxAdministratorId, kp); break;
-        case SamsungTag::KNOX_ACCESSOR_ID: copy_bytes(knoxAccessorId, kp); break;
-        case SamsungTag::SAMSUNG_AUTHENTICATE_PACKAGE: copy_bytes(samsungAuthPackage, kp); break;
+        case SamsungTag::KNOX_CREATOR_ID: try_assign_bytes(knoxCreatorId); break;
+        case SamsungTag::KNOX_ADMINISTRATOR_ID: try_assign_bytes(knoxAdministratorId); break;
+        case SamsungTag::KNOX_ACCESSOR_ID: try_assign_bytes(knoxAccessorId); break;
+        case SamsungTag::SAMSUNG_AUTHENTICATE_PACKAGE:
+            try_assign_bytes(samsungAuthPackage);
+            break;
         case SamsungTag::SAMSUNG_CERTIFICATE_SUBJECT:
-            copy_bytes(samsungCertificateSubject, kp);
+            try_assign_bytes(samsungCertificateSubject);
             break;
-        case SamsungTag::SAMSUNG_KEY_USAGE: assign_int(samsungKeyUsage, kp); break;
-        case SamsungTag::SAMSUNG_EXTENDED_KEY_USAGE: copy_bytes(samsungExtendedKeyUsage, kp); break;
+        case SamsungTag::SAMSUNG_KEY_USAGE: try_assign_int(samsungKeyUsage); break;
+        case SamsungTag::SAMSUNG_EXTENDED_KEY_USAGE:
+            try_assign_bytes(samsungExtendedKeyUsage);
+            break;
         case SamsungTag::SAMSUNG_SUBJECT_ALTERNATIVE_NAME:
-            copy_bytes(samsungSubjectAlternativeName, kp);
+            try_assign_bytes(samsungSubjectAlternativeName); break;
             break;
-        case SamsungTag::PROV_GAC_EC1: copy_bytes(provGacEc1, kp); break;
-        case SamsungTag::PROV_GAC_EC2: copy_bytes(provGacEc2, kp); break;
-        case SamsungTag::PROV_GAC_EC3: copy_bytes(provGacEc3, kp); break;
-        case SamsungTag::PROV_GAK_EC: copy_bytes(provGakEc, kp); break;
-        case SamsungTag::PROV_GAK_EC_VTOKEN: copy_bytes(provGakEcVtoken, kp); break;
-        case SamsungTag::PROV_GAC_RSA1: copy_bytes(provGacRsa1, kp); break;
-        case SamsungTag::PROV_GAC_RSA2: copy_bytes(provGacRsa2, kp); break;
-        case SamsungTag::PROV_GAC_RSA3: copy_bytes(provGacRsa3, kp); break;
-        case SamsungTag::PROV_GAK_RSA: copy_bytes(provGakRsa, kp); break;
-        case SamsungTag::PROV_GAK_RSA_VTOKEN: copy_bytes(provGakRsaVtoken, kp); break;
-        case SamsungTag::PROV_SAK_EC: copy_bytes(provSakEc, kp); break;
-        case SamsungTag::PROV_SAK_EC_VTOKEN: copy_bytes(provSakEcVtoken, kp); break;
-
-#undef push_enum
-#undef push_long
-#undef copy_bytes
-#undef assign_enum
-#undef assign_bool
-#undef assign_int
-#undef assign_long
-#undef assign_datetime
+        case SamsungTag::PROV_GAC_EC1: try_assign_bytes(provGacEc1); break;
+        case SamsungTag::PROV_GAC_EC2: try_assign_bytes(provGacEc2); break;
+        case SamsungTag::PROV_GAC_EC3: try_assign_bytes(provGacEc3); break;
+        case SamsungTag::PROV_GAK_EC: try_assign_bytes(provGakEc); break;
+        case SamsungTag::PROV_GAK_EC_VTOKEN: try_assign_bytes(provGakEcVtoken); break;
+        case SamsungTag::PROV_GAC_RSA1: try_assign_bytes(provGacRsa1); break;
+        case SamsungTag::PROV_GAC_RSA2: try_assign_bytes(provGacRsa2); break;
+        case SamsungTag::PROV_GAC_RSA3: try_assign_bytes(provGacRsa3); break;
+        case SamsungTag::PROV_GAK_RSA: try_assign_bytes(provGakRsa); break;
+        case SamsungTag::PROV_GAK_RSA_VTOKEN: try_assign_bytes(provGakRsaVtoken); break;
+        case SamsungTag::PROV_SAK_EC: try_assign_bytes(provSakEc); break;
+        case SamsungTag::PROV_SAK_EC_VTOKEN: try_assign_bytes(provSakEcVtoken); break;
 
         default:
             std::cerr << "Invalid KeyMaster tag: " << static_cast<uint32_t>(kp.tag) << std::endl;
-            continue;
+            goto err;
         }
+
+#undef try_push_int
+#undef try_assign_int
+#undef try_assign_bytes
+#undef try_assign_bool
+
     }
+
+    return ret;
+
+err:
+    if (ret != NULL) {
+        KM_PARAM_LIST_free(ret);
+        ret = NULL;
+    }
+
+    return NULL;
 }
 
 } /* namespace util */

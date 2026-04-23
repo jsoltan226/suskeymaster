@@ -5,26 +5,26 @@
 #include "certmod.h"
 #include <core/int.h>
 #include <core/vector.h>
-#include <libsuskmhal/keymaster-types-c.h>
+#include <libsuskmhal/util/keymaster-types-c.h>
 #include <openssl/crypto.h>
 
 #ifdef __cplusplus
 extern "C" {
 namespace suskeymaster {
 namespace certmod {
-using ::suskeymaster::kmhal::KM_KeyDescription_v3;
+using ::suskeymaster::kmhal::util::KM_KEY_DESC_V3;
 #endif /* __cplusplus */
 
 i32 leaf_cert_parse(const VECTOR(u8) cert,
         enum sus_key_variant *out_variant,
         EVP_PKEY **out_subj_pubkey,
-        struct KM_KeyDescription_v3 **out_km_desc
+        KM_KEY_DESC_V3 **out_km_desc
 );
 
 i32 leaf_cert_gen(VECTOR(u8) *out,
         enum sus_key_variant signing_key_variant,
         EVP_PKEY *subj_pubkey,
-        const struct KM_KeyDescription_v3 *km_desc
+        const KM_KEY_DESC_V3 *km_desc
 );
 
 #ifdef __cplusplus

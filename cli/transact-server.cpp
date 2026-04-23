@@ -6,7 +6,7 @@
 #include <core/vector.h>
 #include <libsuskmhal/hidl/hidl-hal.hpp>
 #include <libsuskmhal/util/km-params.hpp>
-#include <libsuskmhal/keymaster-types-c.h>
+#include <libsuskmhal/util/keymaster-types-c.h>
 #include <libsuscertmod/certmod.h>
 #include <libsuscertmod/key-desc.h>
 #include <libsuscertmod/leaf-cert.h>
@@ -20,8 +20,42 @@
 #include <openssl/asn1.h>
 #include <openssl/rand.h>
 #include <openssl/x509.h>
+#include <openssl/asn1t.h>
 #include <openssl/x509_vfy.h>
 #include <stdio.h>
+
+extern "C" {
+typedef struct IWK_KEY_DESC {
+    ASN1_INTEGER *keyFormat;
+    ::suskeymaster::kmhal::util::KM_PARAM_LIST *keyParams;
+} IWK_KEY_DESC;
+
+typedef struct IWK_SECURE_KEY_WRAPPER {
+    ASN1_INTEGER *version;
+    ASN1_OCTET_STRING *encryptedTransportKey;
+    ASN1_OCTET_STRING *initializationVector;
+    IWK_KEY_DESC *keyDescription;
+    ASN1_OCTET_STRING *encryptedKey;
+    ASN1_OCTET_STRING *tag;
+} IWK_SECURE_KEY_WRAPPER;
+
+ASN1_SEQUENCE(IWK_KEY_DESC) = {
+    ASN1_SIMPLE(IWK_KEY_DESC, keyFormat, ASN1_INTEGER),
+    ASN1_SIMPLE(IWK_KEY_DESC, keyParams, ::suskeymaster::kmhal::util::KM_PARAM_LIST)
+} ASN1_SEQUENCE_END(IWK_KEY_DESC)
+IMPLEMENT_ASN1_FUNCTIONS(IWK_KEY_DESC);
+
+ASN1_SEQUENCE(IWK_SECURE_KEY_WRAPPER) = {
+    ASN1_SIMPLE(IWK_SECURE_KEY_WRAPPER, version, ASN1_INTEGER),
+    ASN1_SIMPLE(IWK_SECURE_KEY_WRAPPER, encryptedTransportKey, ASN1_OCTET_STRING),
+    ASN1_SIMPLE(IWK_SECURE_KEY_WRAPPER, initializationVector, ASN1_OCTET_STRING),
+    ASN1_SIMPLE(IWK_SECURE_KEY_WRAPPER, keyDescription, IWK_KEY_DESC),
+    ASN1_SIMPLE(IWK_SECURE_KEY_WRAPPER, encryptedKey, ASN1_OCTET_STRING),
+    ASN1_SIMPLE(IWK_SECURE_KEY_WRAPPER, tag, ASN1_OCTET_STRING)
+} ASN1_SEQUENCE_END(IWK_SECURE_KEY_WRAPPER)
+IMPLEMENT_ASN1_FUNCTIONS(IWK_SECURE_KEY_WRAPPER)
+
+} /* extern "C" */
 
 namespace suskeymaster {
 namespace cli {
@@ -76,25 +110,17 @@ static int do_transport_encryption(
         hidl_vec<uint8_t>& out_iv, hidl_vec<uint8_t>& out_tag, hidl_vec<uint8_t>& out_masking_key
 );
 
-static int encode_iwk_key_description_der(hidl_vec<uint8_t>& der,
-        const struct certmod::KM_AuthorizationList_v3 *auth_list);
+static int encode_iwk_key_desc_der(hidl_vec<uint8_t>& out_der,
+        IWK_KEY_DESC *& out_key_desc,
+        hidl_vec<KeyParameter> const& params);
 
-static int encode_iwk_secure_key_wrapper_der(hidl_vec<uint8_t>& der,
+static int encode_iwk_secure_key_wrapper_der(hidl_vec<uint8_t>& out_der,
         hidl_vec<uint8_t> const& encrypted_transport_key,
         hidl_vec<uint8_t> const& initialization_vector,
-        hidl_vec<uint8_t> const& key_description_der,
+        IWK_KEY_DESC *    const& iwk_key_desc,
         hidl_vec<uint8_t> const& encrypted_key,
         hidl_vec<uint8_t> const& tag
 );
-
-/* from `libsuscertmod/key-desc-repack.c` */
-static i32 measure_integer_size(struct certmod::key_desc_measure_ctx *ctx, i64 val);
-static i32 measure_octet_string_size(struct certmod::key_desc_measure_ctx *ctx,
-        hidl_vec<uint8_t> const& str);
-static bool write_integer(unsigned char **p, unsigned char *end,
-        const struct certmod::key_desc_measure_ctx *mctx, i64 val);
-static bool write_octet_string(unsigned char **p, unsigned char *end,
-        const struct certmod::key_desc_measure_ctx *mctx, hidl_vec<uint8_t> const& str);
 
 static void pr_info(const char *fmt, ...)
 {
@@ -123,7 +149,7 @@ int verify_attestation(const hidl_vec<hidl_vec<uint8_t>> &cert_chain)
     bool verify_ok = false;
 
     VECTOR(u8) leaf_vec = NULL;
-    struct certmod::KM_KeyDescription_v3 *km_desc = NULL;
+    kmhal::util::KM_KEY_DESC_V3 *km_desc = NULL;
 
     bool ok = false;
 
@@ -142,7 +168,7 @@ int verify_attestation(const hidl_vec<hidl_vec<uint8_t>> &cert_chain)
         goto err;
     }
 
-    certmod::key_desc_dump(km_desc, pr_info);
+    certmod::key_desc_dump(pr_info, km_desc, 0, NULL);
 
     if (check_google_root(root_der, &root_old)) {
         std::cerr << "The root cert is not a Google Attestation Root certificate!" << std::endl;
@@ -161,7 +187,10 @@ int verify_attestation(const hidl_vec<hidl_vec<uint8_t>> &cert_chain)
     ok = true;
 
 err:
-    certmod::key_desc_destroy(&km_desc);
+    if (km_desc != NULL) {
+        kmhal::util::KM_KEY_DESC_V3_free(km_desc);
+        km_desc = NULL;
+    }
     vector_destroy(&leaf_vec);
 
     destroy_certs(&leaf, &intermediates, &root);
@@ -182,9 +211,10 @@ int wrap_key(hidl_vec<uint8_t> const& in_private_key,
 {
     hidl_vec<KeyParameter> params(in_key_params);
     Algorithm pkey_alg;
-    struct kmhal::KM_AuthorizationList_v3 auth_list = {};
 
-    hidl_vec<uint8_t> iwk_key_description_der = {};
+    IWK_KEY_DESC *iwk_key_desc = NULL;
+    hidl_vec<uint8_t> iwk_key_desc_der = {};
+
     hidl_vec<uint8_t> encrypted_transport_key;
     hidl_vec<uint8_t> transport_iv;
     hidl_vec<uint8_t> transport_tag;
@@ -204,48 +234,39 @@ int wrap_key(hidl_vec<uint8_t> const& in_private_key,
     if (pkey_alg == Algorithm::RSA) {
         kmhal::util::init_default_params(params, {
             { Tag::ALGORITHM, Algorithm::RSA },
-            { Tag::DIGEST, { Digest::SHA_2_256 } },
-            { Tag::PADDING, { PaddingMode::RSA_PKCS1_1_5_SIGN } },
-            { Tag::KEY_SIZE, 2048 },
             { Tag::RSA_PUBLIC_EXPONENT, 65537 },
-            { Tag::PURPOSE, { KeyPurpose::SIGN, KeyPurpose::VERIFY } },
             { Tag::NO_AUTH_REQUIRED, true }
         });
     } else /* if (key_variant == SUS_KEY_EC) */ {
         kmhal::util::init_default_params(params, {
             { Tag::ALGORITHM, Algorithm::EC },
-            { Tag::DIGEST, { Digest::SHA_2_256 } },
-            { Tag::EC_CURVE, EcCurve::P_256 },
-            { Tag::PURPOSE, { KeyPurpose::SIGN, KeyPurpose::VERIFY } },
             { Tag::NO_AUTH_REQUIRED, true }
         });
     }
 
-    kmhal::util::key_params_2_auth_list(params, &auth_list);
-
-    if (encode_iwk_key_description_der(iwk_key_description_der, &auth_list)) {
-        std::cerr << "Failed to encode the importWrappedKey KeyDescription" << std::endl;
-        certmod::key_desc_destroy_auth_list(&auth_list);
+    if (encode_iwk_key_desc_der(iwk_key_desc_der, iwk_key_desc, params)) {
+        std::cerr << "Failed to serialize the importWrappedKey keyDescription" << std::endl;
         return 1;
     }
-    certmod::key_desc_destroy_auth_list(&auth_list);
 
-    if (do_transport_encryption(in_wrapping_key, iwk_key_description_der, encrypted_key,
+    if (do_transport_encryption(in_wrapping_key, iwk_key_desc_der, encrypted_key,
                 encrypted_transport_key, transport_iv, transport_tag, out_masking_key))
     {
         std::cerr << "Failed to perform the transport wrapping" << std::endl;
+        IWK_KEY_DESC_free(iwk_key_desc);
         return 1;
     }
 
     if (encode_iwk_secure_key_wrapper_der(out_wrapped_data,
-                encrypted_transport_key, transport_iv, iwk_key_description_der,
+                encrypted_transport_key, transport_iv, iwk_key_desc,
                 encrypted_key, transport_tag))
     {
         std::cerr << "Failed to encode the importWrappedKey SecureKeyWrapper" << std::endl;
+        IWK_KEY_DESC_free(iwk_key_desc);
         return 1;
     }
 
-    certmod::key_desc_destroy_auth_list(&auth_list);
+    IWK_KEY_DESC_free(iwk_key_desc);
     std::cout << "Successfully wrapped private key for transact" << std::endl;
     return 0;
 }
@@ -774,266 +795,165 @@ err:
     return ok ? 0 : 1;
 }
 
-static int encode_iwk_key_description_der(hidl_vec<uint8_t>& der,
-        const struct certmod::KM_AuthorizationList_v3 *auth_list)
+static int encode_iwk_key_desc_der(hidl_vec<uint8_t>& out_der,
+        IWK_KEY_DESC *& out_key_desc,
+        hidl_vec<KeyParameter> const& params)
 {
-    struct certmod::key_desc_measure_ctx mctx = {};
-    i32 tmp = 0;
-    u32 content_bytes = 0, total_bytes = 0;
-    u8 *p = NULL;
-    u8 *end = NULL;
-    bool ok = false;
+    out_der.resize(0);
+    out_key_desc = NULL;
 
-    if (certmod::key_desc_measure_ctx_init(&mctx)) {
-        std::cerr << "Failed to initialize the measurement context" << std::endl;
+    IWK_KEY_DESC *key_desc = NULL;
+    int der_len = 0;
+    unsigned char *p = NULL;
+
+    key_desc = IWK_KEY_DESC_new();
+    if (key_desc == NULL) {
+        std::cerr << "Failed to allocate a new importWrappedKey KeyDescription object"
+            << std::endl;
         goto err;
     }
 
-    /* Measure the SEQUENCE's content */
-    tmp = measure_integer_size(&mctx, static_cast<i64>(KeyFormat::PKCS8));
-    if (tmp < 0) {
-        std::cerr << "Failed to measure the KeyFormat INTEGER" << std::endl;
-        goto err;
-    }
-    content_bytes += static_cast<u32>(tmp);
-
-    tmp = certmod::key_desc_measure_outer_auth_list(&mctx, auth_list,
-                certmod::KEY_DESC_MEASURE_AL_HARDWARE_ENFORCED);
-    if (tmp < 0) {
-        std::cerr << "Failed to measure the authorization list" << std::endl;
-        goto err;
-    }
-    content_bytes += static_cast<u32>(tmp);
-
-    /* Measure the entire SEQUENCE's TLV */
-    tmp = ASN1_object_size(true, content_bytes, V_ASN1_SEQUENCE);
-    if (tmp < 0) {
-        std::cerr << "Failed to measure the iwk key description sequence" << std::endl;
-        goto err;
-    }
-    total_bytes = tmp;
-
-    der.resize(total_bytes);
-    p = der.data();
-    end = der.data() + der.size();
-
-    if (!certmod::key_desc_write_sequence_header(&p, end,
-                content_bytes, static_cast<u32>(kmhal::KM_TAG_INVALID)))
+    if ((key_desc->keyFormat == NULL && (key_desc->keyFormat = ASN1_INTEGER_new()) == NULL)
+        || !ASN1_INTEGER_set(key_desc->keyFormat, static_cast<long>(KeyFormat::PKCS8)))
     {
-        std::cerr << "Failed to write the iwk key description SEQUENCE header" << std::endl;
+        std::cerr << "Failed to allocate and set the keyFormat ASN.1 INTEGER" << std::endl;
         goto err;
     }
 
-    if (!write_integer(&p, end, &mctx, static_cast<i64>(KeyFormat::PKCS8))) {
-        std::cerr << "Failed to write the KeyFormat integer" << std::endl;
+    if (key_desc->keyParams != NULL) {
+        kmhal::util::KM_PARAM_LIST_free(key_desc->keyParams);
+        key_desc->keyParams = NULL;
+    }
+    key_desc->keyParams = kmhal::util::key_params_2_param_list(params);
+    if (key_desc->keyParams == NULL) {
+        std::cerr << "Failed to convert key parameter vec to param list" << std::endl;
+        return 1;
+    }
+
+    if ((der_len = i2d_IWK_KEY_DESC(key_desc, NULL)) <= 0) {
+        std::cerr << "Failed to measure the importWrappedKey KeyDescription DER length"
+            << std::endl;
         goto err;
     }
 
-    if (!certmod::key_desc_write_auth_list(&p, end, auth_list,
-                &mctx, certmod::KEY_DESC_MEASURE_AL_HARDWARE_ENFORCED))
-    {
-        std::cerr << "Failed to write the AuthorizationList sequence" << std::endl;
+    out_der.resize(der_len);
+    p = out_der.data();
+    if (i2d_IWK_KEY_DESC(key_desc, &p) != der_len || p != out_der.data() + out_der.size()) {
+        out_der.resize(0);
+        std::cerr << "Failed to encode the importWrappedKey KeyDescription DER" << std::endl;
         goto err;
     }
 
-    if (p != end) {
-        std::cerr << "Wrote an incorrect amount of bytes!" << std::endl;
-        goto err;
-    }
-
-    ok = true;
+    out_key_desc = key_desc;
+    key_desc = NULL;
+    return 0;
 
 err:
-    certmod::key_desc_measure_ctx_destroy(&mctx);
-    p = end = NULL;
-    content_bytes = total_bytes = tmp = 0;
-
-    return ok ? 0 : 1;
+    if (key_desc != NULL) {
+        IWK_KEY_DESC_free(key_desc);
+        key_desc = NULL;
+    }
+    return 1;
 }
 
-static int encode_iwk_secure_key_wrapper_der(hidl_vec<uint8_t>& der,
+static int encode_iwk_secure_key_wrapper_der(hidl_vec<uint8_t>& out_der,
         hidl_vec<uint8_t> const& encrypted_transport_key,
         hidl_vec<uint8_t> const& initialization_vector,
-        hidl_vec<uint8_t> const& key_description_der,
+        IWK_KEY_DESC *    const& iwk_key_desc,
         hidl_vec<uint8_t> const& encrypted_key,
         hidl_vec<uint8_t> const& tag
 )
 {
-    struct certmod::key_desc_measure_ctx mctx = {};
-    size_t len = 0, total_len = 0;
-    i32 tmp = 0;
-    u8 *p = NULL, *end = NULL;
+    int out_der_len = 0;
+    unsigned char *p = NULL;
     bool ok = false;
 
-    /** Measure the requiered DER length **/
+    IWK_SECURE_KEY_WRAPPER *skw = NULL;
 
-    if (certmod::key_desc_measure_ctx_init(&mctx)) {
-        std::cerr << "Failed to initialize the measurement context" << std::endl;
+    skw = IWK_SECURE_KEY_WRAPPER_new();
+    if (skw == NULL) {
+        std::cerr << "Failed to allocate a new SecureKeyWrapper ASN.1 object" << std::endl;
         goto err;
     }
 
-    /* for >version INTEGER< (which always contains `0`) */
-    tmp = measure_integer_size(&mctx, 0);
-    if (tmp < 0) {
-        std::cerr << "Failed to measure the size of an ASN.1 INTEGER" << std::endl;
+    if ((skw->encryptedTransportKey == NULL &&
+            (skw->encryptedTransportKey = ASN1_OCTET_STRING_new()) == NULL)
+        || !ASN1_OCTET_STRING_set(skw->encryptedTransportKey,
+                encrypted_transport_key.data(), encrypted_transport_key.size()))
+    {
+        std::cerr << "Failed to allocate and set the SecureKeyWrapper "
+            "encryptedTransportKey OCTET_STRING" << std::endl;
         goto err;
     }
-    len += tmp;
 
-    for (auto const& s : { encrypted_transport_key, initialization_vector, encrypted_key, tag }) {
-        tmp = measure_octet_string_size(&mctx, s);
-        if (tmp < 0) {
-            std::cerr << "Failed to measure the size of an ASN.1 OCTET STRING" << std::endl;
+    if ((skw->initializationVector == NULL &&
+            (skw->initializationVector = ASN1_OCTET_STRING_new()) == NULL)
+        || !ASN1_OCTET_STRING_set(skw->initializationVector,
+                initialization_vector.data(), initialization_vector.size()))
+    {
+        std::cerr << "Failed to allocate and set the SecureKeyWrapper "
+            "initializationVector OCTET_STRING" << std::endl;
+        goto err;
+    }
+
+    if ((skw->encryptedKey == NULL && (skw->encryptedKey = ASN1_OCTET_STRING_new()) == NULL)
+        || !ASN1_OCTET_STRING_set(skw->encryptedKey, encrypted_key.data(), encrypted_key.size()))
+    {
+        std::cerr << "Failed to allocate and set the SecureKeyWrapper "
+            "encryptedKey OCTET_STRING" << std::endl;
+        goto err;
+    }
+
+    if ((skw->tag == NULL && (skw->tag = ASN1_OCTET_STRING_new()) == NULL)
+        || !ASN1_OCTET_STRING_set(skw->tag, tag.data(), tag.size()))
+    {
+        std::cerr << "Failed to allocate and set the SecureKeyWrapper "
+            "tag OCTET_STRING" << std::endl;
+        goto err;
+    }
+
+
+    if (skw->keyDescription != NULL) {
+        IWK_KEY_DESC_free(skw->keyDescription);
+        skw->keyDescription = NULL;
+    }
+
+    /* Quick hack to avoid having to define and call `IWK_KEY_DESC_dup` */
+    skw->keyDescription = iwk_key_desc;
+    {
+        out_der_len = i2d_IWK_SECURE_KEY_WRAPPER(skw, NULL);
+        if (out_der_len <= 0) {
+            std::cerr << "Failed to measure the size of the SecureKeyWrapper DER" << std::endl;
+            skw->keyDescription = NULL;
             goto err;
         }
-        len += tmp;
+
+        out_der.resize(out_der_len);
+        p = out_der.data();
+        if (i2d_IWK_SECURE_KEY_WRAPPER(skw, &p) != out_der_len ||
+                p != out_der.data() + out_der.size())
+        {
+            std::cerr << "Failed to serialize the SecureKeyWrapper into DER bytes" << std::endl;
+            skw->keyDescription = NULL;
+            goto err;
+        }
     }
-
-    len += key_description_der.size();
-
-    /* Add the SEQUENCE tag size */
-    total_len = ASN1_object_size(true, len, V_ASN1_SEQUENCE);
-
-    der.resize(total_len);
-
-    /** Encode the DER **/
-    p = der.data();
-    end = p + der.size();
-
-    if (!certmod::key_desc_write_sequence_header(&p, end, len, kmhal::KM_TAG_INVALID)) {
-        std::cerr << "Failed to write the SecureKeyWrapper SEQUENCE header" << std::endl;
-        goto err;
-    }
-
-    if (!write_integer(&p, end, &mctx, 0)) {
-        std::cerr << "Failed to write the `version` INTEGER" << std::endl;
-        goto err;
-    }
-
-    if (!write_octet_string(&p, end, &mctx, encrypted_transport_key)) {
-        std::cerr << "Failed to write the encrypted transport key OCTET STRING" << std::endl;
-        goto err;
-    }
-    if (!write_octet_string(&p, end, &mctx, initialization_vector)) {
-        std::cerr << "Failed to write the initialization vector OCTET STRING" << std::endl;
-        goto err;
-    }
-
-    if (p + key_description_der.size() > end) {
-        std::cerr << "Key description SEQUENCE overruns buffer!" << std::endl;
-        goto err;
-    }
-    std::memcpy(p, key_description_der.data(), key_description_der.size());
-    p += key_description_der.size();
-
-    if (!write_octet_string(&p, end, &mctx, encrypted_key)) {
-        std::cerr << "Failed to write the encrypted key OCTET STRING" << std::endl;
-        goto err;
-    }
-    if (!write_octet_string(&p, end, &mctx, tag)) {
-        std::cerr << "Failed to write the authentication tag OCTET STRING" << std::endl;
-        goto err;
-    }
-
-    if (p != end) {
-        std::cerr << "Wrote an incorrect amount of bytes!" << std::endl;
-        goto err;
-    }
+    skw->keyDescription = NULL;
 
     std::cout << "Successfully encoded the SecureKeyWrapper DER sequence" << std::endl;
     ok = true;
 
 err:
-    key_desc_measure_ctx_destroy(&mctx);
+    if (skw != NULL) {
+        IWK_SECURE_KEY_WRAPPER_free(skw);
+        skw = NULL;
+    }
+
+    if (!ok) out_der.resize(0);
 
     return ok ? 0 : 1;
 }
 
-
-static i32 measure_integer_size(struct certmod::key_desc_measure_ctx *ctx, i64 val)
-{
-    if (ctx == NULL || !ctx->initialized_) {
-        std::cerr << "Invalid parameters!";
-        return -1;
-    }
-
-    if (ASN1_INTEGER_set_int64(ctx->i, val) == 0) {
-        std::cerr << "Couldn't set the value of an ASN.1 INTEGER to an int64";
-        return -1;
-    }
-
-    return i2d_ASN1_INTEGER(ctx->i, NULL);
-}
-
-static i32 measure_octet_string_size(struct certmod::key_desc_measure_ctx *ctx,
-        hidl_vec<uint8_t> const& str)
-{
-    if (ctx == NULL || !ctx->initialized_) {
-        std::cerr << "Invalid parameters!";
-        return -1;
-    }
-
-    if (ASN1_OCTET_STRING_set(ctx->str, str.data(), str.size()) == 0) {
-        std::cerr << "Couldn't set the value of an ASN.1 OCTET_STRING";
-        return -1;
-    }
-
-    return i2d_ASN1_OCTET_STRING(ctx->str, NULL);
-}
-
-static bool write_integer(unsigned char **p, unsigned char *end,
-        const struct certmod::key_desc_measure_ctx *mctx, i64 val)
-{
-    if (ASN1_INTEGER_set_int64(mctx->i, val) == 0) {
-        std::cerr << "Couldn't set the value of an ASN.1 INTEGER!";
-        return false;
-    }
-
-    i32 content_len = i2d_ASN1_INTEGER(mctx->i, NULL);
-    if (content_len < 0) {
-        std::cerr << "Failed to measure the length of an ASN.1 INTEGER!";
-        return false;
-    }
-
-    if (*p + content_len > end) {
-        std::cerr << "ASN.1 INTEGER overruns buffer!";
-        return false;
-    }
-
-    if (i2d_ASN1_INTEGER(mctx->i, p) < 0) {
-        std::cerr << "Failed to serialize an ASN.1 INTEGER value!";
-        return false;
-    }
-
-    return true;
-}
-
-static bool write_octet_string(unsigned char **p, unsigned char *end,
-        const struct certmod::key_desc_measure_ctx *mctx, hidl_vec<uint8_t> const& str)
-{
-    if (ASN1_OCTET_STRING_set(mctx->str, str.data(), str.size()) == 0) {
-        std::cerr << "Failed to set the value of an ASN.1 OCTET_STRING!";
-        return false;
-    }
-
-    i32 content_len = i2d_ASN1_OCTET_STRING(mctx->str, NULL);
-    if (content_len < 0) {
-        std::cerr << "Failed to measure the length of an ASN.1 OCTET_STRING!";
-        return false;
-    }
-
-    if (*p + content_len > end) {
-        std::cerr << "ASN.1 OCTET_STRING overruns buffer!";
-        return false;
-    }
-
-    if (i2d_ASN1_OCTET_STRING(mctx->str, p) < 0) {
-        std::cerr << "Failed to serialize an ASN.1 OCTET_STRING!";
-        return false;
-    }
-
-    return true;
-}
 
 } /* namespace server */
 } /* namespace transact */

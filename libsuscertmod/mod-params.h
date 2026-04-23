@@ -2,7 +2,7 @@
 #define SUS_CERT_MOD_PARAMS_H_
 
 #include <core/int.h>
-#include <libsuskmhal/keymaster-types-c.h>
+#include <libsuskmhal/util/keymaster-types-c.h>
 
 /** Top-level Key Description modifications **/
 #define MOD_KEYDESC_ATTESTATION_SEC_LVL KM_SECURITY_LEVEL_TRUSTED_ENVIRONMENT

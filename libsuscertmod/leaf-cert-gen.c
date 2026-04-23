@@ -4,7 +4,7 @@
 #include "certmod.h"
 #include "key-desc.h"
 #include "certsign.h"
-#include <libsuskmhal/keymaster-types-c.h>
+#include <libsuskmhal/util/keymaster-types-c.h>
 #include <core/log.h>
 #include <core/util.h>
 #include <core/vector.h>
@@ -15,7 +15,6 @@
 #include <openssl/obj_mac.h>
 #include <openssl/x509v3.h>
 #include <openssl/x509_vfy.h>
-#include <stdlib.h>
 #include <string.h>
 
 #define MODULE_NAME "leaf-cert"
@@ -24,8 +23,8 @@ static i32 set_serial(X509 *x509, i64 val);
 static i32 set_tbs_signature_algorithm(X509 *x509,
         enum sus_key_variant signing_key_variant);
 
-static i32 set_notbefore(X509 *x509, const struct KM_KeyDescription_v3 *desc);
-static i32 set_notafter(X509 *x509, const struct KM_KeyDescription_v3 *desc,
+static i32 set_notbefore(X509 *x509, const KM_KEY_DESC_V3 *desc);
+static i32 set_notafter(X509 *x509, const KM_KEY_DESC_V3 *desc,
         i64 issuer_not_after);
 static i32 set_issuer_from_keybox(X509 *x509, i64 *out_issuer_not_after,
         enum sus_key_variant signing_key_variant);
@@ -33,11 +32,10 @@ static i32 set_issuer(X509 *x509,
         const VECTOR(u8) title, const VECTOR(u8) serial);
 static i32 set_subject(X509 *x509, const u8 *common_name_str);
 
-static i32 set_keyusage(X509 *x509, const struct KM_KeyDescription_v3 *desc);
+static i32 set_keyusage(X509 *x509, const KM_KEY_DESC_V3 *desc);
 static i32 set_attestation_extension(X509 *x509,
-        const struct KM_KeyDescription_v3 *desc);
-
-static i32 construct_tbs_der(const struct KM_KeyDescription_v3 *km_desc,
+        const KM_KEY_DESC_V3 *desc);
+static i32 construct_tbs_der(const KM_KEY_DESC_V3 *km_desc,
         enum sus_key_variant signing_key_variant, EVP_PKEY *subj_pubkey,
         VECTOR(u8) *out_der);
 
@@ -54,7 +52,7 @@ static void encode_der_sig_bitstr_tl(unsigned char **p, unsigned long content_le
 i32 leaf_cert_gen(VECTOR(u8) *out,
         enum sus_key_variant signing_key_variant,
         EVP_PKEY *subj_pubkey,
-        const struct KM_KeyDescription_v3 *km_desc
+        const KM_KEY_DESC_V3 *km_desc
 )
 {
     if ((signing_key_variant != SUS_KEY_EC &&
@@ -155,19 +153,32 @@ static i32 set_tbs_signature_algorithm(X509 *x509,
     return 0;
 }
 
-static i32 set_notbefore(X509 *x509, const struct KM_KeyDescription_v3 *desc)
+static i32 set_notbefore(X509 *x509, const KM_KEY_DESC_V3 *desc)
 {
     ASN1_TIME *not_before = NULL;
     i32 ret = 1;
 
     /* hw activeDateTime -> hw creationDateTime -> 0 */
     time_t time_val = 0;
-    if (desc->hardwareEnforced.__activeDateTime_present) {
-        time_val = desc->hardwareEnforced.activeDateTime / 1000;
-    } else if (desc->hardwareEnforced.__creationDateTime_present) {
-        time_val = desc->hardwareEnforced.creationDateTime / 1000;
+    if (desc->hardwareEnforced == NULL)
+        goto_error("hardwareEnforced auth list is NULL!");
+
+    if (desc->hardwareEnforced->activeDateTime) {
+        uint64_t v = 0ULL;
+        if (!ASN1_INTEGER_get_uint64(&v,
+                    desc->hardwareEnforced->activeDateTime))
+            goto_error("Failed to get the value of an ASN.1 INTEGER");
+
+        time_val = v / 1000ULL;
+    } else if (desc->hardwareEnforced->creationDateTime) {
+        uint64_t v = 0ULL;
+        if (!ASN1_INTEGER_get_uint64(&v,
+                    desc->hardwareEnforced->creationDateTime))
+            goto_error("Failed to get the value of an ASN.1 INTEGER");
+
+        time_val = v / 1000ULL;
     } else {
-        s_log_warn("No activeDateTime or creationDateTime in key description; "
+        s_log_debug("No activeDateTime or creationDateTime in key description; "
                 "setting `notBefore` to 0 (Jan 1 1970)");
         time_val = 0;
     }
@@ -192,7 +203,7 @@ err:
     return ret;
 }
 
-static i32 set_notafter(X509 *x509, const struct KM_KeyDescription_v3 *desc,
+static i32 set_notafter(X509 *x509, const KM_KEY_DESC_V3 *desc,
         i64 issuer_not_after)
 {
     ASN1_TIME *not_after = NULL;
@@ -200,8 +211,16 @@ static i32 set_notafter(X509 *x509, const struct KM_KeyDescription_v3 *desc,
 
     /* hw usageExpireDateTime -> issuer cert notAfter */
     time_t time_val = 0;
-    if (desc->hardwareEnforced.__usageExpireDateTime_present) {
-        time_val = desc->hardwareEnforced.usageExpireDateTime / 1000;
+    if (desc->hardwareEnforced == NULL)
+        goto_error("hardwareEnforced auth list is NULL!");
+
+    if (desc->hardwareEnforced->usageExpireDateTime) {
+        uint64_t v = 0ULL;
+        if (!ASN1_INTEGER_get_uint64(&v,
+                    desc->hardwareEnforced->usageExpireDateTime))
+            goto_error("Failed to get the value of an ASN.1 INTEGER");
+
+        time_val = v / 1000ULL;
     } else {
         s_log_debug("No usageExpireDateTime present in key description; "
                 "setting `notAfter` to the expiration date of the "
@@ -328,20 +347,40 @@ err:
     return ret;
 }
 
-static i32 set_keyusage(X509 *x509, const struct KM_KeyDescription_v3 *desc)
+static i32 set_keyusage(X509 *x509, const KM_KEY_DESC_V3 *desc)
 {
     u16 val = 0x0000;
     ASN1_BIT_STRING *bstr = NULL;
     i32 ret = 1;
 
-    if (desc->hardwareEnforced.__purpose_present) {
-        VECTOR(enum KM_KeyPurpose) hw_purpose = desc->hardwareEnforced.purpose;
-        for (u32 i = 0; i < vector_size(hw_purpose); i++) {
-            switch (hw_purpose[i]) {
+    if (desc->hardwareEnforced == NULL)
+        goto_error("hardwareEnforced auth list is NULL!");
+
+    if (desc->hardwareEnforced->purpose) {
+        int n_purposes = sk_ASN1_INTEGER_num(desc->hardwareEnforced->purpose);
+        if (n_purposes < 0)
+            goto_error("Failed to get the number of elements "
+                    "in a set of ASN.1 INTEGERs");
+
+        for (int i = 0; i < n_purposes; i++) {
+            const ASN1_INTEGER *curr = sk_ASN1_INTEGER_value(
+                    desc->hardwareEnforced->purpose,
+                    i
+            );
+            if (curr == NULL)
+                goto_error("Failed to get an ASN.1 INTEGER from the set");
+
+            uint64_t v = 0ULL;
+            if (!ASN1_INTEGER_get_uint64(&v, curr))
+                goto_error("Failed to get the value of an ASN.1 INTEGER");
+            v &= 0x00000000FFFFFFFF;
+
+            switch (v) {
             case KM_PURPOSE_SIGN:
             case KM_PURPOSE_VERIFY:
                 val |= KU_DIGITAL_SIGNATURE;
                 break;
+#if 0
             case KM_PURPOSE_ENCRYPT:
             case KM_PURPOSE_DECRYPT:
                 val |= KU_DATA_ENCIPHERMENT;
@@ -349,8 +388,18 @@ static i32 set_keyusage(X509 *x509, const struct KM_KeyDescription_v3 *desc)
             case KM_PURPOSE_WRAP_KEY:
                 val |= KU_KEY_ENCIPHERMENT;
                 break;
+#endif /* 0 */
             }
         }
+    }
+
+    /* The keyUsage extension must not be empty if present.
+     * Therefore, if it is to be empty, we just skip adding it altogether */
+    if (val == 0) {
+        s_log_debug("hardwareEnforced keyPurposes require empty keyUsage; "
+                "not adding!");
+        ret = 0;
+        goto err;
     }
 
     bstr = ASN1_BIT_STRING_new();
@@ -373,8 +422,7 @@ err:
     return ret;
 }
 
-static i32 set_attestation_extension(X509 *x509,
-        const struct KM_KeyDescription_v3 *desc)
+static i32 set_attestation_extension(X509 *x509, const KM_KEY_DESC_V3 *desc)
 {
     ASN1_OCTET_STRING *key_desc_str = NULL;
     ASN1_OBJECT *km_ext_obj = NULL;
@@ -416,7 +464,7 @@ err:
     return ret;
 }
 
-static i32 construct_tbs_der(const struct KM_KeyDescription_v3 *km_desc,
+static i32 construct_tbs_der(const KM_KEY_DESC_V3 *km_desc,
         enum sus_key_variant signing_key_variant, EVP_PKEY *subj_pubkey,
         VECTOR(u8) *out_der)
 {

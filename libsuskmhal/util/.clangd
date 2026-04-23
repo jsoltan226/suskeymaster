@@ -17,7 +17,7 @@ If:
 CompileFlags:
   Add: [
     -xc,
-    -std=c11
+    -std=c11,
   ]
 ---
 If:
@@ -27,5 +27,5 @@ CompileFlags:
     -fno-exceptions,
     -fno-rtti,
     -xc++,
-    -std=c++20,
+    -std=c++17,
   ]

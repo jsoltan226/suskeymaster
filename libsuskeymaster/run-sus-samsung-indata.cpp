@@ -4,7 +4,8 @@
 #include <core/log.h>
 #include <core/util.h>
 #include <core/vector.h>
-#include <libsuskmhal/keymaster-types-c.h>
+#include <libsuskmhal/util/samsung-utils.h>
+#include <libsuskmhal/util/keymaster-types-c.h>
 #include <libsuskmhal/util/samsung-sus-indata.hpp>
 #include <dlfcn.h>
 #include <unistd.h>
@@ -15,6 +16,8 @@
 #define MODULE_NAME "run-sus-samsung-indata"
 
 namespace suskeymaster {
+
+using namespace kmhal::util;
 
 #define SHARED_MEM_BUF_MAX_SIZE 0x19000
 
@@ -59,8 +62,6 @@ static int recv_command(hidl_vec<uint8_t>& outdata);
 int run_sus_samsung_indata(const VECTOR(u8) indata,
             hidl_vec<hidl_vec<uint8_t>>& out_cert_chain)
 {
-    using namespace kmhal::util;
-
     out_cert_chain.resize(2);
     out_cert_chain[0].resize(0);
     out_cert_chain[1].resize(0);
