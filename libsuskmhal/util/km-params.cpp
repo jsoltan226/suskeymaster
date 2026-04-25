@@ -23,7 +23,7 @@ using namespace ::android::hardware::keymaster::V4_0;
 static void parse_key_values(const char *arg_,
         std::vector<std::pair<std::string, std::string>>& out);
 
-static Tag find_tag_type_by_name(std::string const& name);
+static Tag find_tag_by_name(std::string const& name);
 
 static int parse_tag_value(Tag t, std::string const& value,
         KeyParameter &out);
@@ -56,7 +56,7 @@ int parse_km_tag_params(const char *arg, hidl_vec<KeyParameter>& out)
         std::string const& key = p.first;
         std::string const& value = p.second;
 
-        Tag t = find_tag_type_by_name(key);
+        Tag t = find_tag_by_name(key);
         if (t == Tag::INVALID) {
             std::cerr << "Invalid tag name: \"" << key << "\"" << std::endl;
             return 1;
@@ -298,7 +298,7 @@ static void parse_key_values(const char *arg,
     }
 }
 
-static Tag find_tag_type_by_name(std::string const& name)
+static Tag find_tag_by_name(std::string const& name)
 {
 #define KM_DECL_TAG(name_, type, tag_val, param_list_field, bound_enum, asn1_type, asn1_rep)    \
     if (name == #name_) return static_cast<Tag>(KM_TAG_##name_);
@@ -418,7 +418,7 @@ static int parse_enum_value(Tag t, std::string const& value,
             return parse_key_blob_usage_requirements(value, out.f.keyBlobUsageRequirements);
         case Tag::PURPOSE: return parse_key_purpose(value, out.f.purpose);
 
-        case SamsungTag::KDF:
+        case Tag::KDF:
             return parse_key_derivation_function(value, out.f.keyDerivationFunction);
 
         default:

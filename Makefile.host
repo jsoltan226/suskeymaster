@@ -83,7 +83,7 @@ BINDIR := bin
 # Test sources and objects
 
 # Sources and objects
-_sus_hook_handler := libsuskeymaster/handler.cpp
+_sus_hook_handler := libsuskeymaster/handler.cpp libsuskeymaster/run-sus-samsung-indata.cpp
 
 C_SRCS := $(wildcard */*/*.c) $(wildcard */*.c) $(wildcard *.c)
 CXX_SRCS := $(filter-out $(_sus_hook_handler), $(wildcard */*/*/*.cpp) $(wildcard */*/*.cpp) $(wildcard */*.cpp) $(wildcard *.cpp))
