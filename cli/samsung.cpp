@@ -65,7 +65,7 @@ int list_tags(const hidl_vec<uint8_t> &in_keyblob)
         goto_error("Failed to parse the encrypted key blob parameters!");
 
     s_configure_log_line(S_LOG_INFO, "%s\n", &old_line);
-    KM_dump_param_list(pr_info, param_list, 0, NULL);
+    KM_dump_param_list(pr_info, NULL, param_list, 0, false);
     s_configure_log_line(S_LOG_INFO, old_line, NULL);
     ret = 0;
 
@@ -476,7 +476,7 @@ static int dump_and_serialize_indata(hidl_vec<uint8_t>& out,
     {
         const char *old_line = NULL;
         s_configure_log_line(S_LOG_INFO, "%s\n", &old_line);
-        KM_samsung_dump_indata(pr_info, indata, 0, NULL);
+        KM_samsung_dump_indata(pr_info, NULL, indata, 0, false);
         s_configure_log_line(S_LOG_INFO, old_line, NULL);
     }
 
@@ -549,7 +549,7 @@ static int deserialize_and_dump_outdata(hidl_vec<hidl_vec<uint8_t>> const& cert_
     {
         const char *old_line = NULL;
         s_configure_log_line(S_LOG_INFO, "%s\n", &old_line);
-        KM_samsung_dump_outdata(pr_info, outdata, 0, NULL);
+        KM_samsung_dump_outdata(pr_info, NULL, outdata, 0, false);
         s_configure_log_line(S_LOG_INFO, old_line, NULL);
     }
 

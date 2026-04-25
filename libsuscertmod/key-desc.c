@@ -101,8 +101,9 @@ err:
     return NULL;
 }
 
-void key_desc_dump(KM_dump_log_proc_t log_proc, const KM_KEY_DESC_V3 *desc,
-        uint8_t indent, const char *field_name)
+void key_desc_dump(KM_dump_log_proc_t log_proc,
+        const char *field_name, const KM_KEY_DESC_V3 *desc,
+        uint8_t indent, bool end_without_comma)
 {
     char indent_buf[1024];
     ASN1_INTEGER *tmp_int = NULL;
@@ -119,27 +120,12 @@ void key_desc_dump(KM_dump_log_proc_t log_proc, const KM_KEY_DESC_V3 *desc,
         goto out;
     }
 
-    if (field_name == NULL) {
-        log_proc("%s===== BEGIN KEY DESCRIPTION DUMP =====", indent_buf);
-
-        if (desc == NULL) {
-            log_proc("%sKM_KEY_DESC_V3 desc = { /* empty */ };",
-                    indent_buf);
-            goto out;
-        }
-
-        log_proc("KM_KEY_DESC_V3 key_desc = {");
-    } else {
-        if (desc == NULL) {
-            log_proc("%s.%s = { /* empty */ };", indent_buf, field_name);
-            goto out;
-        }
-
-        log_proc("%s.%s = {", indent_buf, field_name);
-    }
+    KM_DUMP_FUNCTION_PROLOGUE(log_proc, KM_KEY_DESC_V3, "KEY DESCRIPTION",
+            field_name, "key_desc", desc == NULL,
+            indent_buf, end_without_comma, goto out);
 
     KM_dump_u64(log_proc, "attestationVersion",
-            desc->attestationVersion, indent + 1);
+            desc->attestationVersion, indent + 1, false);
 
     {
         int64_t e = 0LL;
@@ -158,7 +144,7 @@ void key_desc_dump(KM_dump_log_proc_t log_proc, const KM_KEY_DESC_V3 *desc,
     }
 
     KM_dump_u64(log_proc, "keymasterVersion",
-            desc->keymasterVersion, indent + 1);
+            desc->keymasterVersion, indent + 1, false);
 
     {
         int64_t e = 0LL;
@@ -177,21 +163,17 @@ void key_desc_dump(KM_dump_log_proc_t log_proc, const KM_KEY_DESC_V3 *desc,
     }
 
     KM_dump_hex(log_proc, "attestationChallenge",
-            desc->attestationChallenge, indent + 1);
+            desc->attestationChallenge, indent + 1, false);
 
-    KM_dump_hex(log_proc, "uniqueId", desc->uniqueId, indent + 1);
+    KM_dump_hex(log_proc, "uniqueId", desc->uniqueId, indent + 1, false);
 
-    KM_dump_param_list(log_proc, desc->softwareEnforced,
-            indent + 1, "softwareEnforced");
-    KM_dump_param_list(log_proc, desc->hardwareEnforced,
-            indent + 1, "hardwareEnforced");
+    KM_dump_param_list(log_proc, "softwareEnforced",
+            desc->softwareEnforced, indent + 1, false);
+    KM_dump_param_list(log_proc, "hardwareEnforced",
+            desc->hardwareEnforced, indent + 1, true);
 
-    if (field_name != NULL) {
-        log_proc("%s};", indent_buf);
-        log_proc("%s====== END KEY DESCRIPTION DUMP ======", indent_buf);
-    } else {
-        log_proc("%s},", indent_buf);
-    }
+    KM_DUMP_FUNCTION_EPILOGUE(log_proc, "KEY DESCRIPTION", field_name,
+            indent_buf, end_without_comma);
 
 out:
     if (tmp_octet_string != NULL) {

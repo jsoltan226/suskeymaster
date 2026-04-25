@@ -60,9 +60,7 @@ ASN1_OCTET_STRING * key_desc_repack(const KM_KEY_DESC_V3 *desc);
  *
  * where in both cases indentation is added according to `indent`.
  * */
-void key_desc_dump(KM_dump_log_proc_t log_proc,
-        const KM_KEY_DESC_V3 *desc,
-        uint8_t indent, const char *field_name);
+KM_DUMP_DECL_FUNCTION(key_desc_dump, KM_KEY_DESC_V3, desc);
 
 #ifdef __cplusplus
 } /* namespace certmod */

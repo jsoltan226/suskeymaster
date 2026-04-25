@@ -168,7 +168,7 @@ int verify_attestation(const hidl_vec<hidl_vec<uint8_t>> &cert_chain)
         goto err;
     }
 
-    certmod::key_desc_dump(pr_info, km_desc, 0, NULL);
+    certmod::key_desc_dump(pr_info, NULL, km_desc, 0, false);
 
     if (check_google_root(root_der, &root_old)) {
         std::cerr << "The root cert is not a Google Attestation Root certificate!" << std::endl;

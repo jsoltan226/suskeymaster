@@ -66,8 +66,8 @@ int get_key_characteristics(HidlSusKeymaster4& hal,
 
         std::cout << "===== BEGIN KEY CHARACTERISTICS DUMP =====" << std::endl;
         std::cout << "KeyCharacteristics kc = {" << std::endl;
-        kmhal::util::KM_dump_param_list(pr_info, sw_par, 1, "softwareEnforced");
-        kmhal::util::KM_dump_param_list(pr_info, hw_par, 1, "hardwareEnforced");
+        kmhal::util::KM_dump_param_list(pr_info, "softwareEnforced", sw_par, 1, false);
+        kmhal::util::KM_dump_param_list(pr_info, "hardwareEnforced", hw_par, 1, true);
         std::cout << "};" << std::endl;
         std::cout << "=====  END KEY CHARACTERISTICS DUMP  =====" << std::endl;
     }
@@ -202,6 +202,7 @@ int generate_key(HidlSusKeymaster4& hal,
         kmhal::util::init_default_params(params, {
             { Tag::ALGORITHM, Algorithm::HMAC },
             { Tag::KEY_SIZE, 256 },
+            { Tag::DIGEST, { Digest::SHA_2_256 } },
             { Tag::MIN_MAC_LENGTH, 256 },
             { Tag::NO_AUTH_REQUIRED, true }
         });

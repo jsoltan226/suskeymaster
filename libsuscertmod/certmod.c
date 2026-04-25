@@ -113,10 +113,10 @@ i32 sus_cert_generate_leaf(const VECTOR(u8) old_leaf,
     }
 #endif /* SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA */
 
-    key_desc_dump(key_desc_dump_log_proc, km_desc, 0, NULL);
+    key_desc_dump(key_desc_dump_log_proc, NULL, km_desc, 0, false);
     if (mod_key_desc(km_desc))
         goto_error("Failed to modify the key description");
-    key_desc_dump(key_desc_dump_log_proc, km_desc, 0, NULL);
+    key_desc_dump(key_desc_dump_log_proc, NULL, km_desc, 0, false);
 
     if (leaf_cert_gen(&out, variant, attested_pubkey, km_desc))
         goto_error("Failed to generate a new leaf certificate!");

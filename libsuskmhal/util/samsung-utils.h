@@ -92,13 +92,8 @@ int KM_samsung_make_octet_string_param(KM_SAMSUNG_PARAM **out_par,
 int KM_samsung_push_param_or_free(STACK_OF(KM_SAMSUNG_PARAM) *paramset,
         KM_SAMSUNG_PARAM *par);
 
-void KM_samsung_dump_indata(KM_dump_log_proc_t log_proc,
-        const KM_SAMSUNG_INDATA *indata, uint8_t indent,
-        const char *field_name);
-
-void KM_samsung_dump_outdata(KM_dump_log_proc_t log_proc,
-        const KM_SAMSUNG_OUTDATA *outdata, uint8_t indent,
-        const char *field_name);
+KM_DUMP_DECL_FUNCTION(KM_samsung_dump_indata, KM_SAMSUNG_INDATA, indata);
+KM_DUMP_DECL_FUNCTION(KM_samsung_dump_outdata, KM_SAMSUNG_OUTDATA, outdata);
 
 int KM_samsung_paramset_to_param_list(
         const STACK_OF(KM_SAMSUNG_PARAM) *ekey_params,
