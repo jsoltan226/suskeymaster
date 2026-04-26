@@ -724,6 +724,43 @@ static const std::vector<cli_command> cmds = {
     { "__line_break__" }, {}, HAL_NOT_NEEDED, {}, {}
 },
 {
+    { "vold", "gen-appid" },
+    {
+        "Generates a value for Tag::APPLICATION_ID required to use vold keys"
+    },
+    HAL_NOT_NEEDED,
+    {
+        {
+            "in_secdiscardable", INPUT_FILE, MANDATORY,
+            "The `secdiscardable` file in the given vold `key` directory"
+        },
+        {
+            "out_appid", OUTPUT_FILE, OPTIONAL,
+            "The file to which the binary value of the generated APPLICATION_ID will be written"
+        }
+    },
+    [](arg_map_t& a) {
+        hidl_vec<uint8_t> app_id;
+        if (cli::vold::generate_app_id(a["in_secdiscardable"].in_bytes(), app_id)) {
+            std::cerr << "Failed to generate app_id" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        std::puts("===== BEGIN APPLICATION ID HEX DUMP =====");
+        for (uint8_t b : app_id) {
+            std::printf("%02x", (unsigned)b);
+        }
+        std::putchar('\n');
+        std::puts("=====  END APPLICATION ID HEX DUMP  =====");
+
+        a["out_appid"].out_bytes() = app_id;
+        return EXIT_SUCCESS;
+    }
+},
+{
+    { "__line_break__" }, {}, HAL_NOT_NEEDED, {}, {}
+},
+{
     { "samsung", "ekey", "list-tags" },
     {
         "Prints out values of tags attached to a samsung keymaster encrypted key blob"

@@ -105,6 +105,11 @@ namespace transact {
 
 } /* namespace transact */
 
+namespace vold {
+    int generate_app_id(hidl_vec<uint8_t> const& in_secdiscardable,
+            hidl_vec<uint8_t>& out_app_id);
+};
+
 namespace samsung {
     namespace ekey {
         int list_tags(hidl_vec<uint8_t> const& in_keyblob);
