@@ -222,7 +222,7 @@ void KM_samsung_dump_outdata(KM_dump_log_proc_t log_proc,
     }
 
     if (outdata->log) {
-        log_proc("%s" KM_DUMP_SINGLE_INDENT" .log = {", indent_buf);
+        log_proc("%s" KM_DUMP_SINGLE_INDENT ".log = {", indent_buf);
         int n_strs = sk_ASN1_OCTET_STRING_num(outdata->log);
         if (n_strs < 0) {
             log_proc("ERROR: Failed to get the number of OCTET_STRINGs "

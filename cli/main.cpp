@@ -284,13 +284,14 @@ static const std::vector<cli_command> cmds = {
 {
     { "import" },
     {
-        "Imports a PKCS#8 DER-encoded ECDSA or RSA private key <in_private_pkcs8>",
+        "Imports the private key <in_private_key>",
         "   into the device's KeyMaster, writing the resulting key blob to <out_key_blob>."
     },
     HAL_NEEDED,
     {
-        { "in_private_pkcs8", INPUT_FILE, MANDATORY,
-            "The DER-encoded PKCS#8 private key to import"
+        { "in_private_key", INPUT_FILE, MANDATORY,
+            "The private key to import - "
+                "DER-encoded PKCS#8 for asymmetric keys and raw bytes otherwise"
         },
         { "in_key_blob", OUTPUT_FILE, MANDATORY,
             "The file to which the imported key blob will be written"
@@ -300,24 +301,25 @@ static const std::vector<cli_command> cmds = {
         },
     },
     [](arg_map_t& a) {
-        return cli::hal_ops::import_key(g_hal, a["in_private_pkcs8"].in_bytes(),
+        return cli::hal_ops::import_key(g_hal, a["in_private_key"].in_bytes(),
                 a["params"].in_key_params(), a["in_key_blob"].out_bytes());
     }
 },
 {
     { "export" },
     {
-        "Exports the given keymaster key blob <in_keyblob>'s public key",
-        "to a DER-encoded X.509 certificate <out_public_x509>"
+        "Exports the given keymaster key blob <in_keyblob> to <out_exported>.",
+        "For asymmetric keys, a DER-encoded X.509 certificate containing "
+            "the public part of the key is exported",
+        "while for other algorithms raw bytes are written."
     },
     HAL_NEEDED,
     {
         { "in_keyblob", INPUT_FILE, MANDATORY,
             "The key blob whose public key is to be exported"
         },
-        { "out_public_x509", OUTPUT_FILE, MANDATORY,
-            "The file to which the DER-encoded X.509 certificate containing the public key "
-                "will be written"
+        { "out_exported", OUTPUT_FILE, MANDATORY,
+            "The file to which the exported key material will be written",
         },
         { "deserialization_params", KEY_PARAMETERS, OPTIONAL,
             "Key parameters containing the `APPLICATION_ID` and/or `APPLICATION_DATA` "
@@ -641,17 +643,18 @@ static const std::vector<cli_command> cmds = {
 {
     { "transact", "server", "wrap" },
     {
-        "Wraps the DER-encoded PKCS#8 private key <in_private_key> "
-            "for a secure import transaction"
+        "Wraps the private key <in_private_key> using <in_wrapping_pubkey> for a secure import.",
+        "For RSA and EC keys, <in_private_key> should contain a DER-encoded PKCS#8 private key,",
+        "while for other algorithms the raw bytes are read."
     },
     HAL_NOT_NEEDED,
     {
         {
-            "in_private_pkcs8", INPUT_FILE, MANDATORY,
-            "The DER-encoded PKCS#8 private key to be wrapped for a secure import"
+            "in_private_key", INPUT_FILE, MANDATORY,
+            "The private key to be wrapped for a secure import"
         },
         {
-            "in_wrapping_key", INPUT_FILE, MANDATORY,
+            "in_wrapping_pubkey", INPUT_FILE, MANDATORY,
             "The DER-encoded X.509 certificate containing the public part of the wrapping key"
         },
         {
@@ -670,8 +673,8 @@ static const std::vector<cli_command> cmds = {
     },
     [](arg_map_t& a) {
         return cli::transact::server::wrap_key(
-                a["in_private_pkcs8"].in_bytes(),
-                a["in_wrapping_key"].in_bytes(),
+                a["in_private_key"].in_bytes(),
+                a["in_wrapping_pubkey"].in_bytes(),
                 a["key_params"].in_key_params(),
                 a["out_wrapped_data"].out_bytes(),
                 a["out_masking_key"].out_bytes()

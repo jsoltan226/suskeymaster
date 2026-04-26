@@ -3,6 +3,7 @@
 
 #include <core/log.h>
 #include <libsuskmhal/hidl/hidl-hal.hpp>
+#include <libsuskmhal/util/km-params.hpp>
 #include <libsuscertmod/samsung-sus-indata.h>
 #include <vector>
 #include <string>
@@ -229,6 +230,160 @@ static inline Algorithm determine_pkey_algorithm(hidl_vec<uint8_t> const& priv_p
     }
 
     return static_cast<Algorithm>(-1);
+}
+
+static inline Algorithm determine_algorithm_from_params_and_pkey(
+        hidl_vec<KeyParameter> const& params, hidl_vec<uint8_t> const& pkey
+)
+{
+    Algorithm ret = find_tag<Algorithm>(Tag::ALGORITHM, params);
+    if (ret == static_cast<Algorithm>(-1)) {
+        std::cerr << "WARNING: No ALGORITHM tag specified in parameters; "
+            "attempting to guess from key binary..." << std::endl;
+
+        ret = determine_pkey_algorithm(pkey);
+        if (ret == static_cast<Algorithm>(-1)) {
+            std::cerr << "The key blob is not a valid EC or RSA PKCS#8 private key"
+                << std::endl;
+            std::cerr << "Can't guess which algorithm is wanted from just raw bytes" << std::endl;
+            return ret;
+        }
+    }
+
+    return ret;
+}
+
+static inline void init_default_params_for_alg_and_purposes(hidl_vec<KeyParameter>& params,
+        Algorithm alg, const std::vector<KeyPurpose>& purposes, bool gen)
+{
+    bool sign_verify = false, enc_dec = false, wrap_key = false;
+    for (KeyPurpose p : purposes) {
+        if (p == KeyPurpose::SIGN || p == KeyPurpose::VERIFY)
+            sign_verify = true;
+        else if (p == KeyPurpose::ENCRYPT || p == KeyPurpose::DECRYPT)
+            enc_dec = true;
+        else if (p == KeyPurpose::WRAP_KEY)
+            wrap_key = true;
+    }
+
+    switch (alg) {
+    case Algorithm::RSA:
+        break;
+    case Algorithm::EC:
+    case Algorithm::HMAC:
+        if (enc_dec) {
+            enc_dec = false;
+            std::cerr << "WARNING: Encryption and decryption "
+                "is not be supported for EC and HMAC keys!" << std::endl;
+        }
+        if (wrap_key) {
+            wrap_key = false;
+            std::cerr << "WARNING: EC and HMAC keys cannot be used "
+                "as the wrapping key for a secure import!" << std::endl;
+        }
+        break;
+    case Algorithm::TRIPLE_DES:
+        if (wrap_key) {
+            wrap_key = false;
+            std::cerr << "WARNING: Triple-DES key cannot be used "
+                "as the wrapping key for a secure import!" << std::endl;
+        }
+
+    [[fallthrough]];
+    case Algorithm::AES:
+        if (sign_verify) {
+            sign_verify = false;
+            std::cerr << "WARNING: AES and Triple-DES keys cannot "
+                "be used for signing and verification!" << std::endl;
+        }
+    }
+
+    std::vector<kmhal::util::km_default> defaults;
+    std::vector<PaddingMode> padding_modes;
+    std::vector<BlockMode> block_modes;
+    bool has_gcm = false, has_ctr_gcm = false, has_ecb_cbc = false;
+
+    /* Universal defaults for all algorithms */
+    defaults = {
+        { Tag::ALGORITHM, alg },
+        { Tag::NO_AUTH_REQUIRED, true }
+    };
+
+    switch (alg) {
+    case Algorithm::RSA:
+        if (gen) {
+            /* Only 2048-bit RSA keys are guaranteed to be supported
+             * by both TEE and STRONGBOX devices */
+            defaults.emplace_back(Tag::KEY_SIZE, 2048);
+
+            defaults.emplace_back(Tag::RSA_PUBLIC_EXPONENT, 65537);
+        }
+
+        if (sign_verify) padding_modes.push_back(PaddingMode::RSA_PKCS1_1_5_SIGN);
+        if (enc_dec) padding_modes.push_back(PaddingMode::RSA_PKCS1_1_5_ENCRYPT);
+        if (wrap_key) padding_modes.push_back(PaddingMode::RSA_OAEP);
+
+        defaults.emplace_back(Tag::PADDING, padding_modes);
+        break;
+    case Algorithm::EC:
+        /* Only P-256 EC keys are guaranteed to be supported
+         * by both TEE and STRONGBOX devices */
+        if (gen)
+            defaults.emplace_back(Tag::EC_CURVE, EcCurve::P_256);
+
+        break;
+    case Algorithm::AES:
+        if (gen)
+            defaults.emplace_back(Tag::KEY_SIZE, 256);
+
+        if (!enc_dec)
+            break;
+
+        block_modes = find_rep_tag<BlockMode>(Tag::BLOCK_MODE, params);
+        if (!block_modes.size()) {
+            defaults.push_back({ Tag::BLOCK_MODE, { BlockMode::GCM } });
+            defaults.push_back({ Tag::PADDING, { PaddingMode::NONE } });
+            defaults.push_back({ Tag::MIN_MAC_LENGTH, 128 });
+        } else {
+            for (BlockMode b : block_modes) {
+                if (b == BlockMode::GCM)
+                    has_gcm = true;
+                if (b == BlockMode::GCM || b == BlockMode::CTR)
+                    has_ctr_gcm = true;
+                if (b == BlockMode::ECB || b == BlockMode::CBC)
+                    has_ecb_cbc = true;
+            }
+
+            if (has_gcm) defaults.push_back({ Tag::MIN_MAC_LENGTH, 128 });
+
+            if (has_ctr_gcm) defaults.push_back({ Tag::PADDING, { PaddingMode::NONE } });
+            else if (has_ecb_cbc) defaults.push_back({ Tag::PADDING, { PaddingMode::PKCS7 } });
+        }
+
+        break;
+    case Algorithm::TRIPLE_DES:
+        if (gen)
+            defaults.push_back({ Tag::KEY_SIZE, 168 });
+
+        if (enc_dec) {
+            defaults.push_back({ Tag::BLOCK_MODE, { BlockMode::CBC } });
+            defaults.push_back({ Tag::PADDING, { PaddingMode::PKCS7 } });
+        }
+        break;
+    case Algorithm::HMAC:
+        if (gen) {
+            defaults.push_back({ Tag::KEY_SIZE, 256 });
+            defaults.push_back({ Tag::MIN_MAC_LENGTH, 256 });
+        }
+
+        /* SHA_2_256 is the only digest (for HMAC keys) guaranteed to be supported
+         * by both TRUSTED_ENVIRONMENT and STRONGBOX keymasters */
+        if (sign_verify)
+            defaults.push_back({ Tag::DIGEST, { Digest::SHA_2_256 } });
+        break;
+    }
+
+    kmhal::util::init_default_params(params, defaults);
 }
 
 } /* namespace cli */

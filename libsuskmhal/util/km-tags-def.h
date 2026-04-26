@@ -416,7 +416,9 @@
      */                                                                                                 \
     KM_DECL_TAG(APPLICATION_ID, BYTES, 601, applicationId, NULL, OCTET_STRING, _)                       \
                                                                                                         \
-    /* Internal Samsung tag: key is exportable. */                                                      \
+    /* Internal Samsung tag: key is exportable (doesn't apply to asymmetric i.e. EC and RSA keys).      \
+     * Note: Tag::KNOX_OBJECT_PROTECTION_REQUIRED has to be set during key generation/import            \
+     * for this one to not be rejected with ErrorCode::INVALID_TAG. */                                  \
     KM_DECL_TAG(EXPORTABLE, BOOL, 602, exportable, NULL, NULL, _)                                       \
                                                                                                         \
     /**                                                                                                 \
@@ -749,7 +751,8 @@
                                                                                                         \
     /** Samsung-specific tags **/                                                                       \
                                                                                                         \
-    /* Used to enforce that the key can only be used on a device                                        \
+    /* Used to enforce that the key can only be (imported/generated ?) & SAK-attested on                \
+     * a samsung-official device with intact trust boot and warranty status.                            \
      * Also used to gate the `EXPORTABLE` tag, for some reason. */                                      \
     KM_DECL_TAG(KNOX_OBJECT_PROTECTION_REQUIRED, BOOL, 2000, knoxObjectProtectionRequired, NULL,        \
             NULL, _)                                                                                    \

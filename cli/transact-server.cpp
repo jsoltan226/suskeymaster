@@ -15,8 +15,10 @@
 #include <cstddef>
 #include <cstring>
 #include <iostream>
+#include <openssl/ec.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
+#include <openssl/rsa.h>
 #include <openssl/asn1.h>
 #include <openssl/rand.h>
 #include <openssl/x509.h>
@@ -84,9 +86,8 @@ static int ignore_old_root_expiry_vfy_cb(int preverify_ok, X509_STORE_CTX *ctx);
 static int openssl_err_print_cb(const char *msg, size_t size, void *userdata);
 static void print_openssl_errors(void);
 
-/** Functions used by `transact_s_wrap_key` */
-static Algorithm determine_key_algorithm(hidl_vec<uint8_t> const& priv_pkcs8);
 
+/** Functions used by `wrap_key` */
 static EVP_PKEY * extract_x509_public_key(hidl_vec<uint8_t> const& x509_der);
 
 #define TRANSPORT_KEY_SIZE 32
@@ -112,7 +113,8 @@ static int do_transport_encryption(
 
 static int encode_iwk_key_desc_der(hidl_vec<uint8_t>& out_der,
         IWK_KEY_DESC *& out_key_desc,
-        hidl_vec<KeyParameter> const& params);
+        hidl_vec<KeyParameter> const& params,
+        KeyFormat format);
 
 static int encode_iwk_secure_key_wrapper_der(hidl_vec<uint8_t>& out_der,
         hidl_vec<uint8_t> const& encrypted_transport_key,
@@ -211,6 +213,7 @@ int wrap_key(hidl_vec<uint8_t> const& in_private_key,
 {
     hidl_vec<KeyParameter> params(in_key_params);
     Algorithm pkey_alg;
+    KeyFormat format;
 
     IWK_KEY_DESC *iwk_key_desc = NULL;
     hidl_vec<uint8_t> iwk_key_desc_der = {};
@@ -220,31 +223,31 @@ int wrap_key(hidl_vec<uint8_t> const& in_private_key,
     hidl_vec<uint8_t> transport_tag;
     hidl_vec<uint8_t> encrypted_key(in_private_key);
 
-    if ((pkey_alg = determine_key_algorithm(in_private_key)) == static_cast<Algorithm>(-1)) {
-        std::cerr << "The private key is not a valid PKCS#8 EC or RSA key" << std::endl;
+    pkey_alg = determine_algorithm_from_params_and_pkey(params, in_private_key);
+    if (pkey_alg == static_cast<Algorithm>(-1)) {
+        std::cerr << "Failed to determine the algorithm of the key to be securely imported"
+            << std::endl;
         return 1;
     }
-    if (pkey_alg != Algorithm::EC && pkey_alg != Algorithm::RSA) {
-        std::cerr << "Invalid private key algorithm: " << toString(pkey_alg) << std::endl;
-        return 1;
-    } else {
-        std::cout << "Private key algorithm is " << toString(pkey_alg) << std::endl;
+
+    switch (pkey_alg) {
+        case Algorithm::EC: case Algorithm::RSA:
+            format = KeyFormat::PKCS8;
+            break;
+        case Algorithm::AES:
+        case Algorithm::TRIPLE_DES:
+        case Algorithm::HMAC:
+            format = KeyFormat::RAW;
+            break;
     }
 
-    if (pkey_alg == Algorithm::RSA) {
-        kmhal::util::init_default_params(params, {
-            { Tag::ALGORITHM, Algorithm::RSA },
-            { Tag::RSA_PUBLIC_EXPONENT, 65537 },
-            { Tag::NO_AUTH_REQUIRED, true }
-        });
-    } else /* if (key_variant == SUS_KEY_EC) */ {
-        kmhal::util::init_default_params(params, {
-            { Tag::ALGORITHM, Algorithm::EC },
-            { Tag::NO_AUTH_REQUIRED, true }
-        });
-    }
+    std::cout << "Private key algorithm is " << toString(pkey_alg) <<
+        " (inferred format: " << toString(format) << ")" << std::endl;
 
-    if (encode_iwk_key_desc_der(iwk_key_desc_der, iwk_key_desc, params)) {
+    init_default_params_for_alg_and_purposes(params, pkey_alg,
+        find_rep_tag<KeyPurpose>(Tag::PURPOSE, params), false);
+
+    if (encode_iwk_key_desc_der(iwk_key_desc_der, iwk_key_desc, params, format)) {
         std::cerr << "Failed to serialize the importWrappedKey keyDescription" << std::endl;
         return 1;
     }
@@ -549,28 +552,6 @@ err:
     return ok ? ret : NULL;
 }
 
-static Algorithm determine_key_algorithm(hidl_vec<uint8_t> const& priv_pkcs8)
-{
-    EVP_PKEY *pkey = NULL;
-    const unsigned char *p = NULL;
-
-    p = priv_pkcs8.data();
-    pkey = d2i_PrivateKey(EVP_PKEY_EC, NULL, &p, priv_pkcs8.size());
-    if (pkey != NULL) {
-        EVP_PKEY_free(pkey);
-        return Algorithm::EC;
-    }
-
-    p = priv_pkcs8.data();
-    pkey = d2i_PrivateKey(EVP_PKEY_RSA, NULL, &p, priv_pkcs8.size());
-    if (pkey != NULL) {
-        EVP_PKEY_free(pkey);
-        return Algorithm::RSA;
-    }
-
-    return static_cast<Algorithm>(-1);
-}
-
 static int wrap_with_transport_key(
         const uint8_t transport_key[TRANSPORT_KEY_SIZE],
         const uint8_t iv[TRANSPORT_IV_SIZE],
@@ -797,7 +778,8 @@ err:
 
 static int encode_iwk_key_desc_der(hidl_vec<uint8_t>& out_der,
         IWK_KEY_DESC *& out_key_desc,
-        hidl_vec<KeyParameter> const& params)
+        hidl_vec<KeyParameter> const& params,
+        KeyFormat format)
 {
     out_der.resize(0);
     out_key_desc = NULL;
@@ -814,7 +796,7 @@ static int encode_iwk_key_desc_der(hidl_vec<uint8_t>& out_der,
     }
 
     if ((key_desc->keyFormat == NULL && (key_desc->keyFormat = ASN1_INTEGER_new()) == NULL)
-        || !ASN1_INTEGER_set(key_desc->keyFormat, static_cast<long>(KeyFormat::PKCS8)))
+        || !ASN1_INTEGER_set(key_desc->keyFormat, static_cast<long>(format)))
     {
         std::cerr << "Failed to allocate and set the keyFormat ASN.1 INTEGER" << std::endl;
         goto err;

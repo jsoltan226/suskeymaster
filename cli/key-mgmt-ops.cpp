@@ -85,132 +85,9 @@ int generate_key(HidlSusKeymaster4& hal,
     if (alg == static_cast<Algorithm>(-1))
         return EXIT_FAILURE;
 
-    std::vector<KeyPurpose> purposes = find_rep_tag<KeyPurpose>(Tag::PURPOSE, in_gen_params);
-    bool sign_verify = false, enc_dec = false, wrap_key = false;
-    for (KeyPurpose p : purposes) {
-        if (p == KeyPurpose::SIGN || p == KeyPurpose::VERIFY)
-            sign_verify = true;
-        else if (p == KeyPurpose::ENCRYPT || p == KeyPurpose::DECRYPT)
-            enc_dec = true;
-        else if (p == KeyPurpose::WRAP_KEY)
-            wrap_key = true;
-    }
-
-    switch (alg) {
-    case Algorithm::RSA:
-        break;
-    case Algorithm::EC:
-    case Algorithm::HMAC:
-        if (enc_dec) {
-            enc_dec = false;
-            std::cerr << "WARNING: Encryption and decryption "
-                "is not be supported for EC and HMAC keys!" << std::endl;
-        }
-        if (wrap_key) {
-            wrap_key = false;
-            std::cerr << "WARNING: EC and HMAC keys cannot be used "
-                "as the wrapping key for a secure import!" << std::endl;
-        }
-        break;
-    case Algorithm::TRIPLE_DES:
-        if (wrap_key) {
-            wrap_key = false;
-            std::cerr << "WARNING: Triple-DES key cannot be used "
-                "as the wrapping key for a secure import!" << std::endl;
-        }
-
-    [[fallthrough]];
-    case Algorithm::AES:
-        if (sign_verify) {
-            sign_verify = false;
-            std::cerr << "WARNING: AES and Triple-DES keys cannot "
-                "be used for signing and verification!" << std::endl;
-        }
-    }
-
     hidl_vec<KeyParameter> params(in_gen_params);
-    std::vector<kmhal::util::km_default> defaults;
-    std::vector<PaddingMode> padding_modes;
-    std::vector<BlockMode> block_modes;
-    bool has_gcm, has_ctr_gcm, has_ecb_cbc;
-
-    switch (alg) {
-    case Algorithm::RSA:
-        defaults = {
-            { Tag::ALGORITHM, Algorithm::RSA },
-            /* Only 2048-bit keys are guaranteed to be supported
-             * by both TEE and STRONGBOX devices */
-            { Tag::KEY_SIZE, 2048 },
-            { Tag::RSA_PUBLIC_EXPONENT, 65537 },
-            { Tag::NO_AUTH_REQUIRED, true }
-        };
-
-        if (sign_verify) padding_modes.push_back(PaddingMode::RSA_PKCS1_1_5_SIGN);
-        if (enc_dec) padding_modes.push_back(PaddingMode::RSA_PKCS1_1_5_ENCRYPT);
-        if (wrap_key) padding_modes.push_back(PaddingMode::RSA_OAEP);
-
-        defaults.emplace_back(Tag::PADDING, padding_modes);
-
-        kmhal::util::init_default_params(params, defaults);
-        break;
-    case Algorithm::EC:
-        kmhal::util::init_default_params(params, {
-            { Tag::ALGORITHM, Algorithm::EC },
-            { Tag::EC_CURVE, EcCurve::P_256 },
-            { Tag::NO_AUTH_REQUIRED, true }
-        });
-        break;
-    case Algorithm::AES:
-        defaults = {
-            { Tag::ALGORITHM, Algorithm::AES },
-            { Tag::KEY_SIZE, 256 },
-            { Tag::NO_AUTH_REQUIRED, true }
-        };
-
-        block_modes = find_rep_tag<BlockMode>(Tag::BLOCK_MODE, in_gen_params);
-        if (!block_modes.size()) {
-            defaults.push_back({ Tag::BLOCK_MODE, { BlockMode::GCM } });
-            defaults.push_back({ Tag::PADDING, { PaddingMode::NONE } });
-            defaults.push_back({ Tag::MIN_MAC_LENGTH, 128 });
-        } else {
-            for (BlockMode b : block_modes) {
-                if (b == BlockMode::GCM)
-                    has_gcm = true;
-                if (b == BlockMode::GCM || b == BlockMode::CTR)
-                    has_ctr_gcm = true;
-                if (b == BlockMode::ECB || b == BlockMode::CBC)
-                    has_ecb_cbc = true;
-            }
-
-            if (has_gcm) defaults.push_back({ Tag::MIN_MAC_LENGTH, 128 });
-
-            if (has_ctr_gcm) defaults.push_back({ Tag::PADDING, { PaddingMode::NONE } });
-            else if (has_ecb_cbc) defaults.push_back({ Tag::PADDING, { PaddingMode::PKCS7 } });
-        }
-
-        kmhal::util::init_default_params(params, defaults);
-        break;
-    case Algorithm::TRIPLE_DES:
-        kmhal::util::init_default_params(params, {
-            { Tag::ALGORITHM, Algorithm::TRIPLE_DES },
-            { Tag::KEY_SIZE, 168 },
-            { Tag::PADDING, { PaddingMode::PKCS7 } },
-            { Tag::NO_AUTH_REQUIRED, true }
-        });
-        break;
-    case Algorithm::HMAC:
-        kmhal::util::init_default_params(params, {
-            { Tag::ALGORITHM, Algorithm::HMAC },
-            { Tag::KEY_SIZE, 256 },
-            { Tag::DIGEST, { Digest::SHA_2_256 } },
-            { Tag::MIN_MAC_LENGTH, 256 },
-            { Tag::NO_AUTH_REQUIRED, true }
-        });
-        break;
-    }
-    if (alg == Algorithm::EC) {
-    } else /* if (alg == Algorithm::RSA) */ {
-    }
+    init_default_params_for_alg_and_purposes(params, alg,
+            find_rep_tag<KeyPurpose>(Tag::PURPOSE, params), true);
 
     KeyCharacteristics dummy;
     ErrorCode e = hal.generateKey(params, out_key_blob, dummy);
@@ -253,22 +130,37 @@ int attest_key(HidlSusKeymaster4& hal,
 }
 
 int import_key(HidlSusKeymaster4& hal,
-    hidl_vec<uint8_t> const& priv_pkcs8,
+    hidl_vec<uint8_t> const& in_private_key,
     hidl_vec<KeyParameter> const& in_import_params,
     hidl_vec<uint8_t>& out_key_blob)
 {
-    Algorithm alg = determine_pkey_algorithm(priv_pkcs8);
+    Algorithm alg = determine_algorithm_from_params_and_pkey(in_import_params, in_private_key);
     if (alg == static_cast<Algorithm>(-1)) {
-        std::cerr << "The key blob is not a valid EC or RSA PKCS#8 private key!" << std::endl;
+        std::cerr << "Failed to determine the algorithm of the key to be imported" << std::endl;
         return 1;
     }
-    std::cout << "Private key algorithm is " << toString(alg) << std::endl;
+
+    KeyFormat format;
+    switch (alg) {
+        case Algorithm::EC: case Algorithm::RSA:
+            format = KeyFormat::PKCS8;
+            break;
+        case Algorithm::AES:
+        case Algorithm::TRIPLE_DES:
+        case Algorithm::HMAC:
+            format = KeyFormat::RAW;
+            break;
+    }
+
+    std::cout << "Private key algorithm is " << toString(alg) <<
+        " (inferred format: " << toString(format) << ")" << std::endl;
 
     hidl_vec<KeyParameter> params(in_import_params);
-    kmhal::util::init_default_params(params, { { Tag::ALGORITHM, alg } });
+    init_default_params_for_alg_and_purposes(params, alg,
+            find_rep_tag<KeyPurpose>(Tag::PURPOSE, params), false);
 
     KeyCharacteristics c;
-    ErrorCode e = hal.importKey(params, KeyFormat::PKCS8, priv_pkcs8, out_key_blob, c);
+    ErrorCode e = hal.importKey(params, format, in_private_key, out_key_blob, c);
     if (e != ErrorCode::OK) {
         std::cerr << "importKey operation failed: "
             << static_cast<int32_t>(e) << " (" << toString(e) << ")" << std::endl;
@@ -289,8 +181,43 @@ int export_key(HidlSusKeymaster4& hal,
     hidl_vec<uint8_t> app_data;
     extract_application_id_and_data(in_application_id_data, app_id, app_data);
 
-    ErrorCode e = hal.exportKey(KeyFormat::X509, key, app_id, app_data, out_public_key_x509);
+    /* Normally, `exportKey` always expects the format to be KeyFormat::X509,
+     * because only asymmetric keys are exportable.
+     * However, samsung has an internal tag `EXPORTABLE` which allows for
+     * the exporting for symmetric keys, and so we must account for that */
+    KeyFormat out_key_format;
+    {
+        KeyCharacteristics kc;
+        ErrorCode e = hal.getKeyCharacteristics(key, app_id, app_data, kc);
+        if (e != ErrorCode::OK) {
+            std::cerr << "Failed to get the key's characteristics: "
+                << static_cast<int32_t>(e) << " (" << toString(e) << ")" << std::endl;
+            return 1;
+        }
+        Algorithm alg = find_algorithm(kc.hardwareEnforced, {
+                Algorithm::EC, Algorithm::RSA,
+                Algorithm::AES, Algorithm::TRIPLE_DES, Algorithm::HMAC
+        });
+        if (alg == static_cast<Algorithm>(-1)) {
+            std::cerr << "Couldn't find a valid ALGORITHM tag in the key's characteristics"
+                << std::endl;
+            return 1;
+        }
 
+        switch (alg) {
+            case Algorithm::EC:
+            case Algorithm::RSA:
+                out_key_format = KeyFormat::X509;
+                break;
+            case Algorithm::AES:
+            case Algorithm::TRIPLE_DES:
+            case Algorithm::HMAC:
+                out_key_format = KeyFormat::RAW;
+                break;
+        }
+    }
+
+    ErrorCode e = hal.exportKey(out_key_format, key, app_id, app_data, out_public_key_x509);
     if (e != ErrorCode::OK) {
         std::cerr << "exportKey operation failed: "
             << static_cast<int32_t>(e) << " (" << toString(e) << ")" << std::endl;
