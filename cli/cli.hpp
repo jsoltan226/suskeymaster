@@ -52,7 +52,7 @@ int upgrade_key(HidlSusKeymaster4& hal,
 namespace crypto {
     int encrypt(HidlSusKeymaster4& hal, hidl_vec<uint8_t> const& plaintext,
             hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& encrypt_params,
-            hidl_vec<uint8_t>& out_ciphertext);
+            hidl_vec<uint8_t>& out_ciphertext, hidl_vec<uint8_t>& out_aes_gcm_iv);
 
     int decrypt(HidlSusKeymaster4& hal, hidl_vec<uint8_t> const& ciphertext,
             hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& decrypt_params,
@@ -257,6 +257,7 @@ static inline void init_default_params_for_alg_and_purposes(hidl_vec<KeyParamete
         Algorithm alg, const std::vector<KeyPurpose>& purposes, bool gen)
 {
     bool sign_verify = false, enc_dec = false, wrap_key = false;
+    bool private_ops = false;
     for (KeyPurpose p : purposes) {
         if (p == KeyPurpose::SIGN || p == KeyPurpose::VERIFY)
             sign_verify = true;
@@ -264,6 +265,9 @@ static inline void init_default_params_for_alg_and_purposes(hidl_vec<KeyParamete
             enc_dec = true;
         else if (p == KeyPurpose::WRAP_KEY)
             wrap_key = true;
+
+        if (p == KeyPurpose::SIGN || p == KeyPurpose::DECRYPT)
+            private_ops = true;
     }
 
     switch (alg) {
@@ -319,6 +323,10 @@ static inline void init_default_params_for_alg_and_purposes(hidl_vec<KeyParamete
             defaults.emplace_back(Tag::RSA_PUBLIC_EXPONENT, 65537);
         }
 
+        /* All RSA private operations require an authorized digest */
+        if (private_ops)
+            defaults.push_back({ Tag::DIGEST, { Digest::SHA_2_256 } });
+
         if (sign_verify) padding_modes.push_back(PaddingMode::RSA_PKCS1_1_5_SIGN);
         if (enc_dec) padding_modes.push_back(PaddingMode::RSA_PKCS1_1_5_ENCRYPT);
         if (wrap_key) padding_modes.push_back(PaddingMode::RSA_OAEP);
@@ -328,15 +336,19 @@ static inline void init_default_params_for_alg_and_purposes(hidl_vec<KeyParamete
     case Algorithm::EC:
         /* Only P-256 EC keys are guaranteed to be supported
          * by both TEE and STRONGBOX devices */
-        if (gen)
+        /* Don't initialize Tag::EC_CURVE if the user has already provided Tag::KEY_SIZE */
+        if (gen && find_tag<int64_t>(Tag::KEY_SIZE, params) == -1)
             defaults.emplace_back(Tag::EC_CURVE, EcCurve::P_256);
+
+        if (sign_verify && private_ops)
+            defaults.push_back({ Tag::DIGEST, { Digest::SHA_2_256 } });
 
         break;
     case Algorithm::AES:
         if (gen)
             defaults.emplace_back(Tag::KEY_SIZE, 256);
 
-        if (!enc_dec)
+        if (!enc_dec || !private_ops)
             break;
 
         block_modes = find_rep_tag<BlockMode>(Tag::BLOCK_MODE, params);
@@ -365,7 +377,7 @@ static inline void init_default_params_for_alg_and_purposes(hidl_vec<KeyParamete
         if (gen)
             defaults.push_back({ Tag::KEY_SIZE, 168 });
 
-        if (enc_dec) {
+        if (enc_dec && private_ops) {
             defaults.push_back({ Tag::BLOCK_MODE, { BlockMode::CBC } });
             defaults.push_back({ Tag::PADDING, { PaddingMode::PKCS7 } });
         }
@@ -378,7 +390,7 @@ static inline void init_default_params_for_alg_and_purposes(hidl_vec<KeyParamete
 
         /* SHA_2_256 is the only digest (for HMAC keys) guaranteed to be supported
          * by both TRUSTED_ENVIRONMENT and STRONGBOX keymasters */
-        if (sign_verify)
+        if (sign_verify && private_ops)
             defaults.push_back({ Tag::DIGEST, { Digest::SHA_2_256 } });
         break;
     }

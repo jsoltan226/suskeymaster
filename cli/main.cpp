@@ -1,4 +1,3 @@
-#include <cctype>
 #define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
 #include <core/log.h>
@@ -97,6 +96,9 @@ public:
     bool is_out_file(void) const {
         return is_out_file_;
     }
+    void disable_out_file(void) {
+        this->is_out_file_ = false;
+    }
 };
 
 enum cli_cmd_hal_needed {
@@ -123,8 +125,10 @@ static void check_print_help(int argc, const char **argv,
 
 static int init_g_hal(void);
 
-static int read_file(const std::string& path, hidl_vec<uint8_t>& out);
-static int write_file(const std::string& path, const hidl_vec<uint8_t>& in);
+static int read_file(const std::string& path, const std::string& param_name,
+        hidl_vec<uint8_t>& out);
+static int write_file(const std::string& path, const std::string& param_name,
+        const hidl_vec<uint8_t>& in);
 
 static int read_and_deserialize_cert_chain(const std::string& path,
         hidl_vec<hidl_vec<uint8_t>>& cert_chain);
@@ -382,11 +386,25 @@ static const std::vector<cli_command> cmds = {
         { "params", KEY_PARAMETERS, OPTIONAL,
             "A space-separated list of key parameters used in the call to `begin`"
         },
+        { "out_aes_gcm_iv", OUTPUT_FILE, OPTIONAL,
+            "If performing AES encryption in GCM mode without a custom IV, "
+                "the file to which the keymaster-generated IV will be written"
+        },
     },
     [](arg_map_t& a) {
-        return cli::hal_ops::crypto::encrypt(g_hal,
+        hidl_vec<uint8_t> aes_gcm_iv;
+
+        if (cli::hal_ops::crypto::encrypt(g_hal,
                 a["in_plaintext"].in_bytes(), a["in_key_blob"].in_bytes(),
-                a["params"].in_key_params(), a["out_ciphertext"].out_bytes());
+                a["params"].in_key_params(), a["out_ciphertext"].out_bytes(), aes_gcm_iv))
+            return EXIT_FAILURE;
+
+        if (aes_gcm_iv.size() == 0)
+            a["out_aes_gcm_iv"].disable_out_file();
+        else
+            a["out_aes_gcm_iv"].out_bytes() = aes_gcm_iv;
+
+        return EXIT_SUCCESS;
     }
 },
 {
@@ -1056,7 +1074,8 @@ static int init_g_hal(void)
     return EXIT_SUCCESS;
 }
 
-static int read_file(const std::string& path, hidl_vec<uint8_t>& out)
+static int read_file(const std::string& path, const std::string& param_name,
+        hidl_vec<uint8_t>& out)
 {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
@@ -1090,11 +1109,12 @@ static int read_file(const std::string& path, hidl_vec<uint8_t>& out)
         return 1;
     }
 
-    std::cout << "Successfully read \"" << path << "\"" << std::endl;
+    std::cout << "Successfully read `" << param_name << "` \"" << path << "\"" << std::endl;
     return 0;
 }
 
-static int write_file(const std::string& path, const hidl_vec<uint8_t>& in)
+static int write_file(const std::string& path, const std::string& param_name,
+        const hidl_vec<uint8_t>& in)
 {
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
     if (!file.is_open()) {
@@ -1111,7 +1131,7 @@ static int write_file(const std::string& path, const hidl_vec<uint8_t>& in)
     }
     file.close();
 
-    std::cout << "Successfully wrote \"" << path << "\"" << std::endl;
+    std::cout << "Successfully wrote `" << param_name << "` \"" << path << "\"" << std::endl;
     return 0;
 }
 
@@ -1629,7 +1649,7 @@ static int match_and_run_handler(int argc, const char **argv)
 
             switch (a.type) {
             case INPUT_FILE:
-                if (read_file(argv[i], bytes)) {
+                if (read_file(argv[i], a.name, bytes)) {
                     std::cerr << "Failed to read the " << a.name << " file" << std::endl;
                     return EXIT_FAILURE;
                 }
@@ -1677,9 +1697,10 @@ static int match_and_run_handler(int argc, const char **argv)
             continue;
 
         const std::string& path = a.second.out_string();
+        const std::string& param_name = a.first;
         const hidl_vec<uint8_t>& bytes = a.second.out_bytes();
 
-        if (write_file(path, bytes)) {
+        if (write_file(path, param_name, bytes)) {
             std::cerr << "Failed to write \"" << path << "\"" << std::endl;
             return EXIT_FAILURE;
         }

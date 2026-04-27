@@ -17,22 +17,24 @@ using kmhal::hidl::HidlSusKeymaster4;
 
 static ErrorCode do_generic_operation_cycle(HidlSusKeymaster4& hal,
         KeyPurpose op, hidl_vec<uint8_t> const& keyblob,
-        hidl_vec<uint8_t> const& input, hidl_vec<KeyParameter> const& params,
-        hidl_vec<uint8_t> const& finish_signature,
-        hidl_vec<uint8_t>& output);
+        hidl_vec<uint8_t> const& input_, hidl_vec<KeyParameter> const& params,
+        hidl_vec<uint8_t> const* finish_signature,
+        hidl_vec<uint8_t>* output, hidl_vec<uint8_t>* out_gcm_begin_iv);
 
 static void append_vec(hidl_vec<uint8_t>& dst, const hidl_vec<uint8_t>& src);
 
 static void init_encrypt_params_from_user_and_characteristics(
-        hidl_vec<KeyParameter>& params, const KeyCharacteristics& kc
+        hidl_vec<KeyParameter>& params, const KeyCharacteristics& kc,
+        bool* is_aes_gcm
 );
 static void init_sign_params_from_user_and_characteristics(
-        hidl_vec<KeyParameter>& params, const KeyCharacteristics& kc
+        hidl_vec<KeyParameter>& params, const KeyCharacteristics& kc,
+        hidl_vec<KeyParameter>& out_verify_params
 );
 
 int encrypt(HidlSusKeymaster4& hal, hidl_vec<uint8_t> const& plaintext,
         hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& encrypt_params,
-        hidl_vec<uint8_t>& out_ciphertext)
+        hidl_vec<uint8_t>& out_ciphertext, hidl_vec<uint8_t>& out_aes_gcm_iv)
 {
     hidl_vec<KeyParameter> params(encrypt_params);
 
@@ -40,22 +42,28 @@ int encrypt(HidlSusKeymaster4& hal, hidl_vec<uint8_t> const& plaintext,
     extract_application_id_and_data(params, app_id, app_data);
     KeyCharacteristics kc;
     ErrorCode e = ErrorCode::UNKNOWN_ERROR;
+
+    out_aes_gcm_iv.resize(0);
+
     if ((e = hal.getKeyCharacteristics(key, app_id, app_data, kc)) != ErrorCode::OK) {
-        std::cout << "Couldn't get the key's characteristics: "
+        std::cerr << "Couldn't get the key's characteristics: "
             << static_cast<int>(e) << " (" << toString(e) << ")" << std::endl;
         return 1;
     }
 
-    init_encrypt_params_from_user_and_characteristics(params, kc);
+    bool is_aes_gcm = false;
+    init_encrypt_params_from_user_and_characteristics(params, kc, &is_aes_gcm);
 
     if (do_generic_operation_cycle(hal, KeyPurpose::ENCRYPT, key,
-                plaintext, params, {}, out_ciphertext) != ErrorCode::OK)
+                plaintext, params, nullptr, &out_ciphertext,
+                (is_aes_gcm ? &out_aes_gcm_iv : nullptr)
+        ) != ErrorCode::OK)
     {
-        std::cout << "Encryption operation failed!" << std::endl;
+        std::cerr << "Encryption operation failed!" << std::endl;
         return 1;
     }
 
-    std::cerr << "Encryption operation successful!" << std::endl;
+    std::cout << "Encryption operation successful!" << std::endl;
     return 0;
 }
 
@@ -70,21 +78,21 @@ int decrypt(HidlSusKeymaster4& hal, hidl_vec<uint8_t> const& ciphertext,
     KeyCharacteristics kc;
     ErrorCode e = ErrorCode::UNKNOWN_ERROR;
     if ((e = hal.getKeyCharacteristics(key, app_id, app_data, kc)) != ErrorCode::OK) {
-        std::cout << "Couldn't get the key's characteristics: "
+        std::cerr << "Couldn't get the key's characteristics: "
             << static_cast<int>(e) << " (" << toString(e) << ")" << std::endl;
         return 1;
     }
 
-    init_encrypt_params_from_user_and_characteristics(params, kc);
+    init_encrypt_params_from_user_and_characteristics(params, kc, nullptr);
 
     if (do_generic_operation_cycle(hal, KeyPurpose::DECRYPT, key,
-                ciphertext, params, {}, out_plaintext) != ErrorCode::OK)
+                ciphertext, params, nullptr, &out_plaintext, nullptr) != ErrorCode::OK)
     {
-        std::cout << "Decryption operation failed!" << std::endl;
+        std::cerr << "Decryption operation failed!" << std::endl;
         return 1;
     }
 
-    std::cerr << "Decryption operation successful!" << std::endl;
+    std::cout << "Decryption operation successful!" << std::endl;
     return 0;
 }
 
@@ -92,22 +100,22 @@ int sign(HidlSusKeymaster4& hal, hidl_vec<uint8_t> const& message,
     hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_sign_params,
     hidl_vec<uint8_t>& out_signature)
 {
-    hidl_vec<KeyParameter> params(in_sign_params);
+    hidl_vec<KeyParameter> params(in_sign_params), verify_params;
 
     hidl_vec<uint8_t> app_id, app_data;
     extract_application_id_and_data(params, app_id, app_data);
     KeyCharacteristics kc;
     ErrorCode e = ErrorCode::UNKNOWN_ERROR;
     if ((e = hal.getKeyCharacteristics(key, app_id, app_data, kc)) != ErrorCode::OK) {
-        std::cout << "Couldn't get the key's characteristics: "
+        std::cerr << "Couldn't get the key's characteristics: "
             << static_cast<int>(e) << " (" << toString(e) << ")" << std::endl;
         return 1;
     }
 
-    init_sign_params_from_user_and_characteristics(params, kc);
+    init_sign_params_from_user_and_characteristics(params, kc, verify_params);
 
     if (do_generic_operation_cycle(hal, KeyPurpose::SIGN, key,
-            message, params, {}, out_signature) != ErrorCode::OK)
+            message, params, nullptr, &out_signature, nullptr) != ErrorCode::OK)
     {
         std::cerr << "Signing operation failed!" << std::endl;
         return 1;
@@ -115,21 +123,8 @@ int sign(HidlSusKeymaster4& hal, hidl_vec<uint8_t> const& message,
 
     std::cout << "Signing operation OK" << std::endl;
 
-    hidl_vec<uint8_t> dummy;
-    hidl_vec<KeyParameter> app_id_data(0);
-    if (app_id.size() > 0) {
-        app_id_data.resize(app_id_data.size() + 1);
-        app_id_data[app_id_data.size() - 1].tag = Tag::APPLICATION_ID,
-        app_id_data[app_id_data.size() - 1].blob = app_id;
-    }
-    if (app_data.size() > 0) {
-        app_id_data.resize(app_id_data.size() + 1);
-        app_id_data[app_id_data.size() - 1].tag = Tag::APPLICATION_DATA,
-        app_id_data[app_id_data.size() - 1].blob = app_data;
-    }
-
     if (do_generic_operation_cycle(hal, KeyPurpose::VERIFY, key,
-            message, app_id_data, out_signature, dummy) != ErrorCode::OK)
+            message, verify_params, &out_signature, nullptr, nullptr) != ErrorCode::OK)
     {
         std::cerr << "Sanity signature verification failed!" << std::endl;
         return 1;
@@ -142,9 +137,8 @@ int verify(HidlSusKeymaster4& hal,
     hidl_vec<uint8_t> const& message, hidl_vec<uint8_t> const& signature,
     hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_verify_params)
 {
-    hidl_vec<uint8_t> dummy;
     if (do_generic_operation_cycle(hal, KeyPurpose::VERIFY, key,
-                message, in_verify_params, signature, dummy) != ErrorCode::OK)
+                message, in_verify_params, &signature, nullptr, nullptr) != ErrorCode::OK)
     {
         std::cerr << "Signature verification failed!" << std::endl;
         return 1;
@@ -157,20 +151,30 @@ int verify(HidlSusKeymaster4& hal,
 static ErrorCode do_generic_operation_cycle(HidlSusKeymaster4& hal,
         KeyPurpose op, hidl_vec<uint8_t> const& keyblob,
         hidl_vec<uint8_t> const& input_, hidl_vec<KeyParameter> const& params,
-        hidl_vec<uint8_t> const& finish_signature,
-        hidl_vec<uint8_t>& output)
+        hidl_vec<uint8_t> const* finish_signature,
+        hidl_vec<uint8_t>* output, hidl_vec<uint8_t>* out_gcm_begin_iv)
 {
     uint64_t operation_handle = 0;
     hidl_vec<KeyParameter> kp_tmp;
     ErrorCode e = ErrorCode::UNKNOWN_ERROR;
 
-    output.resize(0);
+    if (output) output->resize(0);
 
     e = hal.begin(op, keyblob, params, {}, kp_tmp, operation_handle);
     if (e != ErrorCode::OK) {
         std::cerr << toString(op) << ": BEGIN operation failed: "
             << static_cast<int>(e) << " (" << toString(e) << ")" << std::endl;
         return e;
+    }
+    if (out_gcm_begin_iv) {
+        for (const auto& kp : kp_tmp) {
+            if (kp.tag == Tag::NONCE) {
+                std::cout << "Extracting GCM IV from params returned by begin()..." << std::endl;
+                out_gcm_begin_iv->resize(kp.blob.size());
+                std::memcpy(out_gcm_begin_iv->data(), kp.blob.data(), kp.blob.size());
+                break;
+            }
+        }
     }
 
     hidl_vec<uint8_t> input(input_);
@@ -204,17 +208,22 @@ static ErrorCode do_generic_operation_cycle(HidlSusKeymaster4& hal,
 
         progress += consumed;
 
-        append_vec(output, tmp_output);
+        if (output)
+            append_vec(*output, tmp_output);
     }
 
     hidl_vec<uint8_t> last_tmp_output;
-    e = hal.finish(operation_handle, {}, {}, finish_signature, {}, {}, kp_tmp, last_tmp_output);
+    const hidl_vec<uint8_t> dummy_;
+
+    const hidl_vec<uint8_t>& finish_sig_ = finish_signature ? *finish_signature : dummy_;
+    e = hal.finish(operation_handle, {}, {}, finish_sig_, {}, {}, kp_tmp, last_tmp_output);
     if (e != ErrorCode::OK) {
         std::cerr << toString(op) << ": FINISH operation failed: "
             << static_cast<int>(e) << " (" << toString(e) << ")" << std::endl;
         return e;
     }
-    append_vec(output, last_tmp_output);
+    if (output)
+        append_vec(*output, last_tmp_output);
 
     return ErrorCode::OK;
 }
@@ -227,7 +236,8 @@ static void append_vec(hidl_vec<uint8_t>& dst, const hidl_vec<uint8_t>& src)
 }
 
 static void init_encrypt_params_from_user_and_characteristics(
-        hidl_vec<KeyParameter>& params, const KeyCharacteristics& kc
+        hidl_vec<KeyParameter>& params, const KeyCharacteristics& kc,
+        bool* is_aes_gcm
 )
 {
     Algorithm alg = find_algorithm(kc.hardwareEnforced,
@@ -262,7 +272,8 @@ static void init_encrypt_params_from_user_and_characteristics(
         if (alg == Algorithm::RSA) {
             if (kp.tag == Tag::PADDING && !padding_found &&
                     (kp.f.paddingMode == PaddingMode::RSA_OAEP ||
-                     kp.f.paddingMode == PaddingMode::RSA_PKCS1_1_5_ENCRYPT)
+                     kp.f.paddingMode == PaddingMode::RSA_PKCS1_1_5_ENCRYPT ||
+                     kp.f.paddingMode == PaddingMode::NONE)
             ) {
                 padding = kp.f.paddingMode;
                 padding_found = true;
@@ -320,6 +331,16 @@ static void init_encrypt_params_from_user_and_characteristics(
                 break;
             }
         }
+    } else if (alg == Algorithm::RSA && padding_found &&
+            padding == PaddingMode::NONE && !digest_found)
+    {
+        for (const auto& kp : kc.hardwareEnforced) {
+            if (kp.tag == Tag::DIGEST && kp.f.digest == Digest::NONE) {
+                digest_found = true;
+                digest = kp.f.digest;
+                break;
+            }
+        }
     }
 
     std::vector<kmhal::util::km_default> defaults;
@@ -361,6 +382,9 @@ static void init_encrypt_params_from_user_and_characteristics(
         }
 
         if (padding_found) {
+            if (block_mode_found && block_mode == BlockMode::GCM && is_aes_gcm)
+                *is_aes_gcm = true;
+
             if (block_mode_found &&
                     (block_mode == BlockMode::GCM || block_mode == BlockMode::CTR))
             {
@@ -373,10 +397,10 @@ static void init_encrypt_params_from_user_and_characteristics(
                 if (padding != PaddingMode::PKCS7)
                     std::cerr << "WARNING: Padding mode must be PKCS7 for AES-ECB and AES-CBC"
                         << std::endl;
-            } else {
-                std::cout << "AES encryption padding mode: " << toString(padding) << std::endl;
-                defaults.emplace_back(Tag::PADDING, std::vector<PaddingMode>{ padding });
             }
+
+            std::cout << "AES encryption padding mode: " << toString(padding) << std::endl;
+            defaults.emplace_back(Tag::PADDING, std::vector<PaddingMode>{ padding });
         } else {
             std::cerr << "WARNING: AES-encrypting without a padding mode parameter!" << std::endl;
         }
@@ -394,39 +418,57 @@ static void init_encrypt_params_from_user_and_characteristics(
             std::cerr << "WARNING: Triple-DES-encrypting without a block mode parameter!"
                 << std::endl;
         }
+
+        if (padding_found) {
+            if (padding != PaddingMode::PKCS7)
+                std::cerr << "WARNING: Unsupported padding mode for Triple-DES: "
+                    << toString(padding) << std::endl;
+
+            std::cout << "Triple-DES encryption padding mode: " << toString(padding) << std::endl;
+            defaults.emplace_back(Tag::PADDING, std::vector<PaddingMode>{ padding });
+        }
     }
 
     kmhal::util::init_default_params(params, defaults);
 }
 
 static void init_sign_params_from_user_and_characteristics(
-        hidl_vec<KeyParameter>& params, const KeyCharacteristics& kc
+        hidl_vec<KeyParameter>& params, const KeyCharacteristics& kc,
+        hidl_vec<KeyParameter>& out_verify_params
 )
 {
     Algorithm alg = find_algorithm(kc.hardwareEnforced,
             { Algorithm::EC, Algorithm::RSA, Algorithm::HMAC });
     if (alg == static_cast<Algorithm>(-1))
-        std::cerr << "WARNING: Signing might not be supported for this key!" << std::endl;
-
-    bool digest_found = false, padding_found = false, mac_length_found = false;
-    for (const auto& kp : params) {
-        if (kp.tag == Tag::DIGEST) digest_found = true;
-        else if (kp.tag == Tag::PADDING) padding_found = true;
-        else if (kp.tag == Tag::MAC_LENGTH) mac_length_found = true;
-    }
-
-    std::vector<kmhal::util::km_default> defaults;
+        std::cerr << "WARNING: Signing is not supported for this key!" << std::endl;
 
     Digest digest;
     PaddingMode padding;
     uint32_t mac_length = 0;
+    bool digest_found = false, padding_found = false, mac_length_found = false;
+    for (const auto& kp : params) {
+        if (kp.tag == Tag::DIGEST && !digest_found) {
+            digest_found = true;
+            digest = kp.f.digest;
+        } else if (kp.tag == Tag::PADDING && !padding_found) {
+            padding_found = true;
+            padding = kp.f.paddingMode;
+        } else if (kp.tag == Tag::MAC_LENGTH) {
+            mac_length_found = true;
+            mac_length = kp.f.integer;
+        }
+    }
+
+    std::vector<kmhal::util::km_default> defaults, verify_defaults;
+
     for (const auto& kp : kc.hardwareEnforced) {
         if (alg == Algorithm::EC && kp.tag == Tag::DIGEST && !digest_found) {
             digest = kp.f.digest;
             digest_found = true;
         } else if (alg == Algorithm::RSA && kp.tag == Tag::PADDING && !padding_found &&
-                (kp.f.paddingMode == PaddingMode::RSA_OAEP ||
-                 kp.f.paddingMode == PaddingMode::RSA_PKCS1_1_5_ENCRYPT)
+                (kp.f.paddingMode == PaddingMode::RSA_PKCS1_1_5_SIGN ||
+                 kp.f.paddingMode == PaddingMode::RSA_PSS ||
+                 kp.f.paddingMode == PaddingMode::NONE)
         ) {
             padding = kp.f.paddingMode;
             padding_found = true;
@@ -437,36 +479,29 @@ static void init_sign_params_from_user_and_characteristics(
     }
     if (alg == Algorithm::RSA && !digest_found) {
         for (const auto& kp : kc.hardwareEnforced) {
-            if (kp.tag == Tag::DIGEST && kp.f.digest != Digest::NONE) {
-                digest_found = true;
-                digest = kp.f.digest;
-            }
-        }
-    }
+            if (kp.tag != Tag::DIGEST)
+                continue;
 
-    if (alg == Algorithm::RSA || alg == Algorithm::EC) {
-        if (digest_found) {
-            if (alg == Algorithm::RSA && padding_found && padding == PaddingMode::RSA_OAEP &&
-                    digest == Digest::NONE)
-            {
-                std::cerr << "WARNING: Digest cannot be NONE for RSA-OAEP signing!" << std::endl;
-            } else {
-                std::cout << toString(alg) << " Signature digest: "
-                    << toString(digest) << std::endl;
-                defaults.emplace_back(Tag::DIGEST, std::vector<Digest>{ digest });
+            if (padding_found) {
+                switch(padding) {
+                case PaddingMode::NONE:
+                    /* For PaddingMode::NONE, Digest::NONE should be specified */
+                    if (kp.f.digest != Digest::NONE)
+                        continue;
+                    break;
+                case PaddingMode::RSA_PKCS1_1_5_SIGN: break;
+                case PaddingMode::RSA_PSS:
+                    /* PaddingMode::RSA_PSS and Digest::NONE are incompatible */
+                    if (kp.f.digest == Digest::NONE)
+                        continue;
+                    break;
+                default:
+                    continue;
+                }
             }
-        } else {
-            std::cerr << "WARNING: "
-                << toString(alg) << " signing without a digest parameter!" << std::endl;
-        }
-    }
 
-    if (alg == Algorithm::RSA) {
-        if (padding_found) {
-            std::cout << "RSA Signature padding: " << toString(padding) << std::endl;
-            defaults.emplace_back(Tag::PADDING, std::vector<PaddingMode>{ padding });
-        } else {
-            std::cerr << "WARNING: RSA signing without a padding mode parameter!" << std::endl;
+            digest_found = true;
+            digest = kp.f.digest;
         }
     }
 
@@ -480,7 +515,40 @@ static void init_sign_params_from_user_and_characteristics(
         }
     }
 
+    if (alg == Algorithm::RSA) {
+        if (padding_found) {
+            if (padding == PaddingMode::RSA_OAEP || padding == PaddingMode::RSA_PKCS1_1_5_ENCRYPT)
+                std::cerr << "WARNING: RSA PaddingMode::" << toString(padding)
+                    << " does not support signing!" << std::endl;
+
+            std::cout << "RSA Signature padding: " << toString(padding) << std::endl;
+            defaults.emplace_back(Tag::PADDING, std::vector<PaddingMode>{ padding });
+            verify_defaults.emplace_back(Tag::PADDING, std::vector<PaddingMode> { padding });
+        } else {
+            std::cerr << "WARNING: RSA signing without a padding mode parameter!" << std::endl;
+        }
+    }
+
+    if (alg == Algorithm::RSA || alg == Algorithm::EC) {
+        if (digest_found) {
+            if (alg == Algorithm::RSA && padding_found && padding == PaddingMode::RSA_PSS &&
+                    digest == Digest::NONE)
+            {
+                std::cerr << "WARNING: Digest cannot be NONE for RSA-PSS signing!" << std::endl;
+            } else {
+                std::cout << toString(alg) << " Signature digest: "
+                    << toString(digest) << std::endl;
+                defaults.emplace_back(Tag::DIGEST, std::vector<Digest>{ digest });
+                verify_defaults.emplace_back(Tag::DIGEST, std::vector<Digest> { digest });
+            }
+        } else {
+            std::cerr << "WARNING: "
+                << toString(alg) << " signing without a digest parameter!" << std::endl;
+        }
+    }
+
     kmhal::util::init_default_params(params, defaults);
+    kmhal::util::init_default_params(out_verify_params, verify_defaults);
 }
 
 } /* namespace crypto */
