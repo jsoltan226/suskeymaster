@@ -4,7 +4,7 @@
 #include <libsuskmhal/hidl/hidl-hal.hpp>
 #include <libsuskmhal/util/km-params.hpp>
 #include <libsuskmhal/util/keymaster-types-c.h>
-#include <android/hardware/keymaster/4.0/types.h>
+#include <android/hardware/keymaster/generic/types.h>
 #include <cstdio>
 #include <iostream>
 #include <semaphore.h>
@@ -15,12 +15,12 @@ namespace cli {
 namespace transact {
 namespace client {
 
-using namespace ::android::hardware::keymaster::V4_0;
+using namespace ::android::hardware::keymaster::generic;
 using ::android::hardware::hidl_vec;
 
 static void init_attest_key_params(hidl_vec<KeyParameter>& params);
 
-int generate_and_attest_wrapping_key(HidlSusKeymaster4& hal,
+int generate_and_attest_wrapping_key(HidlSusKeymaster& hal,
     hidl_vec<uint8_t>& out_wrapping_blob, hidl_vec<uint8_t>& out_wrapping_pubkey,
     hidl_vec<hidl_vec<uint8_t>> * out_cert_chain, hidl_vec<KeyParameter> const& in_gen_params
 )
@@ -81,7 +81,7 @@ int generate_and_attest_wrapping_key(HidlSusKeymaster4& hal,
     return 0;
 }
 
-int import_wrapped_key(HidlSusKeymaster4& hal, hidl_vec<uint8_t> const& in_wrapped_data,
+int import_wrapped_key(HidlSusKeymaster& hal, hidl_vec<uint8_t> const& in_wrapped_data,
         hidl_vec<uint8_t> const& in_masking_key, hidl_vec<uint8_t> const& in_wrapping_blob,
         hidl_vec<KeyParameter> const& in_unwrapping_params, hidl_vec<uint8_t>& out_key_blob
 )

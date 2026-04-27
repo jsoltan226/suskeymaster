@@ -4,7 +4,7 @@
 #include <core/vector.h>
 #include <libsuscertmod/keybox.h>
 #include <hidl/HidlSupport.h>
-#include <android/hardware/keymaster/4.0/types.h>
+#include <android/hardware/keymaster/generic/types.h>
 #include <ctime>
 #include <string>
 #include <iosfwd>
@@ -20,7 +20,7 @@ namespace suskeymaster {
 namespace cli {
 namespace keybox {
 
-using namespace ::android::hardware::keymaster::V4_0;
+using namespace ::android::hardware::keymaster::generic;
 
 static VECTOR(uint8_t) read_file(std::string const& path);
 static int write_file(std::string const& path, VECTOR(uint8_t const) data);

@@ -55,3 +55,49 @@ cc_library_static {
         android_x86_64: { enabled: false }
     },
 }
+
+cc_library_static {
+    name: "libsuscertmod_libsuskeymaster",
+    host_supported: false,
+    compile_multilib: "64",
+    defaults: ["suscertmod_defaults"],
+
+    srcs: [
+        "./*.c",
+        "./certs/*.c"
+    ],
+
+    cflags: [
+        "-g", "-O0",
+        "-DCGD_LOG_BUILD_TAG=\"certmod\""
+    ],
+    export_include_dirs: [ "include" ],
+
+    static_libs: [
+        "libcgdcore",
+        "libsuskmhal_libsuskeymaster",
+        "libbuiltinkeybox"
+    ],
+
+    shared_libs: [
+    ],
+
+    stl: "none",
+
+    visibility: [ "//visibility:public" ],
+
+    target: {
+        host: {
+            enabled: false,
+        },
+        android_arm64: {
+            enabled: true,
+            static_libs: [
+                "libcrypto_sus_prebuilt"
+            ]
+        },
+        android_arm: { enabled: false },
+        android_x86: { enabled: false },
+        android_x86_64: { enabled: false }
+    },
+}

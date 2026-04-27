@@ -7,13 +7,13 @@
 #include <vector>
 #include <cstdint>
 #include <hidl/HidlSupport.h>
-#include <android/hardware/keymaster/4.0/types.h>
+#include <android/hardware/keymaster/generic/types.h>
 
 namespace suskeymaster {
 namespace kmhal {
 namespace util {
 
-using namespace ::android::hardware::keymaster::V4_0;
+using namespace ::android::hardware::keymaster::generic;
 using namespace ::android::hardware;
 
 int parse_km_tag_params(const char *arg,

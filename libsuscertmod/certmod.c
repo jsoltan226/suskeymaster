@@ -356,7 +356,7 @@ static int mod_patch_levels(KM_PARAM_LIST *al, const char *al_name)
 
 #ifdef MOD_AUTHLIST_OS_VERSION
         s_log_info("%s.osVersion: %llu -> %llu", al_name,
-                (long long unsigned)al->osVersion,
+                (long long unsigned)i,
                 (long long unsigned)MOD_AUTHLIST_OS_VERSION
         );
         i = (uint64_t)MOD_AUTHLIST_OS_VERSION;
@@ -380,7 +380,7 @@ static int mod_patch_levels(KM_PARAM_LIST *al, const char *al_name)
 
 #ifdef MOD_AUTHLIST_OS_PATCH_LEVEL
         s_log_info("%s.osPatchLevel: %llu -> %llu", al_name,
-                (long long unsigned)al->osPatchLevel,
+                (long long unsigned)i,
                 (long long unsigned)MOD_AUTHLIST_OS_PATCH_LEVEL
         );
         i = (uint64_t)MOD_AUTHLIST_OS_PATCH_LEVEL;
@@ -404,7 +404,7 @@ static int mod_patch_levels(KM_PARAM_LIST *al, const char *al_name)
 
 #ifdef MOD_AUTHLIST_VENDOR_PATCH_LEVEL
         s_log_info("%s.vendorPatchLevel: %llu -> %llu", al_name,
-                (long long unsigned)al->vendorPatchLevel,
+                (long long unsigned)i,
                 (long long unsigned)MOD_AUTHLIST_VENDOR_PATCH_LEVEL
         );
         i = (uint64_t)MOD_AUTHLIST_VENDOR_PATCH_LEVEL;
@@ -428,7 +428,7 @@ static int mod_patch_levels(KM_PARAM_LIST *al, const char *al_name)
 
 #ifdef MOD_AUTHLIST_BOOT_PATCH_LEVEL
         s_log_info("%s.bootPatchLevel: %llu -> %llu", al_name,
-                (long long unsigned)al->bootPatchLevel,
+                (long long unsigned)i,
                 (long long unsigned)MOD_AUTHLIST_BOOT_PATCH_LEVEL
         );
         i = (uint64_t)MOD_AUTHLIST_BOOT_PATCH_LEVEL;

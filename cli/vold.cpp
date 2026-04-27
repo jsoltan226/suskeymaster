@@ -2,16 +2,17 @@
 #define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
 #include <libsuskmhal/hidl/hidl-hal.hpp>
-#include <openssl/sha.h>
+#include <android/hardware/keymaster/generic/types.h>
 #include <cstring>
+#include <openssl/sha.h>
 
 namespace suskeymaster {
 namespace cli {
 namespace vold {
 
-using namespace ::android::hardware::keymaster::V4_0;
+using namespace ::android::hardware::keymaster::generic;
 using ::android::hardware::hidl_vec;
-using kmhal::hidl::HidlSusKeymaster4;
+using kmhal::hidl::HidlSusKeymaster;
 
 static hidl_vec<uint8_t> remove_keystore2_prefix_if_exists(const hidl_vec<uint8_t>& blob);
 static void append_sha256_sum(hidl_vec<uint8_t>& blob);
@@ -65,7 +66,7 @@ int generate_app_id(hidl_vec<uint8_t> const& in_secdiscardable,
     return 0;
 }
 
-int decrypt_vold_key_with_keystore_key(HidlSusKeymaster4& hal,
+int decrypt_vold_key_with_keystore_key(HidlSusKeymaster& hal,
         hidl_vec<uint8_t> const& in_keystore_key, hidl_vec<uint8_t> const& in_secdiscardable,
         hidl_vec<uint8_t> const& in_encrypted_key, hidl_vec<uint8_t>& out_decrypted_key)
 {

@@ -7,7 +7,7 @@
 #include <libsuskmhal/util/km-params.hpp>
 #include <libsuskmhal/util/keymaster-types-c.h>
 #include <hidl/HidlSupport.h>
-#include <android/hardware/keymaster/4.0/types.h>
+#include <android/hardware/keymaster/generic/types.h>
 #include <ctime>
 #include <cstdio>
 #include <cstdlib>
@@ -20,9 +20,9 @@ namespace suskeymaster {
 namespace cli {
 namespace hal_ops {
 
-using namespace ::android::hardware::keymaster::V4_0;
+using namespace ::android::hardware::keymaster::generic;
 using ::android::hardware::hidl_vec;
-using kmhal::hidl::HidlSusKeymaster4;
+using kmhal::hidl::HidlSusKeymaster;
 
 static void pr_info(const char *fmt, ...) {
     va_list vlist;
@@ -32,7 +32,7 @@ static void pr_info(const char *fmt, ...) {
     va_end(vlist);
 }
 
-int get_key_characteristics(HidlSusKeymaster4& hal,
+int get_key_characteristics(HidlSusKeymaster& hal,
     hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_application_id_data)
 {
     hidl_vec<uint8_t> app_id;
@@ -75,7 +75,7 @@ int get_key_characteristics(HidlSusKeymaster4& hal,
     return EXIT_SUCCESS;
 }
 
-int generate_key(HidlSusKeymaster4& hal,
+int generate_key(HidlSusKeymaster& hal,
     hidl_vec<KeyParameter> const& in_gen_params,
     hidl_vec<uint8_t>& out_key_blob)
 {
@@ -101,7 +101,7 @@ int generate_key(HidlSusKeymaster4& hal,
     return 0;
 }
 
-int attest_key(HidlSusKeymaster4& hal,
+int attest_key(HidlSusKeymaster& hal,
     hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_attest_params)
 {
     hidl_vec<KeyParameter> params = in_attest_params;
@@ -129,7 +129,7 @@ int attest_key(HidlSusKeymaster4& hal,
     return transact::server::verify_attestation(cert_chain);
 }
 
-int import_key(HidlSusKeymaster4& hal,
+int import_key(HidlSusKeymaster& hal,
     hidl_vec<uint8_t> const& in_private_key,
     hidl_vec<KeyParameter> const& in_import_params,
     hidl_vec<uint8_t>& out_key_blob)
@@ -172,7 +172,7 @@ int import_key(HidlSusKeymaster4& hal,
     return 0;
 }
 
-int export_key(HidlSusKeymaster4& hal,
+int export_key(HidlSusKeymaster& hal,
     hidl_vec<uint8_t> const& key,
     hidl_vec<uint8_t>& out_public_key_x509,
     hidl_vec<KeyParameter> const& in_application_id_data)
@@ -228,7 +228,7 @@ int export_key(HidlSusKeymaster4& hal,
     return 0;
 }
 
-int upgrade_key(HidlSusKeymaster4& hal,
+int upgrade_key(HidlSusKeymaster& hal,
         hidl_vec<uint8_t> const& in_keyblob_to_upgrade,
         hidl_vec<KeyParameter> const& in_upgrade_params,
         hidl_vec<uint8_t>& out_upgraded_keyblob)

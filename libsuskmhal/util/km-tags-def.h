@@ -117,7 +117,7 @@
      */                                                                                                 \
     KM_DECL_TAG(MIN_MAC_LENGTH, UINT, 8, minMacLength, NULL, INTEGER, _)                                \
                                                                                                         \
-    /* Tag 9 reserved */                                                                                \
+    /* KeyDerivationFunction */                                                                         \
     KM_DECL_TAG(KDF, ENUM_REP, 9, kdf, KeyDerivationFunction, INTEGER, _SET_OF_)                        \
                                                                                                         \
     /**                                                                                                 \
@@ -143,7 +143,10 @@
      */                                                                                                 \
     KM_DECL_TAG(RSA_PUBLIC_EXPONENT, ULONG, 200, rsaPublicExponent, NULL, INTEGER, _)                   \
                                                                                                         \
-    /* Tag 201 reserved */                                                                              \
+    /*                                                                                                  \
+     * Whether the ephemeral public key is fed into the                                                 \
+     * KDF.                                                                                             \
+     */                                                                                                 \
     KM_DECL_TAG(ECIES_SINGLE_HASH_MODE, BOOL, 201, eciesSingleHashMode, NULL, NULL, _)                  \
                                                                                                         \
     /**                                                                                                 \
@@ -273,7 +276,7 @@
      */                                                                                                 \
     KM_DECL_TAG(MAX_USES_PER_BOOT, UINT, 404, maxUsesPerBoot, NULL, INTEGER, _)                         \
                                                                                                         \
-    /* Internal Samsung tag: all users may use the key. */                                              \
+    /* All users may use the key (kind of like Tag::NO_AUTH_REQUIRED). */                               \
     KM_DECL_TAG(ALL_USERS, BOOL, 500, allUsers, NULL, NULL, _)                                          \
                                                                                                         \
     /**                                                                                                 \

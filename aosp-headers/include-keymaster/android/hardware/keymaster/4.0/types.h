@@ -444,6 +444,24 @@ struct KeyParameter final {
         uint64_t dateTime __attribute__ ((aligned(8)));
     };
 
+        static_assert(offsetof(::android::hardware::keymaster::V4_0::KeyParameter::IntegerParams, algorithm) == 0, "wrong offset");
+    static_assert(offsetof(::android::hardware::keymaster::V4_0::KeyParameter::IntegerParams, blockMode) == 0, "wrong offset");
+    static_assert(offsetof(::android::hardware::keymaster::V4_0::KeyParameter::IntegerParams, paddingMode) == 0, "wrong offset");
+    static_assert(offsetof(::android::hardware::keymaster::V4_0::KeyParameter::IntegerParams, digest) == 0, "wrong offset");
+    static_assert(offsetof(::android::hardware::keymaster::V4_0::KeyParameter::IntegerParams, ecCurve) == 0, "wrong offset");
+    static_assert(offsetof(::android::hardware::keymaster::V4_0::KeyParameter::IntegerParams, origin) == 0, "wrong offset");
+    static_assert(offsetof(::android::hardware::keymaster::V4_0::KeyParameter::IntegerParams, keyBlobUsageRequirements) == 0, "wrong offset");
+    static_assert(offsetof(::android::hardware::keymaster::V4_0::KeyParameter::IntegerParams, purpose) == 0, "wrong offset");
+    static_assert(offsetof(::android::hardware::keymaster::V4_0::KeyParameter::IntegerParams, keyDerivationFunction) == 0, "wrong offset");
+    static_assert(offsetof(::android::hardware::keymaster::V4_0::KeyParameter::IntegerParams, hardwareAuthenticatorType) == 0, "wrong offset");
+    static_assert(offsetof(::android::hardware::keymaster::V4_0::KeyParameter::IntegerParams, hardwareType) == 0, "wrong offset");
+    static_assert(offsetof(::android::hardware::keymaster::V4_0::KeyParameter::IntegerParams, boolValue) == 0, "wrong offset");
+    static_assert(offsetof(::android::hardware::keymaster::V4_0::KeyParameter::IntegerParams, integer) == 0, "wrong offset");
+    static_assert(offsetof(::android::hardware::keymaster::V4_0::KeyParameter::IntegerParams, longInteger) == 0, "wrong offset");
+    static_assert(offsetof(::android::hardware::keymaster::V4_0::KeyParameter::IntegerParams, dateTime) == 0, "wrong offset");
+    static_assert(sizeof(::android::hardware::keymaster::V4_0::KeyParameter::IntegerParams) == 8, "wrong size");
+    static_assert(__alignof(::android::hardware::keymaster::V4_0::KeyParameter::IntegerParams) == 8, "wrong alignment");
+
 
     /**
      * Discriminates the union/blob field used.  The blob cannot be placed in the union, but only

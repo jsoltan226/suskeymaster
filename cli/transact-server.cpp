@@ -11,7 +11,8 @@
 #include <libsuscertmod/key-desc.h>
 #include <libsuscertmod/leaf-cert.h>
 #include <hidl/HidlSupport.h>
-#include <android/hardware/keymaster/4.0/types.h>
+#include <android/hardware/keymaster/generic/types.h>
+#include <cstdio>
 #include <cstddef>
 #include <cstring>
 #include <iostream>
@@ -24,7 +25,6 @@
 #include <openssl/x509.h>
 #include <openssl/asn1t.h>
 #include <openssl/x509_vfy.h>
-#include <stdio.h>
 
 extern "C" {
 typedef struct IWK_KEY_DESC {
@@ -65,7 +65,7 @@ namespace transact {
 namespace server {
 
 using ::android::hardware::hidl_vec;
-using namespace ::android::hardware::keymaster::V4_0;
+using namespace ::android::hardware::keymaster::generic;
 
 /** Functions used by `verify_attestation` */
 

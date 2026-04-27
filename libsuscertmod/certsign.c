@@ -10,6 +10,7 @@
 
 #define MODULE_NAME "certsign"
 
+static struct hidl_suskeymaster * get_hal(void);
 static VECTOR(u8) get_keyblob_from_current_keybox(enum sus_key_variant variant);
 static VECTOR(struct KM_KeyParameter) init_params(enum sus_key_variant variant);
 
@@ -26,7 +27,7 @@ i32 sus_cert_sign(VECTOR(u8 const) tbs_der, VECTOR(u8) *out_sig,
     VECTOR(u8) keyblob = NULL;
     VECTOR(struct KM_KeyParameter) params = NULL;
 
-    struct hidl_suskeymaster4 *hidl_km = NULL;
+    struct hidl_suskeymaster *hidl_km = NULL;
     uint64_t op_handle = 0;
     enum KM_ErrorCode e = KM_ERR_UNKNOWN_ERROR;
 
@@ -39,24 +40,24 @@ i32 sus_cert_sign(VECTOR(u8 const) tbs_der, VECTOR(u8) *out_sig,
 
 
     /* Do the HIDL transactions for a SIGN operation (begin + finish) */
-    hidl_km = hidl_suskeymaster4_new();
+    hidl_km = get_hal();
     if (hidl_km == NULL)
         goto_error("Couldn't obtain a handle to the keymaster HAL");
 
-    e = hidl_suskeymaster4_begin(hidl_km, KM_PURPOSE_SIGN,
+    e = hidl_suskeymaster_begin(hidl_km, KM_PURPOSE_SIGN,
             keyblob, params, NULL, NULL, &op_handle);
     if (e != KM_OK)
         goto_error("BEGIN operation failed: %d (%s)",
                 e, KM_ErrorCode_toString(e));
 
-    e = hidl_suskeymaster4_finish(hidl_km, op_handle, NULL, tbs_der,
+    e = hidl_suskeymaster_finish(hidl_km, op_handle, NULL, tbs_der,
             NULL, NULL, NULL, NULL, out_sig);
     if (e != KM_OK)
         goto_error("FINISH operation failed: %d (%s)",
                 e, KM_ErrorCode_toString(e));
 
     op_handle = 0;
-    hidl_suskeymaster4_destroy(&hidl_km);
+    hidl_suskeymaster_destroy(&hidl_km);
     km_destroy_key_parameters(&params);
     vector_destroy(&keyblob);
 
@@ -66,13 +67,36 @@ i32 sus_cert_sign(VECTOR(u8 const) tbs_der, VECTOR(u8) *out_sig,
 
 err:
     op_handle = 0;
-    hidl_suskeymaster4_destroy(&hidl_km);
+    hidl_suskeymaster_destroy(&hidl_km);
     km_destroy_key_parameters(&params);
     vector_destroy(&keyblob);
 
     s_log_info("Failed to sign %s cert",
             variant == SUS_KEY_EC ? "ECDSA" : "RSA");
     return 1;
+}
+
+static struct hidl_suskeymaster * get_hal(void)
+{
+    struct hidl_suskeymaster *new_hal = NULL;
+
+#if 0
+    new_hal = hidl_suskeymaster4_1_new();
+    if (new_hal != NULL)
+        return new_hal;
+#endif /* 0 */
+
+    new_hal = hidl_suskeymaster4_0_new();
+    if (new_hal != NULL)
+        return new_hal;
+
+#if 0
+    new_hal = hidl_suskeymaster3_0_new();
+    if (new_hal != NULL)
+        return new_hal;
+#endif /* 0 */
+
+    return NULL;
 }
 
 static VECTOR(u8) get_keyblob_from_current_keybox(enum sus_key_variant variant)

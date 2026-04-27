@@ -3,7 +3,7 @@
 #include <libsuskmhal/hidl/hidl-hal.hpp>
 #include <libsuskmhal/util/km-params.hpp>
 #include <hidl/HidlSupport.h>
-#include <android/hardware/keymaster/4.0/types.h>
+#include <android/hardware/keymaster/generic/types.h>
 #include <cstring>
 
 namespace suskeymaster {
@@ -11,11 +11,11 @@ namespace cli {
 namespace hal_ops {
 namespace crypto {
 
-using namespace ::android::hardware::keymaster::V4_0;
+using namespace ::android::hardware::keymaster::generic;
 using ::android::hardware::hidl_vec;
-using kmhal::hidl::HidlSusKeymaster4;
+using kmhal::hidl::HidlSusKeymaster;
 
-static ErrorCode do_generic_operation_cycle(HidlSusKeymaster4& hal,
+static ErrorCode do_generic_operation_cycle(HidlSusKeymaster& hal,
         KeyPurpose op, hidl_vec<uint8_t> const& keyblob,
         hidl_vec<uint8_t> const& input_, hidl_vec<KeyParameter> const& params,
         hidl_vec<uint8_t> const* finish_signature,
@@ -32,7 +32,7 @@ static void init_sign_params_from_user_and_characteristics(
         hidl_vec<KeyParameter>& out_verify_params
 );
 
-int encrypt(HidlSusKeymaster4& hal, hidl_vec<uint8_t> const& plaintext,
+int encrypt(HidlSusKeymaster& hal, hidl_vec<uint8_t> const& plaintext,
         hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& encrypt_params,
         hidl_vec<uint8_t>& out_ciphertext, hidl_vec<uint8_t>& out_aes_gcm_iv)
 {
@@ -67,7 +67,7 @@ int encrypt(HidlSusKeymaster4& hal, hidl_vec<uint8_t> const& plaintext,
     return 0;
 }
 
-int decrypt(HidlSusKeymaster4& hal, hidl_vec<uint8_t> const& ciphertext,
+int decrypt(HidlSusKeymaster& hal, hidl_vec<uint8_t> const& ciphertext,
         hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& decrypt_params,
         hidl_vec<uint8_t>& out_plaintext)
 {
@@ -96,7 +96,7 @@ int decrypt(HidlSusKeymaster4& hal, hidl_vec<uint8_t> const& ciphertext,
     return 0;
 }
 
-int sign(HidlSusKeymaster4& hal, hidl_vec<uint8_t> const& message,
+int sign(HidlSusKeymaster& hal, hidl_vec<uint8_t> const& message,
     hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_sign_params,
     hidl_vec<uint8_t>& out_signature)
 {
@@ -133,7 +133,7 @@ int sign(HidlSusKeymaster4& hal, hidl_vec<uint8_t> const& message,
     return 0;
 }
 
-int verify(HidlSusKeymaster4& hal,
+int verify(HidlSusKeymaster& hal,
     hidl_vec<uint8_t> const& message, hidl_vec<uint8_t> const& signature,
     hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_verify_params)
 {
@@ -148,7 +148,7 @@ int verify(HidlSusKeymaster4& hal,
     return 0;
 }
 
-static ErrorCode do_generic_operation_cycle(HidlSusKeymaster4& hal,
+static ErrorCode do_generic_operation_cycle(HidlSusKeymaster& hal,
         KeyPurpose op, hidl_vec<uint8_t> const& keyblob,
         hidl_vec<uint8_t> const& input_, hidl_vec<KeyParameter> const& params,
         hidl_vec<uint8_t> const* finish_signature,

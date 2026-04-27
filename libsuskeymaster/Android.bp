@@ -1,6 +1,7 @@
 cc_defaults {
     name: "suskeymaster_defaults",
     cflags: ["-Wall", "-Wextra", "-pipe", "-fPIC"],
+    ldflags: [ "-fvisibility=hidden" ],
     cppflags: ["-Wno-c11-extensions", "-std=c++20", "-fPIC", "-pipe"],
     include_dirs: [
         ".",
@@ -21,10 +22,10 @@ cc_library_shared {
 
     static_libs: [
         "libcgdcore",
-        "libsuskmhal",
-        "libsuscertmod",
+        "libsuskmhal_libsuskeymaster",
+        "libsuscertmod_libsuskeymaster",
         "libbuiltinkeybox",
-        "libcrypto_sus_prebuilt"
+        "libcrypto_sus_prebuilt",
     ],
 
     shared_libs: [
@@ -32,11 +33,19 @@ cc_library_shared {
         "libhidltransport",
         "liblog",
         "libutils",
-        "android.hardware.keymaster@4.0"
+        "android.hardware.keymaster@4.0",
     ],
 
-    cflags: ["-g", "-O0"],
-    cppflags: ["-g", "-O0"],
+    header_libs: [
+        "suskeymaster_aosp_headers",
+    ],
+
+    cflags: [ "-g", "-O0",
+        "-USUSKEYMASTER_BUILD_HOST", "-DSUSKEYMASTER_BUILD_ANDROID",
+        "-USUSKEYMASTER_HAL_ENABLE_3_0", "-DSUSKEYMASTER_HAL_DISABLE_3_0",
+        "-DSUSKEYMASTER_HAL_ENABLE_4_0", "-USUSKEYMASTER_HAL_DISABLE_4_0",
+        "-USUSKEYMASTER_HAL_ENABLE_4_1", "-DSUSKEYMASTER_HAL_DISABLE_4_1",
+    ],
 
     visibility: [ "//visibility:public" ],
 
@@ -47,6 +56,10 @@ cc_library_shared {
         android_arm: { enabled: false, },
         android_x86_64: { enabled: false, },
         android_x86: { enabled: false, },
+    },
+
+    sanitize: {
+        never: true
     },
 }
 

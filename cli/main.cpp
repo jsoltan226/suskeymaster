@@ -4,12 +4,13 @@
 #include <libsuscertmod/certmod.h>
 #include <libsuskmhal/hidl/hidl-hal.hpp>
 #include <libsuskmhal/util/km-params.hpp>
-#include <android/hardware/keymaster/4.0/types.h>
+#include <android/hardware/keymaster/generic/types.h>
 #include <strings.h>
 #include <cstdio>
 #include <string>
 #include <cerrno>
 #include <vector>
+#include <memory>
 #include <iomanip>
 #include <sstream>
 #include <cstdint>
@@ -22,14 +23,36 @@
 #include <system_error>
 #include <unordered_map>
 
-using namespace ::android::hardware::keymaster::V4_0;
+using namespace ::android::hardware::keymaster::generic;
 using namespace ::android::hardware;
 using namespace suskeymaster;
 
 static const char *g_argv0 = NULL;
-static suskeymaster::kmhal::hidl::HidlSusKeymaster4 g_hal;
 
 namespace suskeymaster {
+
+static std::unique_ptr<kmhal::hidl::HidlSusKeymaster> g_hal = nullptr;
+
+enum hal_version : uint8_t {
+    HAL_NOT_NEEDED = 0x00,
+    HAL_NONE = 0x00,
+
+    HAL_NEEDED_3_0 = 0x30,
+    HAL_3_0 = 0x30,
+
+    HAL_NEEDED_4_0 = 0x40,
+    HAL_4_0 = 0x40,
+
+    HAL_NEEDED_4_1 = 0x41,
+    HAL_4_1 = 0x41
+};
+static constexpr int hal_version_major(hal_version ver) {
+    return (static_cast<uint8_t>(ver) & 0xF0) >> 4;
+}
+static constexpr int hal_version_minor(hal_version ver) {
+    return (static_cast<uint8_t>(ver) & 0x0F);
+}
+
 enum cli_arg_type {
     INPUT_FILE,
     OUTPUT_FILE,
@@ -101,18 +124,13 @@ public:
     }
 };
 
-enum cli_cmd_hal_needed {
-    HAL_NOT_NEEDED,
-    HAL_NEEDED,
-};
-
 typedef std::unordered_map<std::string, cli_arg_value> arg_map_t;
 
 struct cli_command {
     std::vector<const char *> argv_match;
     std::vector<const char *> description;
 
-    cli_cmd_hal_needed hal_needed;
+    hal_version required_hal_version;
     std::vector<cli_arg> args;
 
     int (*handler)(arg_map_t& args);
@@ -123,7 +141,7 @@ static void setup_cgd_log(void);
 static void check_print_help(int argc, const char **argv,
         bool *o_should_return, int *o_return_val);
 
-static int init_g_hal(void);
+static int init_g_hal(hal_version min_ver);
 
 static int read_file(const std::string& path, const std::string& param_name,
         hidl_vec<uint8_t>& out);
@@ -132,14 +150,14 @@ static int write_file(const std::string& path, const std::string& param_name,
 
 static int read_and_deserialize_cert_chain(const std::string& path,
         hidl_vec<hidl_vec<uint8_t>>& cert_chain);
+#ifndef SUSKEYMASTER_BUILD_HOST
 static int serialize_and_write_cert_chain(const std::string& path,
         const hidl_vec<hidl_vec<uint8_t>>& cert_chain);
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
 static int scan_keybox_arg(const char *cmdline,
         std::vector<std::string>& out_cert_chain,
         std::string& out_key_path);
-
-#define SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA
 
 #ifdef SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA
 static int scan_indata_arg(const char *cmdline, uint32_t *& out_cmd,
@@ -161,7 +179,9 @@ static int match_and_run_handler(int argc, const char **argv);
 
 namespace _ {
     static uint32_t ntohl_(uint32_t);
+#ifndef SUSKEYMASTER_BUILD_HOST
     static uint32_t htonl_(uint32_t);
+#endif /* SUSKEYMASTER_BUILD_HOST */
 };
 
 int main(int argc, char **argv)
@@ -186,12 +206,13 @@ static const std::vector<cli_command> cmds = {
 {
     { "__line_break__" }, {}, HAL_NOT_NEEDED, {}, {}
 },
+#ifndef SUSKEYMASTER_BUILD_HOST
 {
     { "get-characteristics" },
     {
         "Print the characteristics (properties) of <key_blob>.",
     },
-    HAL_NEEDED,
+    HAL_NEEDED_3_0,
     {
         { "key_blob", INPUT_FILE, MANDATORY,
             "The key blob whose characteristics are to be read"
@@ -202,7 +223,7 @@ static const std::vector<cli_command> cmds = {
         }
     },
     [](arg_map_t& a) {
-        return cli::hal_ops::get_key_characteristics(g_hal,
+        return cli::hal_ops::get_key_characteristics(*g_hal,
                 a["key_blob"].in_bytes(),
                 a["deserialization_params"].in_key_params()
         );
@@ -214,7 +235,7 @@ static const std::vector<cli_command> cmds = {
         "Generate a new key in KeyMaster using <params> "
         "and save the resulting key blob to <out_key_blob>"
     },
-    HAL_NEEDED,
+    HAL_NEEDED_3_0,
     {
         { "params", KEY_PARAMETERS, MANDATORY,
             "Key generation parameters, such as ALGORITHM and PURPOSE"
@@ -224,7 +245,7 @@ static const std::vector<cli_command> cmds = {
         },
     },
     [](arg_map_t& a) {
-        return cli::hal_ops::generate_key(g_hal,
+        return cli::hal_ops::generate_key(*g_hal,
                 a["params"].in_key_params(), a["out_key_blob"].out_bytes());
     }
 },
@@ -235,7 +256,7 @@ static const std::vector<cli_command> cmds = {
         "   and attest it (optionally using [attest_params]),",
         "   also optionally saving it to [out_attestation].",
     },
-    HAL_NEEDED,
+    HAL_NEEDED_3_0,
     {
         { "generate_params", KEY_PARAMETERS, OPTIONAL,
             "A space-separated list of key parameters used to generate the ephemeral attested key"
@@ -250,12 +271,12 @@ static const std::vector<cli_command> cmds = {
     },
     [](arg_map_t& a) {
         hidl_vec<uint8_t> keyblob;
-        if (cli::hal_ops::generate_key(g_hal, a["generate_params"].in_key_params(), keyblob)) {
+        if (cli::hal_ops::generate_key(*g_hal, a["generate_params"].in_key_params(), keyblob)) {
             std::cerr << "Failed to generate ephemeral attested key!" << std::endl;
             return 1;
         }
 
-        return cli::hal_ops::attest_key(g_hal, keyblob, a["attest_params"].in_key_params());
+        return cli::hal_ops::attest_key(*g_hal, keyblob, a["attest_params"].in_key_params());
     }
 },
 {
@@ -265,7 +286,7 @@ static const std::vector<cli_command> cmds = {
         "   optionally saving the resulting serialized attestation cert chain "
             "to [out_attestation]"
     },
-    HAL_NEEDED,
+    HAL_NEEDED_3_0,
     {
         { "keyblob", INPUT_FILE, MANDATORY,
             "The KeyMaster key blob to attest"
@@ -282,7 +303,7 @@ static const std::vector<cli_command> cmds = {
         const hidl_vec<uint8_t>& keyblob = a["keyblob"].in_bytes();
         const hidl_vec<KeyParameter>& params = a["attest params"].in_key_params();
 
-        return cli::hal_ops::attest_key(g_hal, keyblob, params);
+        return cli::hal_ops::attest_key(*g_hal, keyblob, params);
     }
 },
 {
@@ -291,7 +312,7 @@ static const std::vector<cli_command> cmds = {
         "Imports the private key <in_private_key>",
         "   into the device's KeyMaster, writing the resulting key blob to <out_key_blob>."
     },
-    HAL_NEEDED,
+    HAL_NEEDED_3_0,
     {
         { "in_private_key", INPUT_FILE, MANDATORY,
             "The private key to import - "
@@ -305,7 +326,7 @@ static const std::vector<cli_command> cmds = {
         },
     },
     [](arg_map_t& a) {
-        return cli::hal_ops::import_key(g_hal, a["in_private_key"].in_bytes(),
+        return cli::hal_ops::import_key(*g_hal, a["in_private_key"].in_bytes(),
                 a["params"].in_key_params(), a["in_key_blob"].out_bytes());
     }
 },
@@ -317,7 +338,7 @@ static const std::vector<cli_command> cmds = {
             "the public part of the key is exported",
         "while for other algorithms raw bytes are written."
     },
-    HAL_NEEDED,
+    HAL_NEEDED_3_0,
     {
         { "in_keyblob", INPUT_FILE, MANDATORY,
             "The key blob whose public key is to be exported"
@@ -331,7 +352,7 @@ static const std::vector<cli_command> cmds = {
         },
     },
     [](arg_map_t& a) {
-        return cli::hal_ops::export_key(g_hal,
+        return cli::hal_ops::export_key(*g_hal,
                 a["in_keyblob"].in_bytes(), a["out_public_x509"].out_bytes(),
                 a["deserialization_params"].in_key_params());
     }
@@ -342,7 +363,7 @@ static const std::vector<cli_command> cmds = {
         "Upgrades a key blob generated on a system with older security patch levels, ",
         "enabling its usage on the current system."
     },
-    HAL_NEEDED,
+    HAL_NEEDED_3_0,
     {
         { "in_keyblob_to_upgrade", INPUT_FILE, MANDATORY,
             "The key blob to be upgraded"
@@ -356,7 +377,7 @@ static const std::vector<cli_command> cmds = {
         }
     },
     [](arg_map_t& a) {
-        return cli::hal_ops::upgrade_key(g_hal,
+        return cli::hal_ops::upgrade_key(*g_hal,
                 a["in_keyblob_to_upgrade"].in_bytes(),
                 a["upgrade_params"].in_key_params(),
                 a["out_upgraded_keyblob"].out_bytes()
@@ -372,7 +393,7 @@ static const std::vector<cli_command> cmds = {
         "Encrypts <in_plaintext> with <in_key_blob>, optionally using [params], "
             "saving the ciphertext to <out_ciphertext>"
     },
-    HAL_NEEDED,
+    HAL_NEEDED_3_0,
     {
         { "in_key_blob", INPUT_FILE, MANDATORY,
             "The encryption key blob"
@@ -394,7 +415,7 @@ static const std::vector<cli_command> cmds = {
     [](arg_map_t& a) {
         hidl_vec<uint8_t> aes_gcm_iv;
 
-        if (cli::hal_ops::crypto::encrypt(g_hal,
+        if (cli::hal_ops::crypto::encrypt(*g_hal,
                 a["in_plaintext"].in_bytes(), a["in_key_blob"].in_bytes(),
                 a["params"].in_key_params(), a["out_ciphertext"].out_bytes(), aes_gcm_iv))
             return EXIT_FAILURE;
@@ -413,7 +434,7 @@ static const std::vector<cli_command> cmds = {
         "Decrypts <in_ciphertext> with <in_key_blob>, optionally using [params], "
             "saving the plaintext to <out_plaintext>"
     },
-    HAL_NEEDED,
+    HAL_NEEDED_3_0,
     {
         { "in_key_blob", INPUT_FILE, MANDATORY,
             "The decryption key blob"
@@ -429,7 +450,7 @@ static const std::vector<cli_command> cmds = {
         },
     },
     [](arg_map_t& a) {
-        return cli::hal_ops::crypto::decrypt(g_hal,
+        return cli::hal_ops::crypto::decrypt(*g_hal,
                 a["in_ciphertext"].in_bytes(), a["in_key_blob"].in_bytes(),
                 a["params"].in_key_params(), a["out_plaintext"].out_bytes());
     }
@@ -440,7 +461,7 @@ static const std::vector<cli_command> cmds = {
         "Signs <in_message> with <in_key_blob>, optionally using [params], "
             "saving the signature to <out_signature>"
     },
-    HAL_NEEDED,
+    HAL_NEEDED_3_0,
     {
         { "in_key_blob", INPUT_FILE, MANDATORY,
             "The signing key blob"
@@ -456,7 +477,7 @@ static const std::vector<cli_command> cmds = {
         },
     },
     [](arg_map_t& a) {
-        return cli::hal_ops::crypto::sign(g_hal, a["in_message"].in_bytes(),
+        return cli::hal_ops::crypto::sign(*g_hal, a["in_message"].in_bytes(),
                 a["in_key_blob"].in_bytes(), a["params"].in_key_params(),
                 a["out_signature"].out_bytes());
     }
@@ -467,7 +488,7 @@ static const std::vector<cli_command> cmds = {
         "Verifies <in_signature> (generated over <in_message>) with <in_key_blob>, "
             "optionally using [params]"
     },
-    HAL_NEEDED,
+    HAL_NEEDED_3_0,
     {
         { "in_key_blob", INPUT_FILE, MANDATORY,
             "The key blob with which the signature was generated"
@@ -483,7 +504,7 @@ static const std::vector<cli_command> cmds = {
         },
     },
     [](arg_map_t& a) {
-        return cli::hal_ops::crypto::verify(g_hal,
+        return cli::hal_ops::crypto::verify(*g_hal,
                 a["in_message"].in_bytes(), a["in_signature"].in_bytes(),
                 a["in_key_blob"].in_bytes(), a["params"].in_key_params());
     }
@@ -491,6 +512,7 @@ static const std::vector<cli_command> cmds = {
 {
     { "__line_break__" }, {}, HAL_NOT_NEEDED, {}, {}
 },
+#endif /* SUSKEYMASTER_BUILD_HOST */
 {
     { "mkkeybox" },
     {
@@ -580,6 +602,7 @@ static const std::vector<cli_command> cmds = {
 {
     { "__line_break__" }, {}, HAL_NOT_NEEDED, {}, {}
 },
+#ifndef SUSKEYMASTER_BUILD_HOST
 {
     { "transact", "client", "generate" },
     {
@@ -590,7 +613,7 @@ static const std::vector<cli_command> cmds = {
         "Optionally an attestation for the wrapping key may be generated and written to "
             "[out_attestation]."
     },
-    HAL_NEEDED,
+    HAL_NEEDED_4_0,
     {
         {
             "out_keyblob", OUTPUT_FILE, MANDATORY,
@@ -618,7 +641,7 @@ static const std::vector<cli_command> cmds = {
             hidl_vec<hidl_vec<uint8_t>> *const cert_chain_p =
                 gen_att ? &cert_chain : nullptr;
 
-            int r = cli::transact::client::generate_and_attest_wrapping_key(g_hal,
+            int r = cli::transact::client::generate_and_attest_wrapping_key(*g_hal,
                     a["out_keyblob"].out_bytes(), a["out_pubkey"].out_bytes(),
                     cert_chain_p, a["key_params"].in_key_params());
             if (r)
@@ -636,6 +659,7 @@ static const std::vector<cli_command> cmds = {
         }
     }
 },
+#endif /* SUSKEYMASTER_BUILD_HOST */
 {
     { "transact", "server", "verify" },
     {
@@ -699,6 +723,7 @@ static const std::vector<cli_command> cmds = {
         );
     }
 },
+#ifndef SUSKEYMASTER_BUILD_HOST
 {
     { "transact", "client", "import" },
     {
@@ -708,7 +733,7 @@ static const std::vector<cli_command> cmds = {
         "Additionally, [unwrapping_params] may contain a space-separated list of key parameters "
             "that will be passed as the `unwrappingParams` to the `importWrappedKey` call."
     },
-    HAL_NEEDED,
+    HAL_NEEDED_4_0,
     {
         {
             "in_wrapped_data", INPUT_FILE, MANDATORY,
@@ -732,7 +757,7 @@ static const std::vector<cli_command> cmds = {
         }
     },
     [](arg_map_t& a) {
-        return cli::transact::client::import_wrapped_key(g_hal,
+        return cli::transact::client::import_wrapped_key(*g_hal,
                 a["in_wrapped_data"].in_bytes(),
                 a["in_masking_key"].in_bytes(),
                 a["in_wrapping_keyblob"].in_bytes(),
@@ -741,6 +766,7 @@ static const std::vector<cli_command> cmds = {
         );
     }
 },
+#endif /* SUSKEYMASTER_BUILD_HOST */
 {
     { "__line_break__" }, {}, HAL_NOT_NEEDED, {}, {}
 },
@@ -778,12 +804,13 @@ static const std::vector<cli_command> cmds = {
         return EXIT_SUCCESS;
     }
 },
+#ifndef SUSKEYMASTER_BUILD_HOST
 {
     { "vold", "decrypt-with-keystore-key" },
     {
         "Decrypts the <in_vold_encrypted_key> using <in_keystore_key> and <in_secdiscardable>."
     },
-    HAL_NEEDED,
+    HAL_NEEDED_3_0,
     {
         {
             "in_vold_encrypted_key", INPUT_FILE, MANDATORY,
@@ -803,11 +830,12 @@ static const std::vector<cli_command> cmds = {
         }
     },
     [](arg_map_t& a) {
-        return cli::vold::decrypt_vold_key_with_keystore_key(g_hal,
+        return cli::vold::decrypt_vold_key_with_keystore_key(*g_hal,
                 a["in_keystore_key"].in_bytes(), a["in_secdiscardable"].in_bytes(),
                 a["in_vold_encrypted_key"].in_bytes(), a["out_decrypted_key"].out_bytes());
     }
 },
+#endif /* SUSKEYMASTER_BUILD_HOST */
 {
     { "__line_break__" }, {}, HAL_NOT_NEEDED, {}, {}
 },
@@ -923,7 +951,7 @@ static const std::vector<cli_command> cmds = {
         "   [key]: BASE64 - a parameter containing a key blob processed by the command",
         "   [par]: KEY PARAMETERS - a quoted list of key parameters for the command"
     },
-    HAL_NEEDED,
+    HAL_NEEDED_3_0,
     {
         { "cmdline", INPUT_STRING, MANDATORY, nullptr }
     },
@@ -950,7 +978,7 @@ static const std::vector<cli_command> cmds = {
             return 1;
         }
 
-        return cli::samsung::send_indata(g_hal, ver_p, km_ver_p, cmd, pid_p,
+        return cli::samsung::send_indata(*g_hal, ver_p, km_ver_p, cmd, pid_p,
                 int0_p, long0_p, long1_p, bin0_p, bin1_p, bin2_p, key_p, par_p);
     }
 }
@@ -976,6 +1004,7 @@ struct cli_cmd_example {
     }
 };
 static const std::vector<cli_cmd_example> cmd_examples = {
+#ifndef SUSKEYMASTER_BUILD_HOST
     {
         "print out the characteristics of a key generated with APPLICATION_ID='test'",
         "get-characteristics keyblob.bin \"APPLICATION_ID=$(printf 'test' | base64)\""
@@ -997,6 +1026,7 @@ static const std::vector<cli_cmd_example> cmd_examples = {
         "crypto sign keyblob.bin message.txt signature.bin "
             "\"APPLICATION_ID=$(printf '1234' | base64)\""
     },
+#endif /* SUSKEYMASTER_BUILD_HOST */
     {
         "generate a binary suskeymaster keybox file from certificates and keyblobs",
         {
@@ -1009,6 +1039,7 @@ static const std::vector<cli_cmd_example> cmd_examples = {
         "dump a binary keybox file to the current working directory",
         "dumpkeybox keybox.bin ."
     },
+#ifndef SUSKEYMASTER_BUILD_HOST
     {
         "securely import an EC key (`private-ec.der`) from a remote server "
             "to the KeyMaster of the client device (`keyblob-ec.bin`)",
@@ -1027,6 +1058,16 @@ static const std::vector<cli_cmd_example> cmd_examples = {
                 "(client) $ ", true },
         }
     }
+#else
+    {
+        "prepare an EC key (`private-ec.der`) for a secure import on a client device",
+        {
+            { "transact server verify attestation.bin   # Optional", "$ ", true },
+            { "transact server wrap private-ec.der wrapping-pub.x509 "
+                    "wrapped-data.bin masking-key.bin", "$ ", true },
+        }
+    }
+#endif /* SUSKEYMASTER_BUILD_HOST */
 };
 
 static void setup_cgd_log(void)
@@ -1087,21 +1128,74 @@ static void check_print_help(int argc, const char **argv,
     }
 }
 
-static int init_g_hal(void)
+static __attribute__((unused)) void print_inithal_ok_msg(hal_version hal_ver)
 {
-    if (!g_hal.isHALOk()) {
-        std::cerr << "Couldn't obtain handle to KeyMaster HAL service" << std::endl;
-        return EXIT_FAILURE;
-    }
-
     SecurityLevel slvl;
     hidl_string km_name;
     hidl_string km_author_name;
-    g_hal.getHardwareInfo(slvl, km_name, km_author_name);
-    std::cout << "Using keymaster \"" << km_name.c_str()
-        << "\" (of \"" << km_author_name.c_str() << "\") " <<
-        "with SecurityLevel::" << toString(slvl) << std::endl;
-    return EXIT_SUCCESS;
+    g_hal->getHardwareInfo(slvl, km_name, km_author_name);
+    std::cout << "Using " << toString(slvl) << " Keymaster " <<
+        hal_version_major(hal_ver) << "." << hal_version_minor(hal_ver) <<
+        " HAL \"" << km_name.c_str() <<
+        "\" (by \"" << km_author_name.c_str() << "\") " << std::endl;
+}
+static __attribute__((unused)) void print_inithal_fail_msg(hal_version hal_ver)
+{
+    std::cerr << "Couldn't initialize a keymaster " <<
+        hal_version_major(hal_ver) << "." << hal_version_minor(hal_ver) <<
+        " HAL instance" << std::endl;
+}
+static int init_g_hal(hal_version min_ver)
+{
+    if (min_ver == HAL_NONE)
+        return EXIT_SUCCESS;
+
+    const char *km_ver_env = std::getenv("SUSKEYMASTER_HAL_VERSION");
+    (void) km_ver_env;
+
+#ifndef SUSKEYMASTER_HAL_DISABLE_4_1
+    if ((min_ver <= HAL_4_1 && !km_ver_env) || !strcmp(km_ver_env, "4.1")) {
+        g_hal = std::make_unique<kmhal::hidl::HidlSusKeymaster4_1>();
+        if (g_hal->isHALOk()) {
+            print_inithal_ok_msg(HAL_4_1);
+            return EXIT_SUCCESS;
+        } else if (km_ver_env && !strcmp(km_ver_env, "4.1")) {
+            print_inithal_fail_msg(HAL_4_1);
+            return EXIT_FAILURE;
+        }
+    }
+#endif /* SUSKEYMASTER_HAL_DISABLE_4_1 */
+
+#ifndef SUSKEYMASTER_HAL_DISABLE_4_0
+    if ((min_ver <= HAL_4_0 && !km_ver_env) || !strcmp(km_ver_env, "4.0")) {
+        g_hal = std::make_unique<kmhal::hidl::HidlSusKeymaster4_0>();
+        if (g_hal->isHALOk()) {
+            print_inithal_ok_msg(HAL_4_0);
+            return EXIT_SUCCESS;
+        } else if (km_ver_env && !strcmp(km_ver_env, "4.0")) {
+            print_inithal_fail_msg(HAL_4_0);
+            return EXIT_FAILURE;
+        }
+    }
+#endif /* SUSKEYMASTER_HAL_DISABLE_4_0 */
+
+#ifndef SUSKEYMASTER_HAL_DISABLE_3_0
+    if ((min_ver <= HAL_3_0 && !km_ver_env) || !strcmp(km_ver_env, "3.0")) {
+        g_hal = std::make_unique<kmhal::hidl::HidlSusKeymaster3_0>();
+        if (g_hal->isHALOk()) {
+            print_inithal_ok_msg(HAL_3_0);
+            return EXIT_SUCCESS;
+        } else if (km_ver_env && !strcmp(km_ver_env, "3.0")) {
+            print_inithal_fail_msg(HAL_3_0);
+            return EXIT_FAILURE;
+        }
+    }
+#endif /* SUSKEYMASTER_HAL_DISABLE_3_0 */
+
+    std::cerr << "Couldn't initialize a keymaster >= " <<
+        hal_version_major(min_ver) << "." << hal_version_minor(min_ver) <<
+        " HAL instance" << std::endl;
+    return EXIT_FAILURE;
 }
 
 static int read_file(const std::string& path, const std::string& param_name,
@@ -1221,6 +1315,7 @@ static int read_and_deserialize_cert_chain(const std::string& path,
     return 0;
 }
 
+#ifndef SUSKEYMASTER_BUILD_HOST
 static int serialize_and_write_cert_chain(const std::string& path,
         const hidl_vec<hidl_vec<uint8_t>>& cert_chain)
 {
@@ -1266,6 +1361,7 @@ static int serialize_and_write_cert_chain(const std::string& path,
     std::cout << "Successfully wrote attestation cert chain to \"" << path << "\"" << std::endl;
     return 0;
 }
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
 static int scan_keybox_arg(const char *cmdline,
         std::vector<std::string>& out_cert_chain,
@@ -1509,7 +1605,17 @@ static void print_generic_usage(void)
             continue;
         }
 
+#ifdef SUSKEYMASTER_BUILD_HOST
+        if (c.required_hal_version > HAL_NONE)
+            continue;
+#endif /* SUSKEYMASTER_BUILD_HOST */
+
         std::cout << "    ";
+
+        if (c.required_hal_version > HAL_3_0) {
+            std::cout << "(since Keymaster " << hal_version_major(c.required_hal_version)
+                << "." << hal_version_minor(c.required_hal_version) << ") ";
+        }
 
         for (const char *s : c.argv_match)
             std::cout << s << " ";
@@ -1709,8 +1815,8 @@ static int match_and_run_handler(int argc, const char **argv)
     }
 
     /* Init HAL if needed */
-    if (matched_cmd->hal_needed) {
-        if (init_g_hal()) {
+    if (matched_cmd->required_hal_version > HAL_NONE) {
+        if (init_g_hal(matched_cmd->required_hal_version)) {
             std::cerr << "HAL initialization failed for a command that requires it " <<
                 "(\"" << full_cmd_name << "\")" << std::endl;
             return EXIT_FAILURE;
@@ -1752,8 +1858,11 @@ namespace _ {
         return ::ntohl(n);
     }
 
+#ifndef SUSKEYMASTER_BUILD_HOST
     static uint32_t htonl_(uint32_t h)
     {
         return ::htonl(h);
     }
+#endif /* SUSKEYMASTER_BUILD_HOST */
 };
+

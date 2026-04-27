@@ -2,7 +2,7 @@
 #include "km-params.hpp"
 #include "keymaster-types-c.h"
 #include <hidl/HidlSupport.h>
-#include <android/hardware/keymaster/4.0/types.h>
+#include <android/hardware/keymaster/generic/types.h>
 #include <string>
 #include <strings.h>
 #include <vector>
@@ -18,7 +18,7 @@ namespace kmhal {
 namespace util {
 
 using ::android::hardware::hidl_vec;
-using namespace ::android::hardware::keymaster::V4_0;
+using namespace ::android::hardware::keymaster::generic;
 
 static void parse_key_values(const char *arg_,
         std::vector<std::pair<std::string, std::string>>& out);
@@ -710,6 +710,14 @@ static bool is_valid_intval_for_enum(Tag t, uint32_t val)
                 val == static_cast<uint32_t>(Digest::SHA_2_256) ||
                 val == static_cast<uint32_t>(Digest::SHA_2_384) ||
                 val == static_cast<uint32_t>(Digest::SHA_2_512);
+        case Tag::KDF:
+            return
+                val == static_cast<uint32_t>(KeyDerivationFunction::NONE) ||
+                val == static_cast<uint32_t>(KeyDerivationFunction::RFC5869_SHA256) ||
+                val == static_cast<uint32_t>(KeyDerivationFunction::ISO18033_2_KDF1_SHA1) ||
+                val == static_cast<uint32_t>(KeyDerivationFunction::ISO18033_2_KDF1_SHA256) ||
+                val == static_cast<uint32_t>(KeyDerivationFunction::ISO18033_2_KDF2_SHA1) ||
+                val == static_cast<uint32_t>(KeyDerivationFunction::ISO18033_2_KDF2_SHA256);
         case Tag::EC_CURVE:
             return
                 val == static_cast<uint32_t>(EcCurve::P_224) ||

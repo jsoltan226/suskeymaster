@@ -380,7 +380,6 @@ static i32 rsa_pubkey_sanity(const EVP_PKEY *key)
 {
     bool ok = false;
 
-    i32 bits = 0;
     const RSA *rsa = NULL;
     const BIGNUM *modulus = NULL;
     const BIGNUM *exponent = NULL;;
@@ -395,12 +394,11 @@ static i32 rsa_pubkey_sanity(const EVP_PKEY *key)
     else if (exponent == NULL)
         goto_error("Couldn't get the RSA exponent!");
 
-    bits = BN_num_bits(modulus);
-    if (bits < 2048)
-        goto_error("RSA modulus is too small (%d - minimal: 2048)", bits);
+    if (BN_is_negative(modulus))
+        goto_error("Invalid RSA modulus");
 
-    if (!BN_is_odd(exponent))
-        goto_error("Invalid RSA exponent (even value)!");
+    if (!BN_is_odd(exponent) || BN_is_negative(exponent))
+        goto_error("Invalid RSA exponent!");
 
     ok = true;
 
@@ -430,7 +428,8 @@ static i32 ec_pubkey_sanity(const EVP_PKEY *key)
     if (curve_nid == NID_undef)
         goto_error("Couldn't get the EC curve name!");
 
-    if (curve_nid != NID_X9_62_prime256v1 &&
+    if (curve_nid != NID_secp224r1 &&
+            curve_nid != NID_X9_62_prime256v1 &&
             curve_nid != NID_secp384r1 &&
             curve_nid != NID_secp521r1)
     {

@@ -6,9 +6,8 @@
 #include <libsuscertmod/keybox.h>
 #include <libsuscertmod/certmod.h>
 #include <libsuscertmod/samsung-sus-indata.h>
-#include <android/log.h>
 #include <android/hardware/keymaster/4.0/types.h>
-#include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
+#include <android/log.h>
 #include <cstdint>
 #include <cstring>
 

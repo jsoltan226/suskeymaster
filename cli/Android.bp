@@ -22,7 +22,7 @@ cc_binary {
         "libcgdcore",
         "libsuskmhal",
         "libsuscertmod",
-        "libbuiltinkeybox"
+        "libbuiltinkeybox",
     ],
 
     shared_libs: [
@@ -38,22 +38,35 @@ cc_binary {
     target: {
         host: {
             enabled: true,
-            cflags: [ "-DSUSKEYMASTER_BUILD_HOST", "-USUSKEYMASTER_BUILD_ANDROID" ],
+            cflags: [
+                "-DSUSKEYMASTER_BUILD_HOST", "-USUSKEYMASTER_BUILD_ANDROID",
+                "-USUSKEYMASTER_HAL_ENABLE_3_0", "-DSUSKEYMASTER_HAL_DISABLE_3_0",
+                "-USUSKEYMASTER_HAL_ENABLE_4_0", "-DSUSKEYMASTER_HAL_DISABLE_4_0",
+                "-USUSKEYMASTER_HAL_ENABLE_4_1", "-DSUSKEYMASTER_HAL_DISABLE_4_1",
+            ],
             static_libs: [
                 "libcrypto",
             ],
         },
         android_arm64: {
-            cflags: [ "-USUSKEYMASTER_BUILD_HOST", "-DSUSKEYMASTER_BUILD_ANDROID" ],
+            cflags: [
+                "-USUSKEYMASTER_BUILD_HOST", "-DSUSKEYMASTER_BUILD_ANDROID",
+                "-DSUSKEYMASTER_HAL_ENABLE_3_0", "-USUSKEYMASTER_HAL_DISABLE_3_0",
+                "-DSUSKEYMASTER_HAL_ENABLE_4_0", "-USUSKEYMASTER_HAL_DISABLE_4_0",
+                "-DSUSKEYMASTER_HAL_ENABLE_4_1", "-USUSKEYMASTER_HAL_DISABLE_4_1",
+            ],
             shared_libs: [
                 "liblog",
                 "libutils",
                 "libhidltransport",
                 "libhidlbase",
-                "android.hardware.keymaster@4.0",
             ],
             static_libs: [
-                "libcrypto_sus_prebuilt"
+                "libcrypto_sus_prebuilt",
+                "libcutils",
+                "android.hardware.keymaster@3.0",
+                "android.hardware.keymaster@4.0",
+                "android.hardware.keymaster@4.1",
             ],
         },
         android_arm: { enabled: false },

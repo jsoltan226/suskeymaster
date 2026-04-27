@@ -8,7 +8,7 @@
 #include <libsuskmhal/util/samsung-utils.h>
 #include <libsuskmhal/util/keymaster-types-c.h>
 #include <libsuskmhal/util/samsung-sus-indata.hpp>
-#include <android/hardware/keymaster/4.0/types.h>
+#include <android/hardware/keymaster/generic/types.h>
 #include <cstdarg>
 #include <cstdlib>
 #include <unordered_map>
@@ -296,7 +296,7 @@ err:
 
 } /* namespace ekey */
 
-int send_indata(HidlSusKeymaster4& hal,
+int send_indata(HidlSusKeymaster& hal,
         uint32_t *ver, uint32_t *km_ver, uint32_t cmd, uint32_t *pid,
         uint32_t *int0, uint64_t *long0, uint64_t *long1, const hidl_vec<uint8_t> *bin0,
         const hidl_vec<uint8_t> *bin1, const hidl_vec<uint8_t> *bin2,
