@@ -779,6 +779,36 @@ static const std::vector<cli_command> cmds = {
     }
 },
 {
+    { "vold", "decrypt-with-keystore-key" },
+    {
+        "Decrypts the <in_vold_encrypted_key> using <in_keystore_key> and <in_secdiscardable>."
+    },
+    HAL_NEEDED,
+    {
+        {
+            "in_vold_encrypted_key", INPUT_FILE, MANDATORY,
+            "The vold key to decrypt"
+        },
+        {
+            "in_keystore_key", INPUT_FILE, MANDATORY,
+            "The keystore key used to encrypt <in_vold_encrypted_key>"
+        },
+        {
+            "in_secdiscardable", INPUT_FILE, MANDATORY,
+            "The secdiscardable file used to encrypt <in_vold_encrypted_key>"
+        },
+        {
+            "out_decrypted_key", OUTPUT_FILE, MANDATORY,
+            "The file to which the decrypted vold key will be written"
+        }
+    },
+    [](arg_map_t& a) {
+        return cli::vold::decrypt_vold_key_with_keystore_key(g_hal,
+                a["in_keystore_key"].in_bytes(), a["in_secdiscardable"].in_bytes(),
+                a["in_vold_encrypted_key"].in_bytes(), a["out_decrypted_key"].out_bytes());
+    }
+},
+{
     { "__line_break__" }, {}, HAL_NOT_NEEDED, {}, {}
 },
 {

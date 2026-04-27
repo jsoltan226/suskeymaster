@@ -109,6 +109,10 @@ namespace transact {
 namespace vold {
     int generate_app_id(hidl_vec<uint8_t> const& in_secdiscardable,
             hidl_vec<uint8_t>& out_app_id);
+
+    int decrypt_vold_key_with_keystore_key(HidlSusKeymaster4& hal,
+            hidl_vec<uint8_t> const& in_keystore_key, hidl_vec<uint8_t> const& in_secdiscardable,
+            hidl_vec<uint8_t> const& in_encrypted_key, hidl_vec<uint8_t>& out_decrypted_key);
 };
 
 namespace samsung {

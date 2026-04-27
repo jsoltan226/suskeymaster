@@ -1,12 +1,24 @@
 #define OPENSSL_API_COMPAT 0x10002000L
 #define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
+#include <libsuskmhal/hidl/hidl-hal.hpp>
 #include <openssl/sha.h>
 #include <cstring>
 
 namespace suskeymaster {
 namespace cli {
 namespace vold {
+
+using namespace ::android::hardware::keymaster::V4_0;
+using ::android::hardware::hidl_vec;
+using kmhal::hidl::HidlSusKeymaster4;
+
+static hidl_vec<uint8_t> remove_keystore2_prefix_if_exists(const hidl_vec<uint8_t>& blob);
+static void append_sha256_sum(hidl_vec<uint8_t>& blob);
+
+static void get_iv_and_ciphertext_from_encrypted_blob(const hidl_vec<uint8_t> encrypted_key,
+        hidl_vec<uint8_t>& out_iv, hidl_vec<uint8_t>& out_ciphertext);
+
 
 int generate_app_id(hidl_vec<uint8_t> const& in_secdiscardable,
         hidl_vec<uint8_t>& out_app_id)
@@ -51,6 +63,75 @@ int generate_app_id(hidl_vec<uint8_t> const& in_secdiscardable,
     }
 
     return 0;
+}
+
+int decrypt_vold_key_with_keystore_key(HidlSusKeymaster4& hal,
+        hidl_vec<uint8_t> const& in_keystore_key, hidl_vec<uint8_t> const& in_secdiscardable,
+        hidl_vec<uint8_t> const& in_encrypted_key, hidl_vec<uint8_t>& out_decrypted_key)
+{
+
+    hidl_vec<uint8_t> keystore_key_blob = remove_keystore2_prefix_if_exists(in_keystore_key);
+    append_sha256_sum(keystore_key_blob);
+
+    hidl_vec<uint8_t> app_id;
+    if (generate_app_id(in_secdiscardable, app_id)) {
+        std::cerr << "Failed to generate Tag::APPLICATION_ID from secdiscardable" << std::endl;
+        return 1;
+    }
+
+    hidl_vec<uint8_t> enc_key_iv, enc_key_ciphertext;
+    get_iv_and_ciphertext_from_encrypted_blob(in_encrypted_key, enc_key_iv, enc_key_ciphertext);
+
+    hidl_vec<KeyParameter> params(2);
+    params[0].tag = Tag::APPLICATION_ID;
+    params[0].blob = app_id;
+    params[1].tag = Tag::NONCE;
+    params[1].blob = enc_key_iv;
+
+    if (hal_ops::crypto::decrypt(hal, enc_key_ciphertext, keystore_key_blob, params,
+                out_decrypted_key))
+    {
+        std::cerr << "Failed to decrypt vold encrypted key" << std::endl;
+        return 1;
+    }
+
+    std::cout << "Successfully decrypted vold key with keystore key" << std::endl;
+    return 0;
+}
+
+static hidl_vec<uint8_t> remove_keystore2_prefix_if_exists(const hidl_vec<uint8_t>& blob) {
+    constexpr size_t PREFIX_SIZE = 8;
+    constexpr uint8_t PREFIX_MAGIC[7] = { 'p', 'K', 'M', 'b', 'l', 'o', 'b' };
+
+    /* Check if the blob is properly prefixed, and if not,
+     * treat it as though it was just a normal un-prefixed blob
+     * (according to AOSP, earlier versions of keystore didn't prefix the blobs at all) */
+    if (blob.size() < PREFIX_SIZE ||
+        std::memcmp(blob.data(), PREFIX_MAGIC, sizeof(PREFIX_MAGIC)) ||
+        blob[PREFIX_SIZE - 1] != 0 /* isSoftKeyMint byte */
+    ) {
+        return hidl_vec<uint8_t>(blob);
+    }
+
+    return hidl_vec<uint8_t>(blob.begin() + PREFIX_SIZE, blob.end());
+}
+
+static void append_sha256_sum(hidl_vec<uint8_t>& blob)
+{
+    uint8_t digest[SHA256_DIGEST_LENGTH] = { 0 };
+    (void) SHA256(blob.data(), blob.size(), digest);
+
+    blob.resize(blob.size() + SHA256_DIGEST_LENGTH);
+    std::memcpy(blob.data() + (blob.size() - SHA256_DIGEST_LENGTH),
+            digest, SHA256_DIGEST_LENGTH);
+}
+
+static void get_iv_and_ciphertext_from_encrypted_blob(const hidl_vec<uint8_t> blob,
+        hidl_vec<uint8_t>& out_iv, hidl_vec<uint8_t>& out_ciphertext)
+{
+    static constexpr size_t GCM_NONCE_BYTES = 12;
+    out_iv = hidl_vec<uint8_t>(blob.begin(), blob.begin() + GCM_NONCE_BYTES);
+    out_ciphertext = hidl_vec<uint8_t>(blob.begin() + GCM_NONCE_BYTES, blob.end());
 }
 
 } /* namespace vold */
