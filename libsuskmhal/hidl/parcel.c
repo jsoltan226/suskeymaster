@@ -4,21 +4,29 @@
 #include <core/int.h>
 #include <core/util.h>
 #include <stdatomic.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <core/vector.h>
+#include <core/bitfield.h>
 #include <linux/android/binder.h>
 #include <string.h>
 #include <unistd.h>
 
 #define MODULE_NAME "hidl-parcel"
 
+struct parcel_binder_object {
+    u32 serialized_obj_off;
+    bool fixup_buffer_addr;
+};
+
 struct kmhal_hidl_parcel {
     _Atomic bool initialized_;
 
     VECTOR(u8) buffer;
 
-    VECTOR(binder_size_t) object_offsets;
-    binder_size_t objects_size;
+    struct bitfield objs_fixup;
+    VECTOR(binder_size_t) obj_offsets;
+    binder_size_t objs_size;
 
     _Atomic bool txn_pending;
     struct kmhal_hidl_binder_tr_sg_args txn_arg;
@@ -31,7 +39,10 @@ static inline binder_size_t align4(binder_size_t s);
 static inline binder_size_t align8(binder_size_t s);
 
 static void register_object(struct kmhal_hidl_parcel *parcel,
-        binder_size_t offset, binder_size_t size);
+        binder_size_t obj_buf_size, u32 serialized_obj_data_off,
+        bool obj_buf_in_parcel_buf
+);
+static u32 get_next_free_obj_idx(struct kmhal_hidl_parcel *parcel);
 
 #if 0
 static int write_unaligned(struct kmhal_hidl_parcel *p,
@@ -49,7 +60,8 @@ struct kmhal_hidl_parcel * kmhal_hidl_parcel_new(void)
 
     ret->buffer = vector_new(u8);
 
-    ret->object_offsets = vector_new(binder_size_t);
+    bitfield_dyn_init(&ret->objs_fixup, 0);
+    ret->obj_offsets = vector_new(binder_size_t);
 
     atomic_store(&ret->txn_pending, false);
     /* `ret->txn_arg` already zeroed by `calloc()` */
@@ -63,34 +75,28 @@ err:
     return NULL;
 }
 
-int kmhal_hidl_parcel_write_bytes(struct kmhal_hidl_parcel *parcel,
+void kmhal_hidl_parcel_write_bytes_inline(struct kmhal_hidl_parcel *parcel,
         const void *data, size_t len)
 {
-    if (parcel == NULL || !atomic_load(&parcel->initialized_))
-        return -1;
-    else if (len == 0)
-        return 0;
-    else if (len > 0 && data == NULL)
-        return -1;
+    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
+            (data != NULL || len > 0));
 
     /* `vector_resize` already memset()s the whole thing to zero,
      * including any of our additional padding bytes */
     const size_t offset = align4(vector_size(parcel->buffer));
     vector_resize(&parcel->buffer, offset + len);
     memcpy(parcel->buffer + offset, data, len);
-    return 0;
 }
 
-int kmhal_hidl_parcel_write_u32(struct kmhal_hidl_parcel *parcel, const u32 u)
+void kmhal_hidl_parcel_write_u32(struct kmhal_hidl_parcel *parcel, const u32 u)
 {
     u32 u_ = u;
-    return kmhal_hidl_parcel_write_bytes(parcel, &u_, sizeof(u32));
+    kmhal_hidl_parcel_write_bytes_inline(parcel, &u_, sizeof(u32));
 }
 
-int kmhal_hidl_parcel_write_u64(struct kmhal_hidl_parcel *parcel, const u64 u)
+void kmhal_hidl_parcel_write_u64(struct kmhal_hidl_parcel *parcel, const u64 u)
 {
-    if (parcel == NULL || !atomic_load(&parcel->initialized_))
-        return -1;
+    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
 
     size_t newpos = align8(vector_size(parcel->buffer));
     size_t newsize = newpos + sizeof(u64);
@@ -99,48 +105,87 @@ int kmhal_hidl_parcel_write_u64(struct kmhal_hidl_parcel *parcel, const u64 u)
 
     const u64 u_ = u;
     memcpy(parcel->buffer + newpos, &u_, sizeof(u64));
-
-    return 0;
 }
 
-int kmhal_hidl_parcel_write_string(struct kmhal_hidl_parcel *parcel,
+void kmhal_hidl_parcel_write_cstring_inline(struct kmhal_hidl_parcel *parcel,
         const char *str)
 {
-    if (parcel == NULL || !atomic_load(&parcel->initialized_) || str == NULL)
-        return -1;
-
-    /* string data || binder_buffer_object
-     * everything aligned to 8 bytes */
+    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
+            str != NULL);
 
     /* Write the string data */
-    const binder_size_t str_offset = align8(vector_size(parcel->buffer));
+    const binder_size_t str_offset = align4(vector_size(parcel->buffer));
     const size_t str_len = strlen(str),
-          str_len_full = align8(str_len + 1 /* include '\0' */);
+          str_len_full = align4(str_len + sizeof((char)'\0'));
 
     vector_resize(&parcel->buffer, str_offset + str_len_full);
     memcpy(parcel->buffer + str_offset, str, str_len);
     parcel->buffer[str_offset + str_len] = '\0';
+}
 
-    /* Write the binder_buffer_object */
-    struct binder_buffer_object obj = {
+struct serialized_hidl_string {
+        const void *buffer;
+        u32 size;
+        u32 owns_buffer;
+};
+_Static_assert(offsetof(struct serialized_hidl_string, buffer) == 0,
+        "Invalid offset of the buffer pointer in HIDL string");
+_Static_assert(offsetof(struct serialized_hidl_string, size) == 8,
+        "Invalid offset of the size u32 in HIDL string");
+_Static_assert(offsetof(struct serialized_hidl_string, owns_buffer) == 12,
+        "Invalid offset of the `owns_buffer` u32 in HIDL string");
+_Static_assert(sizeof(struct serialized_hidl_string) == 16,
+        "Invalid size of the HIDL string struct");
+
+void kmhal_hidl_parcel_write_hidl_string(
+        struct kmhal_hidl_parcel *parcel,
+        const char *buffer, u32 size, bool owns_buffer
+)
+{
+    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
+            (size == 0 || buffer != NULL));
+
+    const size_t OBJ_SIZE = sizeof(struct binder_buffer_object);
+
+    const size_t hstr_obj_off = align4(vector_size(parcel->buffer));
+    const size_t bytes_obj_off = align4(hstr_obj_off + OBJ_SIZE);
+    const size_t hstr_struct_off = align4(bytes_obj_off + OBJ_SIZE);
+
+    const size_t new_size = hstr_struct_off +
+        sizeof(struct serialized_hidl_string);
+
+    struct binder_buffer_object hstr_obj = {
         .hdr.type = BINDER_TYPE_PTR,
         .flags = 0,
-
-        /* Fixed up later since `vector_resize` might cause
-         * the base pointer to move later */
-        .buffer = /* parcel->buffer + */ str_offset,
-
-        .length = str_len_full,
-
-        .parent = 0, .parent_offset = 0
+        .buffer = /* parcel->buffer + */ hstr_struct_off,
+        .length = sizeof(struct serialized_hidl_string),
     };
-    const size_t obj_offset = align8(vector_size(parcel->buffer));
+    const binder_size_t hstr_obj_idx = get_next_free_obj_idx(parcel);
 
-    vector_resize(&parcel->buffer, obj_offset + sizeof(obj));
-    memcpy(parcel->buffer + obj_offset, &obj, sizeof(obj));
-    register_object(parcel, obj_offset, str_len_full);
+    struct binder_buffer_object bytes_obj = {
+        .hdr.type = BINDER_TYPE_PTR,
+        .flags = BINDER_BUFFER_FLAG_HAS_PARENT,
+        .buffer = (binder_uintptr_t)buffer,
+        .length = size,
+        .parent = hstr_obj_idx,
+        .parent_offset = offsetof(struct serialized_hidl_string, buffer)
+    };
 
-    return 0;
+    struct serialized_hidl_string hstr_struct = {
+        .buffer = buffer,
+        .size = size - 1,
+        .owns_buffer = owns_buffer
+    };
+
+    vector_resize(&parcel->buffer, new_size);
+
+    memcpy(parcel->buffer + hstr_obj_off, &hstr_obj, sizeof(hstr_obj));
+    register_object(parcel, sizeof(hstr_struct), hstr_obj_off, true);
+
+    memcpy(parcel->buffer + bytes_obj_off, &bytes_obj, sizeof(bytes_obj));
+    register_object(parcel, size, bytes_obj_off, false);
+
+    memcpy(parcel->buffer + hstr_struct_off, &hstr_struct, sizeof(hstr_struct));
 }
 
 void kmhal_hidl_parcel_pack(struct kmhal_hidl_binder_transaction *txn,
@@ -154,12 +199,19 @@ void kmhal_hidl_parcel_pack(struct kmhal_hidl_binder_transaction *txn,
     s_assert(!prev_pending, "Attempt to queue parcel for transaction twice");
 
     /* Fill in all the buffer pointers */
-    for (u32 i = 0; i < vector_size(parcel->object_offsets); i++) {
-        const binder_size_t off = parcel->object_offsets[i];
+    const u32 n_objs = vector_size(parcel->obj_offsets);
+    s_assert(n_objs == bitfield_size_bits(parcel->objs_fixup),
+            "Invalid state!");
+    for (u32 i = 0; i < n_objs; i++) {
+        if (!bitfield_getval(&parcel->objs_fixup, i))
+            continue;
 
+        const binder_size_t off = parcel->obj_offsets[i];
         if (off + sizeof(struct binder_buffer_object) >
                 vector_size(parcel->buffer))
             s_log_fatal("Binder buffer object overruns parcel buffer!");
+        else if (off > UINT32_MAX)
+            s_log_fatal("Offset %ju too large", off);
 
         /* It's better to just bear the immeasurable cost of copying 40 bytes
          * rather than to engage in sketchy pointer arithmetic
@@ -200,9 +252,9 @@ void kmhal_hidl_parcel_pack(struct kmhal_hidl_binder_transaction *txn,
             .handle = handle,
             .data_buf = parcel->buffer,
             .data_size = vector_size(parcel->buffer),
-            .offsets_buf = parcel->object_offsets,
-            .offsets_count = vector_size(parcel->object_offsets),
-            .sg_buffers_size = parcel->objects_size
+            .offsets_buf = parcel->obj_offsets,
+            .offsets_count = vector_size(parcel->obj_offsets),
+            .sg_buffers_size = parcel->objs_size
         },
         .out_reply = {}
     };
@@ -266,9 +318,9 @@ static void parcel_destroy__(struct kmhal_hidl_parcel **parcel_p,
 
     struct kmhal_hidl_parcel *const parcel = *parcel_p;
 
-    vector_destroy(&parcel->object_offsets);
+    bitfield_dyn_destroy(&parcel->objs_fixup);
+    vector_destroy(&parcel->obj_offsets);
     vector_destroy(&parcel->buffer);
-    parcel->objects_size = 0;
 
     const bool txn_pending = atomic_exchange(&parcel->txn_pending, false);
     if (!allow_pending_transaction && txn_pending) {
@@ -301,10 +353,18 @@ static inline binder_size_t align8(binder_size_t s)
 }
 
 static void register_object(struct kmhal_hidl_parcel *parcel,
-        binder_size_t offset, binder_size_t size)
+        binder_size_t obj_buf_size, u32 serialized_obj_data_off,
+        bool obj_buf_in_parcel_buf
+)
 {
-    vector_push_back(&parcel->object_offsets, offset);
-    parcel->objects_size += size;
+    vector_push_back(&parcel->obj_offsets, serialized_obj_data_off);
+    bitfield_dyn_push_back(&parcel->objs_fixup, obj_buf_in_parcel_buf);
+    parcel->objs_size += align8(obj_buf_size);
+}
+
+static u32 get_next_free_obj_idx(struct kmhal_hidl_parcel *parcel)
+{
+    return vector_size(parcel->obj_offsets);
 }
 
 #if 0

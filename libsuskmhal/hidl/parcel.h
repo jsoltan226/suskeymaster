@@ -68,7 +68,7 @@ struct kmhal_hidl_parcel * kmhal_hidl_parcel_new(void);
  * @param len Number of bytes to write.
  * @return 0 on success, non-zero on failure.
  */
-int kmhal_hidl_parcel_write_bytes(
+void kmhal_hidl_parcel_write_bytes_inline(
         struct kmhal_hidl_parcel *parcel,
         const void *data,
         size_t len
@@ -82,9 +82,8 @@ int kmhal_hidl_parcel_write_bytes(
  *
  * @param parcel Parcel to write into.
  * @param u Value to serialize.
- * @return 0 on success, non-zero on failure.
  */
-int kmhal_hidl_parcel_write_u32(
+void kmhal_hidl_parcel_write_u32(
         struct kmhal_hidl_parcel *parcel,
         const u32 u
 );
@@ -95,33 +94,46 @@ int kmhal_hidl_parcel_write_u32(
  *
  * @param parcel Parcel to write into.
  * @param u Value to serialize.
- * @return 0 on success, non-zero on failure.
  */
-int kmhal_hidl_parcel_write_u64(
+void kmhal_hidl_parcel_write_u64(
         struct kmhal_hidl_parcel *parcel,
         const u64 u
 );
 
 /**
  * Serialize a UTF-8 string into the parcel.
- * The string is serialized as:
- *  - Null-terminated UTF-8 string data
- *  - A corresponding `binder_buffer_object`
+ *
+ * The string contents are copied into parcel-owned memory.
+ *
+ * @param parcel Parcel to write into.
+ * @param str Null-terminated C string.
+ */
+void kmhal_hidl_parcel_write_cstring_inline(
+        struct kmhal_hidl_parcel *parcel,
+        const char *str
+);
+
+/**
+ * Serialize an HIDL string into the parcel.
  *
  * Binder object offsets are registered automatically.
  *
  * String storage and object metadata are aligned
  * to 8-byte boundaries.
  *
- * The string contents are copied into parcel-owned memory.
+ * The string contents are NOT copied into parcel-owned memory.
+ * so the `buffer` pointer must remain valid until the ioctl call.
  *
  * @param parcel Parcel to write into.
- * @param str Null-terminated UTF-8 string.
- * @return 0 on success, non-zero on failure.
+ * @param str String to serialize.
+ * @param size The size of the string, including the NULL terminator
+ * @param owns_buffer whether the string is "owned" by the HIDL object.
+ *  Should be set to false, but left here to provide full control
+ *  over the fields of the serialized HIDL string.
  */
-int kmhal_hidl_parcel_write_string(
+void kmhal_hidl_parcel_write_hidl_string(
         struct kmhal_hidl_parcel *parcel,
-        const char *str
+        const char *buffer, u32 size, bool owns_buffer
 );
 
 /**

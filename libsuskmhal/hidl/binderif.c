@@ -727,6 +727,8 @@ static u32 handle_ioctl_response(const u8 **p, const u8 *end,
         o->offsets_buf = (void *)binder_td.data.ptr.offsets;
         o->offsets_count = binder_td.offsets_size / sizeof(binder_size_t);
 
+        o->flags = binder_td.flags;
+
         /* reset later in `set_transaction_input_data` if needed */
         o->status = KMHAL_HIDL_BINDER_TR_SG_OK;
 

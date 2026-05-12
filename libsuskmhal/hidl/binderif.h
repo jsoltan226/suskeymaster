@@ -163,6 +163,8 @@ enum kmhal_hidl_binder_tr_sg_status {
 struct kmhal_hidl_binder_tr_sg_args_out {
     enum kmhal_hidl_binder_tr_sg_status status; /* Transaction status */
 
+    u32 flags; /* Flags decribing the data, such as `TF_STATUS_CODE` */
+
     const void *data_buf; /* Transaction data */
     binder_size_t data_size; /* Number of bytes of transaction data */
 
