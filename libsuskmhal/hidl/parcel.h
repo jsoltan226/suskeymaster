@@ -27,6 +27,7 @@
  */
 
 #include "binderif.h"
+#include "hidl-types.h"
 #include <core/int.h>
 #include <stddef.h>
 #include <linux/android/binder.h>
@@ -49,12 +50,28 @@ extern "C" {
 struct kmhal_hidl_parcel;
 
 /**
- * Allocate and initialize a new parcel.
+ * Allocate and initialize a new empty parcel.
  * The returned parcel initially contains no serialized data.
  *
  * @return New parcel instance on success, NULL on allocation failure.
  */
 struct kmhal_hidl_parcel * kmhal_hidl_parcel_new(void);
+
+/**
+ * Allocate and initailize parcel using data from a transaction reply.
+ * The returned parcel is meant to be used for deserializing
+ * protocol responses, but can also later be written to and resent,
+ * just like a normal parcel created with `kmhal_hidl_parcel_new`.
+ *
+ * @param reply The reply data returned by `kmhal_hidl_parcel_unpack`
+ *  with which the new parcel is to be initialized.
+ *
+ * @return New initialized parcel on succcess,
+ *  NULL on allocation or parsing error.
+ */
+struct kmhal_hidl_parcel * kmhal_hidl_parcel_new_from_reply(
+        const struct kmhal_hidl_binder_tr_sg_args_out *reply
+);
 
 /**
  * Append arbitrary bytes to the parcel payload.
@@ -83,7 +100,7 @@ void kmhal_hidl_parcel_write_bytes_inline(
  * @param parcel Parcel to write into.
  * @param u Value to serialize.
  */
-void kmhal_hidl_parcel_write_u32(
+void kmhal_hidl_parcel_write_inline_u32(
         struct kmhal_hidl_parcel *parcel,
         const u32 u
 );
@@ -95,7 +112,7 @@ void kmhal_hidl_parcel_write_u32(
  * @param parcel Parcel to write into.
  * @param u Value to serialize.
  */
-void kmhal_hidl_parcel_write_u64(
+void kmhal_hidl_parcel_write_inline_u64(
         struct kmhal_hidl_parcel *parcel,
         const u64 u
 );
@@ -108,7 +125,7 @@ void kmhal_hidl_parcel_write_u64(
  * @param parcel Parcel to write into.
  * @param str Null-terminated C string.
  */
-void kmhal_hidl_parcel_write_cstring_inline(
+void kmhal_hidl_parcel_write_inline_cstring(
         struct kmhal_hidl_parcel *parcel,
         const char *str
 );
@@ -121,19 +138,18 @@ void kmhal_hidl_parcel_write_cstring_inline(
  * String storage and object metadata are aligned
  * to 8-byte boundaries.
  *
- * The string contents are NOT copied into parcel-owned memory.
- * so the `buffer` pointer must remain valid until the ioctl call.
+ * The contents of the struct `str` are copied into the parcel's buffer,
+ * but the contents of `str->buffer` are not,
+ * so `str->buffer` must remain valid until the ioctl call.
  *
  * @param parcel Parcel to write into.
  * @param str String to serialize.
- * @param size The size of the string, including the NULL terminator
- * @param owns_buffer whether the string is "owned" by the HIDL object.
- *  Should be set to false, but left here to provide full control
- *  over the fields of the serialized HIDL string.
+ * @param str_bytes_size The size of the string, including the NULL terminator
  */
 void kmhal_hidl_parcel_write_hidl_string(
         struct kmhal_hidl_parcel *parcel,
-        const char *buffer, u32 size, bool owns_buffer
+        struct kmhal_hidl_string *str,
+        size_t str_bytes_size
 );
 
 /**
@@ -187,6 +203,17 @@ int kmhal_hidl_parcel_unpack(
         struct kmhal_hidl_parcel **parcel_p,
         struct kmhal_hidl_binder_tr_sg_args_out *out
 );
+
+int kmhal_hidl_parcel_read_inline_u32(struct kmhal_hidl_parcel *parcel,
+        binder_size_t offset, u32 *out);
+int kmhal_hidl_parcel_read_inline_u64(struct kmhal_hidl_parcel *parcel,
+        binder_size_t offset, u64 *out);
+
+int kmhal_hidl_parcel_read_hidl_vec(struct kmhal_hidl_parcel *parcel,
+        u32 vec_obj_off_idx, bool is_child, struct kmhal_hidl_vec *out);
+
+int kmhal_hidl_parcel_read_hidl_string(struct kmhal_hidl_parcel *parcel,
+        u32 hstr_obj_off_idx, bool is_child, struct kmhal_hidl_string *out);
 
 /**
  * Destroy a parcel and release all associated resources.

@@ -26,7 +26,7 @@ typedef char u_filepath_t[u_FILEPATH_SIZE];
     goto err;                   \
 } while (0)
 
-#define u_check_params(expr) s_assert((expr), "invalid parameters");
+#define u_check_params(expr) s_assert((expr), "invalid parameters")
 
 #define u_color_arg_expand(color) (color).r, (color).g, (color).b, (color).a
 
@@ -34,7 +34,7 @@ typedef char u_filepath_t[u_FILEPATH_SIZE];
 
 #define u_strlen(str_literal) (sizeof((str_literal)) - 1)
 
-#define u_nbits(x) ((x) > 0 ? ((((x) - 1) / (8 * sizeof((u64)))) + 1) : 0)
+#define u_nbits(x) ((x) + 63 / 64)
 
 #define u_str_helper_(x) #x
 #define u_str(x) u_str_helper_(x)

@@ -29,7 +29,7 @@ void * vector_init(u32 item_size);
 #define vector_at(v, index) ((v) != NULL && (index) < vector_size((v))      \
     ? (v)[(index)]                                                          \
     : (s_abort("vector", "vector_at",                                       \
-        "index out of bounds"), u_generic64_zero(*v))                       \
+        "index out of bounds"), *v)                                         \
 )
 
 /* Append `item` to `v` */
@@ -69,7 +69,11 @@ void * vector_end(void *v);
 /* Check whether `v` is empty */
 bool vector_empty(const void *v);
 
-/* Return the size of `v` (number of elements) */
+/* Return the size of `v` (number of elements)
+ *
+ * hacky pointer arithmetic here because inlining this is highly
+ * beneficial due to the frequent usage of `vector_size`
+ */
 #define vector_size(v) ((u32)(*((u32 *)(                                    \
     ((u8 *)(v)) - VECTOR_METADATA_SIZE__ + VECTOR_METADATA_N_ITEMS_OFFSET__)\
 )))

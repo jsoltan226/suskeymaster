@@ -36,14 +36,6 @@ struct kmhal_hidl_binder_transaction;
 /* Type for binder open order and domain mask */
 typedef uint32_t kmhal_hidl_binder_domain_ordered_mask_t;
 
-/* Default domain order: /dev/hwbinder, /dev/binder, /dev/vndbinder */
-#define KMHAL_HIDL_BINDER_DEFAULT_ORDER    \
-(                                         \
-    KMHAL_HIDL_HWBINDER_1 |               \
-    KMHAL_HIDL_BINDER_2   |               \
-    KMHAL_HIDL_VNDBINDER_3                \
-)
-
 /* Binder domains */
 enum kmhal_hidl_binder_domain {
     KMHAL_HIDL_BINDER    = 0x00000000U, /* /dev/binder */
@@ -74,6 +66,14 @@ enum kmhal_hidl_binder_domain_vndbinder_order {
     KMHAL_HIDL_VNDBINDER_2 = 0x00000204U,
     KMHAL_HIDL_VNDBINDER_3 = 0x00000304U,
 };
+
+/* Default domain order: /dev/hwbinder, /dev/binder, /dev/vndbinder */
+#define KMHAL_HIDL_BINDER_DEFAULT_ORDER    \
+(                                         \
+    KMHAL_HIDL_HWBINDER_1 |               \
+    KMHAL_HIDL_BINDER_2   |               \
+    KMHAL_HIDL_VNDBINDER_3                \
+)
 
 /**
  * Open a binder device using domain fallback order.

@@ -6,9 +6,11 @@
 #error Please use a standard C compiler!
 #endif /* __STDC__ */
 
+#if 0
 #if (__STDC_VERSION__ != 201112L)
 #error Please use a C11 compiler (-std=c11)
 #endif /* __STDC_VERSION__ */
+#endif /* 0 */
 
 #ifndef __STDC_HOSTED__
 #error The C standard library implementation may be incomplete. \

@@ -1,5 +1,6 @@
 #include "parcel.h"
 #include "binderif.h"
+#include "hidl-types.h"
 #include <core/log.h>
 #include <core/int.h>
 #include <core/util.h>
@@ -14,11 +15,6 @@
 
 #define MODULE_NAME "hidl-parcel"
 
-struct parcel_binder_object {
-    u32 serialized_obj_off;
-    bool fixup_buffer_addr;
-};
-
 struct kmhal_hidl_parcel {
     _Atomic bool initialized_;
 
@@ -26,7 +22,9 @@ struct kmhal_hidl_parcel {
 
     struct bitfield objs_fixup;
     VECTOR(binder_size_t) obj_offsets;
-    binder_size_t objs_size;
+    binder_size_t obj_buffers_size;
+
+    VECTOR(binder_size_t) root_obj_offsets;
 
     _Atomic bool txn_pending;
     struct kmhal_hidl_binder_tr_sg_args txn_arg;
@@ -40,7 +38,7 @@ static inline binder_size_t align8(binder_size_t s);
 
 static void register_object(struct kmhal_hidl_parcel *parcel,
         binder_size_t obj_buf_size, u32 serialized_obj_data_off,
-        bool obj_buf_in_parcel_buf
+        bool obj_buf_in_parcel_buf, bool is_root_obj
 );
 static u32 get_next_free_obj_idx(struct kmhal_hidl_parcel *parcel);
 
@@ -48,6 +46,11 @@ static u32 get_next_free_obj_idx(struct kmhal_hidl_parcel *parcel);
 static int write_unaligned(struct kmhal_hidl_parcel *p,
         const void *data, size_t len);
 #endif /* 0 */
+
+static int read_object(const VECTOR(u8) buffer,
+        binder_size_t offset, struct binder_buffer_object *out);
+
+static int validate_reply(const struct kmhal_hidl_binder_tr_sg_args_out *r);
 
 struct kmhal_hidl_parcel * kmhal_hidl_parcel_new(void)
 {
@@ -62,9 +65,74 @@ struct kmhal_hidl_parcel * kmhal_hidl_parcel_new(void)
 
     bitfield_dyn_init(&ret->objs_fixup, 0);
     ret->obj_offsets = vector_new(binder_size_t);
+    ret->obj_buffers_size = 0;
+    ret->root_obj_offsets = vector_new(binder_size_t);
 
     atomic_store(&ret->txn_pending, false);
     /* `ret->txn_arg` already zeroed by `calloc()` */
+
+    return ret;
+
+err:
+    if (ret != NULL)
+        kmhal_hidl_parcel_destroy(&ret);
+
+    return NULL;
+}
+
+struct kmhal_hidl_parcel * kmhal_hidl_parcel_new_from_reply(
+        const struct kmhal_hidl_binder_tr_sg_args_out *reply
+)
+{
+    struct kmhal_hidl_parcel *ret = NULL;
+
+    if (validate_reply(reply))
+        goto_error("Invalid or failed reply");
+
+    ret = kmhal_hidl_parcel_new();
+    if (ret == NULL)
+        goto err;
+
+    vector_resize(&ret->buffer, reply->data_size);
+    memcpy(ret->buffer, reply->data_buf, reply->data_size);
+
+    vector_resize(&ret->obj_offsets, reply->offsets_count);
+    memcpy(ret->obj_offsets, reply->offsets_buf,
+            reply->offsets_count * sizeof(binder_size_t));
+
+    bitfield_dyn_resize(&ret->objs_fixup, reply->offsets_count);
+
+    for (u32 i = 0; i < vector_size(ret->obj_offsets); i++) {
+        const binder_size_t off = ret->obj_offsets[i];
+
+        struct binder_object_header hdr;
+        memcpy(&hdr, ret->buffer + off, sizeof(hdr));
+
+        switch (hdr.type) {
+        case BINDER_TYPE_BINDER:
+        case BINDER_TYPE_WEAK_BINDER:
+        case BINDER_TYPE_HANDLE:
+        case BINDER_TYPE_WEAK_HANDLE:
+            goto_error("Binder handle type not yet supported");
+            break;
+        case BINDER_TYPE_FD:
+            goto_error("Binder fd type not yet supported");
+            break;
+        case BINDER_TYPE_FDA:
+            goto_error("Binder fd array type not yet supported");
+            break;
+        case BINDER_TYPE_PTR: {
+            struct binder_buffer_object obj;
+            memcpy(&obj, ret->buffer + off, sizeof(obj));
+
+            if (!(obj.flags & BINDER_BUFFER_FLAG_HAS_PARENT))
+                vector_push_back(&ret->root_obj_offsets, i);
+
+            ret->obj_buffers_size += obj.length;
+            break;
+        }
+        }
+    }
 
     return ret;
 
@@ -107,7 +175,7 @@ void kmhal_hidl_parcel_write_u64(struct kmhal_hidl_parcel *parcel, const u64 u)
     memcpy(parcel->buffer + newpos, &u_, sizeof(u64));
 }
 
-void kmhal_hidl_parcel_write_cstring_inline(struct kmhal_hidl_parcel *parcel,
+void kmhal_hidl_parcel_write_inline_cstring(struct kmhal_hidl_parcel *parcel,
         const char *str)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
@@ -123,27 +191,14 @@ void kmhal_hidl_parcel_write_cstring_inline(struct kmhal_hidl_parcel *parcel,
     parcel->buffer[str_offset + str_len] = '\0';
 }
 
-struct serialized_hidl_string {
-        const void *buffer;
-        u32 size;
-        u32 owns_buffer;
-};
-_Static_assert(offsetof(struct serialized_hidl_string, buffer) == 0,
-        "Invalid offset of the buffer pointer in HIDL string");
-_Static_assert(offsetof(struct serialized_hidl_string, size) == 8,
-        "Invalid offset of the size u32 in HIDL string");
-_Static_assert(offsetof(struct serialized_hidl_string, owns_buffer) == 12,
-        "Invalid offset of the `owns_buffer` u32 in HIDL string");
-_Static_assert(sizeof(struct serialized_hidl_string) == 16,
-        "Invalid size of the HIDL string struct");
-
 void kmhal_hidl_parcel_write_hidl_string(
         struct kmhal_hidl_parcel *parcel,
-        const char *buffer, u32 size, bool owns_buffer
+        struct kmhal_hidl_string *str,
+        size_t str_bytes_size
 )
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
-            (size == 0 || buffer != NULL));
+            str != NULL);
 
     const size_t OBJ_SIZE = sizeof(struct binder_buffer_object);
 
@@ -151,41 +206,34 @@ void kmhal_hidl_parcel_write_hidl_string(
     const size_t bytes_obj_off = align4(hstr_obj_off + OBJ_SIZE);
     const size_t hstr_struct_off = align4(bytes_obj_off + OBJ_SIZE);
 
-    const size_t new_size = hstr_struct_off +
-        sizeof(struct serialized_hidl_string);
+    const size_t new_size = hstr_struct_off + sizeof(struct kmhal_hidl_string);
 
     struct binder_buffer_object hstr_obj = {
         .hdr.type = BINDER_TYPE_PTR,
         .flags = 0,
         .buffer = /* parcel->buffer + */ hstr_struct_off,
-        .length = sizeof(struct serialized_hidl_string),
+        .length = sizeof(struct kmhal_hidl_string),
     };
     const binder_size_t hstr_obj_idx = get_next_free_obj_idx(parcel);
 
     struct binder_buffer_object bytes_obj = {
         .hdr.type = BINDER_TYPE_PTR,
         .flags = BINDER_BUFFER_FLAG_HAS_PARENT,
-        .buffer = (binder_uintptr_t)buffer,
-        .length = size,
+        .buffer = (binder_uintptr_t)str->buffer,
+        .length = str_bytes_size,
         .parent = hstr_obj_idx,
-        .parent_offset = offsetof(struct serialized_hidl_string, buffer)
-    };
-
-    struct serialized_hidl_string hstr_struct = {
-        .buffer = buffer,
-        .size = size - 1,
-        .owns_buffer = owns_buffer
+        .parent_offset = offsetof(struct kmhal_hidl_string, buffer)
     };
 
     vector_resize(&parcel->buffer, new_size);
 
     memcpy(parcel->buffer + hstr_obj_off, &hstr_obj, sizeof(hstr_obj));
-    register_object(parcel, sizeof(hstr_struct), hstr_obj_off, true);
+    register_object(parcel, sizeof(*str), hstr_obj_off, true, true);
 
     memcpy(parcel->buffer + bytes_obj_off, &bytes_obj, sizeof(bytes_obj));
-    register_object(parcel, size, bytes_obj_off, false);
+    register_object(parcel, str_bytes_size, bytes_obj_off, false, false);
 
-    memcpy(parcel->buffer + hstr_struct_off, &hstr_struct, sizeof(hstr_struct));
+    memcpy(parcel->buffer + hstr_struct_off, str, sizeof(*str));
 }
 
 void kmhal_hidl_parcel_pack(struct kmhal_hidl_binder_transaction *txn,
@@ -254,7 +302,7 @@ void kmhal_hidl_parcel_pack(struct kmhal_hidl_binder_transaction *txn,
             .data_size = vector_size(parcel->buffer),
             .offsets_buf = parcel->obj_offsets,
             .offsets_count = vector_size(parcel->obj_offsets),
-            .sg_buffers_size = parcel->objs_size
+            .sg_buffers_size = parcel->obj_buffers_size
         },
         .out_reply = {}
     };
@@ -304,6 +352,142 @@ int kmhal_hidl_parcel_unpack(struct kmhal_hidl_parcel **parcel_p,
     return 0;
 }
 
+int kmhal_hidl_parcel_read_u32(struct kmhal_hidl_parcel *parcel,
+        binder_size_t offset, u32 *out)
+{
+    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
+            parcel->buffer != NULL);
+    u_check_params(offset == align4(offset));
+
+    if (offset + sizeof(u32) > vector_size(parcel->buffer)) {
+        s_log_error("Requested offset outside of parcel buffer");
+        return -1;
+    }
+
+    if (out != NULL)
+        memcpy(out, parcel->buffer + offset, sizeof(u32));
+    return 0;
+}
+
+int kmhal_hidl_parcel_read_u64(struct kmhal_hidl_parcel *parcel,
+        binder_size_t offset, u64 *out)
+{
+    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
+            parcel->buffer != NULL);
+    u_check_params(offset == align4(offset));
+
+    if (offset + sizeof(u64) > vector_size(parcel->buffer)) {
+        s_log_error("Requested offset outside of parcel buffer");
+        return -1;
+    }
+
+    if (out != NULL)
+        memcpy(out, parcel->buffer + offset, sizeof(u64));
+    return 0;
+}
+
+int kmhal_hidl_parcel_read_hidl_vec(struct kmhal_hidl_parcel *parcel,
+        u32 vec_obj_off_idx, bool is_child, struct kmhal_hidl_vec *out)
+{
+    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
+            parcel->buffer != NULL && parcel->root_obj_offsets != NULL);
+
+    if (vec_obj_off_idx >= vector_size(parcel->obj_offsets)) {
+        s_log_error("Invalid object index %u", vec_obj_off_idx);
+        return -1;
+    }
+
+    binder_size_t off = parcel->obj_offsets[vec_obj_off_idx];
+    struct binder_buffer_object obj;
+    if (read_object(parcel->buffer, off, &obj)) {
+        s_log_error("Failed to read the HIDL vec object");
+        return 1;
+    }
+    if (!!(obj.flags & BINDER_BUFFER_FLAG_HAS_PARENT) != !!is_child) {
+        s_log_error("Binder buffer object at offset %llu "
+                "expected%sto have a parent", off, is_child ? "" : " not ");
+        return 1;
+    }
+    if (obj.length != sizeof(struct kmhal_hidl_vec)) {
+        s_log_error("Invalid size of object buffer "
+                "that's supposed to contain an HIDL vec: %llu",
+                obj.length);
+        return 1;
+    } else if (obj.buffer == 0) {
+        s_log_error("HIDL vec object buffer is NULL!");
+        return 1;
+    }
+
+    if (out != NULL)
+        memcpy(out, (void *)obj.buffer, sizeof(struct kmhal_hidl_vec));
+    return 0;
+}
+
+int kmhal_hidl_parcel_read_hidl_string(struct kmhal_hidl_parcel *parcel,
+        u32 hstr_obj_off_idx, bool is_child, struct kmhal_hidl_string *out)
+{
+    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
+            parcel->buffer != NULL && parcel->root_obj_offsets != NULL);
+
+    /* There should be 2 objects - one for the hidl_string struct,
+     * and one for the string bytes themselves */
+    if (hstr_obj_off_idx >= vector_size(parcel->obj_offsets) - 1) {
+        s_log_error("Invalid object index %u", hstr_obj_off_idx);
+        return -1;
+    }
+
+    binder_size_t off = 0;
+    struct binder_buffer_object obj;
+
+    off = parcel->obj_offsets[hstr_obj_off_idx];
+    if (read_object(parcel->buffer, off, &obj)) {
+        s_log_error("Failed to read the HIDL string object");
+        return 1;
+    }
+    if (!!(obj.flags & BINDER_BUFFER_FLAG_HAS_PARENT) != !!is_child) {
+        s_log_error("Binder buffer object at offset %llu "
+                "expected%sto have a parent", off, is_child ? "" : " not ");
+        return 1;
+    }
+    if (obj.length != sizeof(struct kmhal_hidl_string)) {
+        s_log_error("Invalid size of object buffer "
+                "that's supposed to contain an HIDL string: %llu",
+                obj.length);
+        return 1;
+    } else if (obj.buffer == 0) {
+        s_log_error("HIDL string object buffer is NULL!");
+        return 1;
+    }
+
+    struct kmhal_hidl_string hstr;
+    memcpy(&hstr, (void *)obj.buffer, sizeof(hstr));
+
+    off = parcel->obj_offsets[hstr_obj_off_idx + 1];
+    if (read_object(parcel->buffer, off, &obj)) {
+        s_log_error("Failed to read the HIDL string bytes object");
+        return 1;
+    }
+    if (!(obj.flags & BINDER_BUFFER_FLAG_HAS_PARENT)) {
+        s_log_error("Binder buffer object at offset %llu "
+                "expected to have a parent", off);
+        return 1;
+    }
+    if (obj.parent != hstr_obj_off_idx) {
+        s_log_error("Invalid parent of HIDL string bytes object "
+                "(%llu, expected %u)", obj.parent, hstr_obj_off_idx);
+        return 1;
+    }
+
+    if (obj.length - 1 != hstr.length || (void *)obj.buffer != hstr.buffer) {
+        s_log_error("HIDL string struct and bytes object mismatch");
+        return 1;
+    }
+
+    if (out != NULL)
+        memcpy(out, &hstr, sizeof(hstr));
+    return 0;
+}
+
 void kmhal_hidl_parcel_destroy(struct kmhal_hidl_parcel **parcel_p)
 {
     parcel_destroy__(parcel_p, false);
@@ -318,6 +502,8 @@ static void parcel_destroy__(struct kmhal_hidl_parcel **parcel_p,
 
     struct kmhal_hidl_parcel *const parcel = *parcel_p;
 
+    vector_destroy(&parcel->root_obj_offsets);
+    parcel->obj_buffers_size = 0;
     bitfield_dyn_destroy(&parcel->objs_fixup);
     vector_destroy(&parcel->obj_offsets);
     vector_destroy(&parcel->buffer);
@@ -354,12 +540,15 @@ static inline binder_size_t align8(binder_size_t s)
 
 static void register_object(struct kmhal_hidl_parcel *parcel,
         binder_size_t obj_buf_size, u32 serialized_obj_data_off,
-        bool obj_buf_in_parcel_buf
+        bool obj_buf_in_parcel_buf, bool is_root_obj
 )
 {
     vector_push_back(&parcel->obj_offsets, serialized_obj_data_off);
     bitfield_dyn_push_back(&parcel->objs_fixup, obj_buf_in_parcel_buf);
-    parcel->objs_size += align8(obj_buf_size);
+    parcel->obj_buffers_size += align8(obj_buf_size);
+
+    if (is_root_obj)
+        vector_push_back(&parcel->root_obj_offsets, serialized_obj_data_off);
 }
 
 static u32 get_next_free_obj_idx(struct kmhal_hidl_parcel *parcel)
@@ -383,3 +572,131 @@ static int write_unaligned(struct kmhal_hidl_parcel *p,
     return 0;
 }
 #endif /* 0 */
+
+static int read_object(const VECTOR(u8) buffer,
+        binder_size_t offset, struct binder_buffer_object *out)
+{
+    if (buffer == NULL) {
+        s_log_error("Invalid parameters");
+        return -1;
+    }
+
+    if (offset + sizeof(struct binder_buffer_object) > vector_size(buffer)) {
+        s_log_error("Requested object is out of bounds");
+        return -1;
+    }
+
+    memcpy(out, buffer + offset, sizeof(struct binder_buffer_object));
+    if (out->hdr.type != BINDER_TYPE_PTR) {
+        s_log_error("Read object is not a BINDER_TYPE_PTR buffer object");
+        return 1;
+    }
+
+    return 0;
+}
+
+static int validate_reply(const struct kmhal_hidl_binder_tr_sg_args_out *r)
+{
+    if (r == NULL) {
+        s_log_error("Invalid parameters");
+        return 1;
+    }
+
+    if (r->data_buf == NULL || r->data_size < sizeof(int32_t)) {
+        s_log_error("Invalid data buffer in reply");
+        return 1;
+    }
+
+    if (r->data_size > UINT32_MAX ||
+            (u64)r->offsets_count * sizeof(binder_size_t) > UINT32_MAX)
+    {
+        s_log_error("Data or offsets size too big");
+        return 1;
+    }
+
+    i64 bad_idx = -1;
+    for (u32 i = 0; i < r->offsets_count; i++) {
+        const binder_size_t off = r->offsets_buf[i];
+
+        if (off + sizeof(struct binder_object_header) > r->data_size) {
+            bad_idx = i;
+            break;
+        }
+
+        struct binder_object_header hdr;
+        memcpy(&hdr, r->data_buf + off, sizeof(hdr));
+
+        size_t required_size = 0;
+
+        switch (hdr.type) {
+        default:
+            s_log_error("Invalid object type %u (0x%x)", hdr.type, hdr.type);
+            bad_idx = i;
+            goto bad_offset;
+        case BINDER_TYPE_BINDER:
+        case BINDER_TYPE_WEAK_BINDER:
+        case BINDER_TYPE_HANDLE:
+        case BINDER_TYPE_WEAK_HANDLE:
+            required_size = sizeof(struct flat_binder_object);
+            break;
+        case BINDER_TYPE_FD:
+            required_size = sizeof(struct binder_fd_object);
+            break;
+        case BINDER_TYPE_FDA:
+            required_size = sizeof(struct binder_fd_array_object);
+            break;
+        case BINDER_TYPE_PTR:
+            required_size = sizeof(struct binder_buffer_object);
+            break;
+        }
+
+        if (off + required_size > r->data_size) {
+            bad_idx = i;
+            goto bad_offset;
+        }
+
+        if (hdr.type == BINDER_TYPE_PTR) {
+            struct binder_buffer_object obj;
+            memcpy(&obj, r->data_buf + off, sizeof(obj));
+            if (obj.flags & BINDER_BUFFER_FLAG_HAS_PARENT &&
+                    obj.parent >= r->offsets_count)
+            {
+                s_log_error("Invalid parent index %llu in buffer object",
+                        obj.parent);
+                bad_idx = i;
+                goto bad_offset;
+            }
+
+            if (obj.buffer == 0 && obj.length > 0) {
+                s_log_error("Invalid buffer in buffer object");
+                bad_idx = i;
+                goto bad_offset;
+            }
+        }
+    }
+bad_offset:
+    if (bad_idx >= 0) {
+        s_log_error("Object pointed to by offsets[%lli] (%llu) "
+                "is invalid or overruns data buffer",
+                (long long)bad_idx, r->offsets_buf[bad_idx]
+        );
+        return 1;
+    }
+
+    int32_t status = 0;
+    memcpy(&status, r->data_buf, sizeof(int32_t));
+
+    if (r->flags & TF_STATUS_CODE) {
+        s_log_error("Reply is a status code: %d (%s)",
+                status, kmhal_hidl_android_status_toString(status));
+        return 1;
+    }
+
+    if (status != 0) {
+        s_log_error("Non-zero status in reply buffer: %d (%s)",
+                status, kmhal_hidl_android_status_toString(status));
+        return 1;
+    }
+
+    return 0;
+}
