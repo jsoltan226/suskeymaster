@@ -36,16 +36,22 @@ static void parcel_destroy__(struct kmhal_hidl_parcel **parcel_p,
 static inline binder_size_t align4(binder_size_t s);
 static inline binder_size_t align8(binder_size_t s);
 
-static void register_object(struct kmhal_hidl_parcel *parcel,
+static void register_buffer_object(struct kmhal_hidl_parcel *parcel,
         binder_size_t obj_buf_size, u32 serialized_obj_data_off,
         bool obj_buf_in_parcel_buf, bool is_root_obj
 );
+static void register_simple_object(struct kmhal_hidl_parcel *parcel,
+        u32 obj_off);
+
 static u32 get_next_free_obj_idx(struct kmhal_hidl_parcel *parcel);
 
 #if 0
 static int write_unaligned(struct kmhal_hidl_parcel *p,
         const void *data, size_t len);
 #endif /* 0 */
+
+static int validate_offset(binder_size_t off, i64 idx_hint,
+        const struct kmhal_hidl_parcel *parcel);
 
 static int read_object(const VECTOR(u8) buffer,
         binder_size_t offset, struct binder_buffer_object *out);
@@ -113,7 +119,6 @@ struct kmhal_hidl_parcel * kmhal_hidl_parcel_new_from_reply(
         case BINDER_TYPE_WEAK_BINDER:
         case BINDER_TYPE_HANDLE:
         case BINDER_TYPE_WEAK_HANDLE:
-            goto_error("Binder handle type not yet supported");
             break;
         case BINDER_TYPE_FD:
             goto_error("Binder fd type not yet supported");
@@ -143,7 +148,7 @@ err:
     return NULL;
 }
 
-void kmhal_hidl_parcel_write_bytes_inline(struct kmhal_hidl_parcel *parcel,
+void kmhal_hidl_parcel_write_inline_bytes(struct kmhal_hidl_parcel *parcel,
         const void *data, size_t len)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
@@ -156,13 +161,13 @@ void kmhal_hidl_parcel_write_bytes_inline(struct kmhal_hidl_parcel *parcel,
     memcpy(parcel->buffer + offset, data, len);
 }
 
-void kmhal_hidl_parcel_write_u32(struct kmhal_hidl_parcel *parcel, const u32 u)
+void kmhal_hidl_parcel_write_inline_u32(struct kmhal_hidl_parcel *parcel, u32 u)
 {
     u32 u_ = u;
-    kmhal_hidl_parcel_write_bytes_inline(parcel, &u_, sizeof(u32));
+    kmhal_hidl_parcel_write_inline_bytes(parcel, &u_, sizeof(u32));
 }
 
-void kmhal_hidl_parcel_write_u64(struct kmhal_hidl_parcel *parcel, const u64 u)
+void kmhal_hidl_parcel_write_inline_u64(struct kmhal_hidl_parcel *parcel, u64 u)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
 
@@ -181,7 +186,6 @@ void kmhal_hidl_parcel_write_inline_cstring(struct kmhal_hidl_parcel *parcel,
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
             str != NULL);
 
-    /* Write the string data */
     const binder_size_t str_offset = align4(vector_size(parcel->buffer));
     const size_t str_len = strlen(str),
           str_len_full = align4(str_len + sizeof((char)'\0'));
@@ -191,9 +195,35 @@ void kmhal_hidl_parcel_write_inline_cstring(struct kmhal_hidl_parcel *parcel,
     parcel->buffer[str_offset + str_len] = '\0';
 }
 
+void kmhal_hidl_parcel_write_handle(
+        struct kmhal_hidl_parcel *parcel,
+        u32 type, u32 handle, u32 flags, binder_uintptr_t cookie
+)
+{
+    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
+        (
+            type == BINDER_TYPE_BINDER || type == BINDER_TYPE_WEAK_BINDER ||
+            type == BINDER_TYPE_HANDLE || type == BINDER_TYPE_WEAK_HANDLE
+        )
+    );
+
+    struct flat_binder_object obj = {
+        .hdr.type = type,
+        .handle = handle,
+        .flags = flags,
+        .cookie = cookie
+    };
+
+    const binder_size_t off = align4(vector_size(parcel->buffer));
+    vector_resize(&parcel->buffer, off + sizeof(obj));
+    memcpy(parcel->buffer + off, &obj, sizeof(obj));
+
+    register_simple_object(parcel, off);
+}
+
 void kmhal_hidl_parcel_write_hidl_string(
         struct kmhal_hidl_parcel *parcel,
-        struct kmhal_hidl_string *str,
+        const struct kmhal_hidl_string *str,
         size_t str_bytes_size
 )
 {
@@ -204,14 +234,13 @@ void kmhal_hidl_parcel_write_hidl_string(
 
     const size_t hstr_obj_off = align4(vector_size(parcel->buffer));
     const size_t bytes_obj_off = align4(hstr_obj_off + OBJ_SIZE);
-    const size_t hstr_struct_off = align4(bytes_obj_off + OBJ_SIZE);
 
-    const size_t new_size = hstr_struct_off + sizeof(struct kmhal_hidl_string);
+    const size_t new_size = bytes_obj_off + sizeof(struct binder_buffer_object);
 
     struct binder_buffer_object hstr_obj = {
         .hdr.type = BINDER_TYPE_PTR,
         .flags = 0,
-        .buffer = /* parcel->buffer + */ hstr_struct_off,
+        .buffer = (binder_uintptr_t)str,
         .length = sizeof(struct kmhal_hidl_string),
     };
     const binder_size_t hstr_obj_idx = get_next_free_obj_idx(parcel);
@@ -228,12 +257,10 @@ void kmhal_hidl_parcel_write_hidl_string(
     vector_resize(&parcel->buffer, new_size);
 
     memcpy(parcel->buffer + hstr_obj_off, &hstr_obj, sizeof(hstr_obj));
-    register_object(parcel, sizeof(*str), hstr_obj_off, true, true);
+    register_buffer_object(parcel, sizeof(*str), hstr_obj_off, false, true);
 
     memcpy(parcel->buffer + bytes_obj_off, &bytes_obj, sizeof(bytes_obj));
-    register_object(parcel, str_bytes_size, bytes_obj_off, false, false);
-
-    memcpy(parcel->buffer + hstr_struct_off, str, sizeof(*str));
+    register_buffer_object(parcel, str_bytes_size, bytes_obj_off, false, false);
 }
 
 void kmhal_hidl_parcel_pack(struct kmhal_hidl_binder_transaction *txn,
@@ -352,7 +379,7 @@ int kmhal_hidl_parcel_unpack(struct kmhal_hidl_parcel **parcel_p,
     return 0;
 }
 
-int kmhal_hidl_parcel_read_u32(struct kmhal_hidl_parcel *parcel,
+int kmhal_hidl_parcel_read_inline_u32(struct kmhal_hidl_parcel *parcel,
         binder_size_t offset, u32 *out)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
@@ -369,7 +396,7 @@ int kmhal_hidl_parcel_read_u32(struct kmhal_hidl_parcel *parcel,
     return 0;
 }
 
-int kmhal_hidl_parcel_read_u64(struct kmhal_hidl_parcel *parcel,
+int kmhal_hidl_parcel_read_inline_u64(struct kmhal_hidl_parcel *parcel,
         binder_size_t offset, u64 *out)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
@@ -386,18 +413,60 @@ int kmhal_hidl_parcel_read_u64(struct kmhal_hidl_parcel *parcel,
     return 0;
 }
 
-int kmhal_hidl_parcel_read_hidl_vec(struct kmhal_hidl_parcel *parcel,
-        u32 vec_obj_off_idx, bool is_child, struct kmhal_hidl_vec *out)
+int kmhal_hidl_parcel_read_handle(
+        struct kmhal_hidl_parcel *parcel, binder_size_t off, i64 off_idx_hint,
+        u32 *out_type, u32 *out_handle, u32 *out_flags,
+        binder_uintptr_t *out_cookie
+)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
-            parcel->buffer != NULL && parcel->root_obj_offsets != NULL);
-
-    if (vec_obj_off_idx >= vector_size(parcel->obj_offsets)) {
-        s_log_error("Invalid object index %u", vec_obj_off_idx);
+            parcel->buffer != NULL && off_idx_hint < UINT32_MAX);
+    if (validate_offset(off, off_idx_hint, parcel)) {
+        s_log_error("Invalid flat_binder_object offset");
         return -1;
     }
 
-    binder_size_t off = parcel->obj_offsets[vec_obj_off_idx];
+    u32 type;
+    memcpy(&type, (uint8_t *)parcel->buffer + off, sizeof(u32));
+    switch (type) {
+    case BINDER_TYPE_HANDLE:
+    case BINDER_TYPE_WEAK_HANDLE:
+    case BINDER_TYPE_BINDER:
+    case BINDER_TYPE_WEAK_BINDER:
+        break;
+    default:
+        s_log_error("Invalid flat_binder_object type: %u", type);
+        return 1;
+    }
+
+    if (off + sizeof(struct flat_binder_object) > vector_size(parcel->buffer)) {
+        s_log_error("Requested flat_binder_object is out of bounds");
+        return 1;
+    }
+
+    struct flat_binder_object obj;
+    memcpy(&obj, parcel->buffer + off, sizeof(obj));
+
+    if (out_type != NULL) *out_type = type;
+    if (out_handle != NULL) *out_handle = obj.handle;
+    if (out_flags != NULL) *out_flags = obj.flags;
+    if (out_cookie != NULL) *out_cookie = obj.cookie;
+    return 0;
+}
+
+int kmhal_hidl_parcel_read_hidl_vec(struct kmhal_hidl_parcel *parcel,
+        binder_size_t off, i64 off_idx_hint,
+        bool is_child, struct kmhal_hidl_vec *out
+)
+{
+    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
+            parcel->buffer != NULL && off_idx_hint < UINT32_MAX);
+
+    if (validate_offset(off, off_idx_hint, parcel)) {
+        s_log_error("Invalid hidl_vec binder_buffer_object offset");
+        return -1;
+    }
+
     struct binder_buffer_object obj;
     if (read_object(parcel->buffer, off, &obj)) {
         s_log_error("Failed to read the HIDL vec object");
@@ -424,64 +493,70 @@ int kmhal_hidl_parcel_read_hidl_vec(struct kmhal_hidl_parcel *parcel,
 }
 
 int kmhal_hidl_parcel_read_hidl_string(struct kmhal_hidl_parcel *parcel,
-        u32 hstr_obj_off_idx, bool is_child, struct kmhal_hidl_string *out)
+        binder_size_t off, i64 off_idx_hint,
+        bool is_child, struct kmhal_hidl_string *out
+)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
-            parcel->buffer != NULL && parcel->root_obj_offsets != NULL);
+            parcel->buffer != NULL && off_idx_hint < UINT32_MAX);
 
-    /* There should be 2 objects - one for the hidl_string struct,
-     * and one for the string bytes themselves */
-    if (hstr_obj_off_idx >= vector_size(parcel->obj_offsets) - 1) {
-        s_log_error("Invalid object index %u", hstr_obj_off_idx);
+    if (validate_offset(off, off_idx_hint, parcel)) {
+        s_log_error("Invalid HIDL string bytes object offset");
         return -1;
     }
 
-    binder_size_t off = 0;
-    struct binder_buffer_object obj;
+    struct binder_buffer_object bytes_obj;
+    if (read_object(parcel->buffer, off, &bytes_obj)) {
+        s_log_error("Failed to read the HIDL string bytes object");
+        return 1;
+    }
+    if (!(bytes_obj.flags & BINDER_BUFFER_FLAG_HAS_PARENT)) {
+        s_log_error("Binder buffer object at offset %llu "
+                "expected to have a parent", off);
+        return 1;
+    }
 
-    off = parcel->obj_offsets[hstr_obj_off_idx];
-    if (read_object(parcel->buffer, off, &obj)) {
+    if (bytes_obj.parent >= vector_size(parcel->obj_offsets)) {
+        s_log_error("Invalid parent offset index");
+        return 1;
+    } else if (bytes_obj.parent_offset !=
+            offsetof(struct kmhal_hidl_string, buffer))
+    {
+        s_log_error("Invalid parent_offset value");
+        return 1;
+    }
+
+    off = parcel->obj_offsets[bytes_obj.parent];
+    struct binder_buffer_object hstr_obj;
+    if (read_object(parcel->buffer, off, &hstr_obj)) {
         s_log_error("Failed to read the HIDL string object");
         return 1;
     }
-    if (!!(obj.flags & BINDER_BUFFER_FLAG_HAS_PARENT) != !!is_child) {
+    if (!!(hstr_obj.flags & BINDER_BUFFER_FLAG_HAS_PARENT) != !!is_child) {
         s_log_error("Binder buffer object at offset %llu "
                 "expected%sto have a parent", off, is_child ? "" : " not ");
         return 1;
     }
-    if (obj.length != sizeof(struct kmhal_hidl_string)) {
+    if (hstr_obj.length != sizeof(struct kmhal_hidl_string)) {
         s_log_error("Invalid size of object buffer "
                 "that's supposed to contain an HIDL string: %llu",
-                obj.length);
+                hstr_obj.length);
         return 1;
-    } else if (obj.buffer == 0) {
+    } else if (hstr_obj.buffer == 0) {
         s_log_error("HIDL string object buffer is NULL!");
         return 1;
     }
 
     struct kmhal_hidl_string hstr;
-    memcpy(&hstr, (void *)obj.buffer, sizeof(hstr));
+    memcpy(&hstr, (void *)hstr_obj.buffer, sizeof(hstr));
 
-    off = parcel->obj_offsets[hstr_obj_off_idx + 1];
-    if (read_object(parcel->buffer, off, &obj)) {
-        s_log_error("Failed to read the HIDL string bytes object");
-        return 1;
-    }
-    if (!(obj.flags & BINDER_BUFFER_FLAG_HAS_PARENT)) {
-        s_log_error("Binder buffer object at offset %llu "
-                "expected to have a parent", off);
-        return 1;
-    }
-    if (obj.parent != hstr_obj_off_idx) {
-        s_log_error("Invalid parent of HIDL string bytes object "
-                "(%llu, expected %u)", obj.parent, hstr_obj_off_idx);
-        return 1;
-    }
-
-    if (obj.length - 1 != hstr.length || (void *)obj.buffer != hstr.buffer) {
+    if (bytes_obj.length - 1 != hstr.length ||
+            (void *)bytes_obj.buffer != hstr.buffer)
+    {
         s_log_error("HIDL string struct and bytes object mismatch");
         return 1;
     }
+
 
     if (out != NULL)
         memcpy(out, &hstr, sizeof(hstr));
@@ -538,7 +613,7 @@ static inline binder_size_t align8(binder_size_t s)
     return (s + 7) & ~7;
 }
 
-static void register_object(struct kmhal_hidl_parcel *parcel,
+static void register_buffer_object(struct kmhal_hidl_parcel *parcel,
         binder_size_t obj_buf_size, u32 serialized_obj_data_off,
         bool obj_buf_in_parcel_buf, bool is_root_obj
 )
@@ -549,6 +624,12 @@ static void register_object(struct kmhal_hidl_parcel *parcel,
 
     if (is_root_obj)
         vector_push_back(&parcel->root_obj_offsets, serialized_obj_data_off);
+}
+
+static void register_simple_object(struct kmhal_hidl_parcel *parcel,
+        u32 obj_off)
+{
+    vector_push_back(&parcel->obj_offsets, obj_off);
 }
 
 static u32 get_next_free_obj_idx(struct kmhal_hidl_parcel *parcel)
@@ -572,6 +653,29 @@ static int write_unaligned(struct kmhal_hidl_parcel *p,
     return 0;
 }
 #endif /* 0 */
+
+static int validate_offset(binder_size_t off, i64 idx_hint,
+        const struct kmhal_hidl_parcel *parcel)
+{
+    if (off + sizeof(u32) > vector_size(parcel->buffer)) {
+        s_log_error("Requested offset outside of parcel buffer");
+        return -1;
+    } else if (idx_hint >= vector_size(parcel->obj_offsets)) {
+        s_log_error("Invalid offset index hint");
+        return -1;
+    }
+
+    if (parcel->obj_offsets[idx_hint] == off)
+        return 0;
+
+    for (u32 i = 0; i < vector_size(parcel->obj_offsets); i++) {
+        if (parcel->obj_offsets[i] == off)
+            return true;
+    }
+
+    s_log_error("Offset %llu not fount in offset list", off);
+    return 1;
+}
 
 static int read_object(const VECTOR(u8) buffer,
         binder_size_t offset, struct binder_buffer_object *out)

@@ -85,7 +85,7 @@ struct kmhal_hidl_parcel * kmhal_hidl_parcel_new_from_reply(
  * @param len Number of bytes to write.
  * @return 0 on success, non-zero on failure.
  */
-void kmhal_hidl_parcel_write_bytes_inline(
+void kmhal_hidl_parcel_write_inline_bytes(
         struct kmhal_hidl_parcel *parcel,
         const void *data,
         size_t len
@@ -102,7 +102,7 @@ void kmhal_hidl_parcel_write_bytes_inline(
  */
 void kmhal_hidl_parcel_write_inline_u32(
         struct kmhal_hidl_parcel *parcel,
-        const u32 u
+        u32 u
 );
 
 /**
@@ -114,7 +114,7 @@ void kmhal_hidl_parcel_write_inline_u32(
  */
 void kmhal_hidl_parcel_write_inline_u64(
         struct kmhal_hidl_parcel *parcel,
-        const u64 u
+        u64 u
 );
 
 /**
@@ -131,6 +131,24 @@ void kmhal_hidl_parcel_write_inline_cstring(
 );
 
 /**
+ * Serialize a flat_binder_objcect containing `handle` into the parcel.
+ *
+ * @param parcel Parcel to write into.
+ * @param type The binder object type. One of the following:
+ *      - BINDER_TYPE_BINDER
+ *      - BINDER_TYPE_WEAK_BINDER
+ *      - BINDER_TYPE_HANDLE,
+ *      - BINDER_TYPE_WEAK_HANDLE
+ * @param flags Flags from `enum flat_binder_object_flags`
+ * @param cookie Additional data associated with the handle. Can just be `0`.
+ * @param handle The handle to write.
+ */
+void kmhal_hidl_parcel_write_handle(
+        struct kmhal_hidl_parcel *parcel,
+        u32 type, u32 handle, u32 flags, binder_uintptr_t cookie
+);
+
+/**
  * Serialize an HIDL string into the parcel.
  *
  * Binder object offsets are registered automatically.
@@ -138,9 +156,8 @@ void kmhal_hidl_parcel_write_inline_cstring(
  * String storage and object metadata are aligned
  * to 8-byte boundaries.
  *
- * The contents of the struct `str` are copied into the parcel's buffer,
- * but the contents of `str->buffer` are not,
- * so `str->buffer` must remain valid until the ioctl call.
+ * The string contents are NOT copied into parcel-owned memory.
+ * so both `str` and `str->buffer` must remain valid until the ioctl call.
  *
  * @param parcel Parcel to write into.
  * @param str String to serialize.
@@ -148,7 +165,7 @@ void kmhal_hidl_parcel_write_inline_cstring(
  */
 void kmhal_hidl_parcel_write_hidl_string(
         struct kmhal_hidl_parcel *parcel,
-        struct kmhal_hidl_string *str,
+        const struct kmhal_hidl_string *str,
         size_t str_bytes_size
 );
 
@@ -209,11 +226,21 @@ int kmhal_hidl_parcel_read_inline_u32(struct kmhal_hidl_parcel *parcel,
 int kmhal_hidl_parcel_read_inline_u64(struct kmhal_hidl_parcel *parcel,
         binder_size_t offset, u64 *out);
 
+int kmhal_hidl_parcel_read_handle(struct kmhal_hidl_parcel *parcel,
+        binder_size_t off, i64 off_idx_hint,
+        u32 *out_type, u32 *out_handle, u32 *out_flags,
+        binder_uintptr_t *out_cookie
+);
+
 int kmhal_hidl_parcel_read_hidl_vec(struct kmhal_hidl_parcel *parcel,
-        u32 vec_obj_off_idx, bool is_child, struct kmhal_hidl_vec *out);
+        binder_size_t off, i64 off_idx_hint,
+        bool is_child, struct kmhal_hidl_vec *out
+);
 
 int kmhal_hidl_parcel_read_hidl_string(struct kmhal_hidl_parcel *parcel,
-        u32 hstr_obj_off_idx, bool is_child, struct kmhal_hidl_string *out);
+        binder_size_t off, i64 off_idx_hint,
+        bool is_child, struct kmhal_hidl_string *out
+);
 
 /**
  * Destroy a parcel and release all associated resources.
