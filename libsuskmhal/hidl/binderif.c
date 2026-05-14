@@ -297,7 +297,7 @@ void kmhal_hidl_binder_add_transact_sg(
             .cookie = 0,
             .code = i->cmd,
             .flags = i->flags,
-            .sender_euid = geteuid(), .sender_pid = getpid(),
+            .sender_euid = 0, .sender_pid = 0,
 
             .data_size = i->data_size,
             .offsets_size = i->offsets_count * sizeof(binder_size_t),

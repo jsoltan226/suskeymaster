@@ -27,8 +27,8 @@
  */
 
 #include "binderif.h"
-#include "hidl-types.h"
 #include <core/int.h>
+#include <stdint.h>
 #include <stddef.h>
 #include <linux/android/binder.h>
 
@@ -48,6 +48,17 @@ extern "C" {
  *  - Scatter-gather transaction state
  */
 struct kmhal_hidl_parcel;
+
+/**
+ * Opaque reference to a binder object inside a parcel.
+ *
+ * The reference is bound to a given parcel, so it cannot be reused.
+ */
+typedef u32 kmhal_hidl_parcel_obj_t;
+#define KMHAL_HIDL_PARCEL_OBJ_INVALID UINT32_MAX
+
+#define KMHAL_HIDL_PARCEL_OBJ_IS_VALID(obj) \
+    ((obj) != KMHAL_HIDL_PARCEL_OBJ_INVALID)
 
 /**
  * Allocate and initialize a new empty parcel.
@@ -83,13 +94,23 @@ struct kmhal_hidl_parcel * kmhal_hidl_parcel_new_from_reply(
  * @param parcel Parcel to write into.
  * @param data Input byte buffer.
  * @param len Number of bytes to write.
- * @return 0 on success, non-zero on failure.
  */
-void kmhal_hidl_parcel_write_inline_bytes(
-        struct kmhal_hidl_parcel *parcel,
-        const void *data,
-        size_t len
-);
+void kmhal_hidl_parcel_write_bytes(struct kmhal_hidl_parcel *parcel,
+                                   const void *data, size_t len);
+
+/**
+ * Write arbitrary data at an arbitrary offset to the parcel payload.
+ *
+ * The offset doesn't have to be aligned.
+ * The parcel's buffer will be grown to acommodate the data if necessary.
+ *
+ * @param parcel Parcel to write into.
+ * @param offset The offset at which to write.
+ * @param data Input byte buffer.
+ * @param len Number of bytes to write.
+ */
+void kmhal_hidl_parcel_patch(struct kmhal_hidl_parcel *parcel,
+                             size_t offset, const void *data, size_t len);
 
 /**
  * Append a 32-bit unsigned integer to the parcel.
@@ -100,10 +121,7 @@ void kmhal_hidl_parcel_write_inline_bytes(
  * @param parcel Parcel to write into.
  * @param u Value to serialize.
  */
-void kmhal_hidl_parcel_write_inline_u32(
-        struct kmhal_hidl_parcel *parcel,
-        u32 u
-);
+void kmhal_hidl_parcel_write_u32(struct kmhal_hidl_parcel *parcel, u32 u);
 
 /**
  * Append a 64-bit unsigned integer to the parcel.
@@ -112,10 +130,7 @@ void kmhal_hidl_parcel_write_inline_u32(
  * @param parcel Parcel to write into.
  * @param u Value to serialize.
  */
-void kmhal_hidl_parcel_write_inline_u64(
-        struct kmhal_hidl_parcel *parcel,
-        u64 u
-);
+void kmhal_hidl_parcel_write_u64(struct kmhal_hidl_parcel *parcel, u64 u);
 
 /**
  * Serialize a UTF-8 string into the parcel.
@@ -125,49 +140,53 @@ void kmhal_hidl_parcel_write_inline_u64(
  * @param parcel Parcel to write into.
  * @param str Null-terminated C string.
  */
-void kmhal_hidl_parcel_write_inline_cstring(
-        struct kmhal_hidl_parcel *parcel,
-        const char *str
-);
+void kmhal_hidl_parcel_write_cstring(struct kmhal_hidl_parcel *parcel,
+                                     const char *str);
 
 /**
  * Serialize a flat_binder_objcect containing `handle` into the parcel.
  *
  * @param parcel Parcel to write into.
- * @param type The binder object type. One of the following:
- *      - BINDER_TYPE_BINDER
- *      - BINDER_TYPE_WEAK_BINDER
- *      - BINDER_TYPE_HANDLE,
- *      - BINDER_TYPE_WEAK_HANDLE
- * @param flags Flags from `enum flat_binder_object_flags`
- * @param cookie Additional data associated with the handle. Can just be `0`.
- * @param handle The handle to write.
+ * @param obj A valid `struct flat_binder_objcect`.
+ * @return A reference to the newly written object.
  */
-void kmhal_hidl_parcel_write_handle(
-        struct kmhal_hidl_parcel *parcel,
-        u32 type, u32 handle, u32 flags, binder_uintptr_t cookie
-);
+kmhal_hidl_parcel_obj_t
+kmhal_hidl_parcel_write_handle(struct kmhal_hidl_parcel *parcel,
+                               const struct flat_binder_object *obj);
 
 /**
- * Serialize an HIDL string into the parcel.
- *
- * Binder object offsets are registered automatically.
- *
- * String storage and object metadata are aligned
- * to 8-byte boundaries.
- *
- * The string contents are NOT copied into parcel-owned memory.
- * so both `str` and `str->buffer` must remain valid until the ioctl call.
+ * Serialize a binder_buffer_object into the parcel.
  *
  * @param parcel Parcel to write into.
- * @param str String to serialize.
- * @param str_bytes_size The size of the string, including the NULL terminator
+ * @param obj A valid `struct binder_buffer_object`.
+ * @return A reference to the newly written object.
  */
-void kmhal_hidl_parcel_write_hidl_string(
-        struct kmhal_hidl_parcel *parcel,
-        const struct kmhal_hidl_string *str,
-        size_t str_bytes_size
-);
+kmhal_hidl_parcel_obj_t
+kmhal_hidl_parcel_write_buffer_obj(struct kmhal_hidl_parcel *parcel,
+                                   const struct binder_buffer_object *obj);
+
+/**
+ * Get the index into the offsets array of the parcel
+ * that corresponds to the given object reference.
+ *
+ * Note: No validation is performed against `obj`'s parcel.
+ *
+ * @param obj The object whose index is to be retrieved.
+ *
+ * @return The object's index.
+ */
+size_t kmhal_hidl_parcel_obj_get_idx(kmhal_hidl_parcel_obj_t obj);
+
+/**
+ * Get a reference to the object at `idx` from `parcel`'s offsets array.
+ *
+ * @param parcel The parcel containg the object to be retrieved.
+ * @param idx Index into @parcel's offsets array.
+ *
+ * @return A reference to the object or NULL if it doesn't exist.
+ */
+kmhal_hidl_parcel_obj_t
+kmhal_hidl_parcel_get_obj(const struct kmhal_hidl_parcel *parcel, size_t idx);
 
 /**
  * Pack the parcel into a binder scatter-gather transaction.
@@ -190,12 +209,9 @@ void kmhal_hidl_parcel_write_hidl_string(
  * @param handle Target binder object handle.
  * @param cmd Binder/HIDL transaction command ID.
  */
-void kmhal_hidl_parcel_pack(
-        struct kmhal_hidl_binder_transaction *txn,
-        struct kmhal_hidl_parcel *parcel,
-        u32 handle,
-        u32 cmd
-);
+void kmhal_hidl_parcel_pack(struct kmhal_hidl_binder_transaction *txn,
+                            struct kmhal_hidl_parcel *parcel,
+                            u32 handle, u32 cmd);
 
 /**
  * Finalize and extract the result of a packed transaction,
@@ -216,31 +232,72 @@ void kmhal_hidl_parcel_pack(
  *      1 if the transaction failed,
  *      negative value on API misuse or invalid state.
  */
-int kmhal_hidl_parcel_unpack(
-        struct kmhal_hidl_parcel **parcel_p,
-        struct kmhal_hidl_binder_tr_sg_args_out *out
-);
+int kmhal_hidl_parcel_unpack(struct kmhal_hidl_parcel **parcel_p,
+                             struct kmhal_hidl_binder_tr_sg_args_out *out);
 
-int kmhal_hidl_parcel_read_inline_u32(struct kmhal_hidl_parcel *parcel,
-        binder_size_t offset, u32 *out);
-int kmhal_hidl_parcel_read_inline_u64(struct kmhal_hidl_parcel *parcel,
-        binder_size_t offset, u64 *out);
+/* Read arbitrary data at an arbitrary offset from the parcel's buffer.
+ * The offset doesn't have to be aligned.
+ *
+ * @param parcel The parcel from which to read.
+ * @param offset The offset at which to start reading.
+ * @param out Optional output pointer. May be NULL, but why would you do that?
+ * @param len The amount of data to read.
+ *  If @out is not NULL, the provided buffer must be at least @len long.
+ *
+ * @return 0 on success, non-zero if the requested range is out of bounds.
+ */
+int kmhal_hidl_parcel_peek(const struct kmhal_hidl_parcel *parcel,
+                           size_t offset, void *out, size_t len);
 
-int kmhal_hidl_parcel_read_handle(struct kmhal_hidl_parcel *parcel,
-        binder_size_t off, i64 off_idx_hint,
-        u32 *out_type, u32 *out_handle, u32 *out_flags,
-        binder_uintptr_t *out_cookie
-);
+/* Read a uint32 value from the parcel's buffer.
+ * The offset must be 4-byte aligned.
+ *
+ * @param parcel Parcel from which the value will be read.
+ * @param offset 4-byte-aligned offset of the integer value.
+ * @param out Output pointer, may be NULL.
+ *
+ * @return 0 on success, non-zero on failure.
+ */
+int kmhal_hidl_parcel_read_u32(const struct kmhal_hidl_parcel *parcel,
+                               binder_size_t offset, u32 *out);
 
-int kmhal_hidl_parcel_read_hidl_vec(struct kmhal_hidl_parcel *parcel,
-        binder_size_t off, i64 off_idx_hint,
-        bool is_child, struct kmhal_hidl_vec *out
-);
+/* Read a uint64 value from the parcel's buffer.
+ * The offset must be 4-byte aligned.
+ *
+ * @param parcel Parcel from which the value will be read.
+ * @param offset 4-byte-aligned offset of the integer value.
+ * @param out Output pointer, may be NULL.
+ *
+ * @return 0 on success, non-zero on failure.
+ */
+int kmhal_hidl_parcel_read_u64(const struct kmhal_hidl_parcel *parcel,
+                               binder_size_t offset, u64 *out);
 
-int kmhal_hidl_parcel_read_hidl_string(struct kmhal_hidl_parcel *parcel,
-        binder_size_t off, i64 off_idx_hint,
-        bool is_child, struct kmhal_hidl_string *out
-);
+/* Read a flat_binder_object from the parcel's buffer.
+ *
+ * @param parcel Parcel from which the object will be read.
+ * @param obj A reference to the object to read.
+ *  See `kmhal_hidl_parcel_get_obj.`
+ * @param out Output pointer, may be NULL.
+ *
+ * @return 0 on success, non-zero on failure.
+ */
+int kmhal_hidl_parcel_read_handle(const struct kmhal_hidl_parcel *parcel,
+                                  kmhal_hidl_parcel_obj_t obj,
+                                  struct flat_binder_object *out);
+
+/* Read a binder_buffer_object from the parcel's buffer.
+ *
+ * @param parcel Parcel from which the object will be read.
+ * @param obj A reference to the object to read.
+ *  See `kmhal_hidl_parcel_get_obj.`
+ * @param out Output pointer, may be NULL.
+ *
+ * @return 0 on success, non-zero on failure.
+ */
+int kmhal_hidl_parcel_read_buffer_obj(const struct kmhal_hidl_parcel *parcel,
+                                      kmhal_hidl_parcel_obj_t obj,
+                                      struct binder_buffer_object *out);
 
 /**
  * Destroy a parcel and release all associated resources.
@@ -249,12 +306,11 @@ int kmhal_hidl_parcel_read_hidl_string(struct kmhal_hidl_parcel *parcel,
  * destruction may abort depending on transaction state.
  * Preferably, use `kmhal_hidl_parcel_unpack` do destroy the parcel instead.
  *
- * `*parcel_p` is set to NULL
+ * `*parcel_p` is set to NULL.
+ *
  * @param parcel_p Pointer to parcel to be destroyed.
  */
-void kmhal_hidl_parcel_destroy(
-        struct kmhal_hidl_parcel **parcel_p
-);
+void kmhal_hidl_parcel_destroy(struct kmhal_hidl_parcel **parcel_p);
 
 #ifdef __cplusplus
 } /* extern "C" */
