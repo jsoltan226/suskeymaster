@@ -55,7 +55,7 @@ struct kmhal_hidl_parcel;
  * The reference is bound to a given parcel, so it cannot be reused.
  */
 typedef u32 kmhal_hidl_parcel_obj_t;
-#define KMHAL_HIDL_PARCEL_OBJ_INVALID UINT32_MAX
+#define KMHAL_HIDL_PARCEL_OBJ_INVALID ((kmhal_hidl_parcel_obj_t)UINT32_MAX)
 
 #define KMHAL_HIDL_PARCEL_OBJ_IS_VALID(obj) \
     ((obj) != KMHAL_HIDL_PARCEL_OBJ_INVALID)
@@ -166,6 +166,41 @@ kmhal_hidl_parcel_write_buffer_obj(struct kmhal_hidl_parcel *parcel,
                                    const struct binder_buffer_object *obj);
 
 /**
+ * Serialize an embedded binder_buffer_object into the parcel.
+ *
+ * This creates a binder buffer object whose contents are logically
+ * embedded inside another buffer object already present in the parcel.
+ *
+ * Internally this emits a `binder_buffer_object` with the
+ * `BINDER_BUFFER_FLAG_HAS_PARENT` flag set and records the parent-child
+ * relationship expected by the binder driver.
+ *
+ * The embedded buffer contents are copied into parcel-owned storage.
+ *
+ * @param parcel Parcel to write into.
+ *
+ * @param buf Pointer to the embedded buffer contents.
+ *
+ * @param buf_size Size of the embedded buffer in bytes.
+ *
+ * @param parent Reference to the parent buffer object into which the
+ *      embedded buffer is attached.
+ *      Must refer to a valid `binder_buffer_object` already written
+ *      into the same parcel.
+ *
+ * @param parent_offset Byte offset within the parent buffer at which
+ *      the embedded object pointer resides.
+ *
+ * @return Reference to the newly written embedded buffer object.
+ *      This function never fails non-fatally.
+ */
+kmhal_hidl_parcel_obj_t
+kmhal_hidl_parcel_write_embedded_buffer(struct kmhal_hidl_parcel *parcel,
+                                        const void *buf, size_t buf_size,
+                                        kmhal_hidl_parcel_obj_t parent,
+                                        binder_size_t parent_offset);
+
+/**
  * Get the index into the offsets array of the parcel
  * that corresponds to the given object reference.
  *
@@ -175,7 +210,7 @@ kmhal_hidl_parcel_write_buffer_obj(struct kmhal_hidl_parcel *parcel,
  *
  * @return The object's index.
  */
-size_t kmhal_hidl_parcel_obj_get_idx(kmhal_hidl_parcel_obj_t obj);
+size_t kmhal_hidl_parcel_obj_idx(kmhal_hidl_parcel_obj_t obj);
 
 /**
  * Get a reference to the object at `idx` from `parcel`'s offsets array.
@@ -186,7 +221,7 @@ size_t kmhal_hidl_parcel_obj_get_idx(kmhal_hidl_parcel_obj_t obj);
  * @return A reference to the object or NULL if it doesn't exist.
  */
 kmhal_hidl_parcel_obj_t
-kmhal_hidl_parcel_get_obj(const struct kmhal_hidl_parcel *parcel, size_t idx);
+kmhal_hidl_parcel_obj_get(const struct kmhal_hidl_parcel *parcel, size_t idx);
 
 /**
  * Pack the parcel into a binder scatter-gather transaction.
@@ -298,6 +333,52 @@ int kmhal_hidl_parcel_read_handle(const struct kmhal_hidl_parcel *parcel,
 int kmhal_hidl_parcel_read_buffer_obj(const struct kmhal_hidl_parcel *parcel,
                                       kmhal_hidl_parcel_obj_t obj,
                                       struct binder_buffer_object *out);
+
+/**
+ * Retrieve an embedded buffer referenced by a parent buffer object.
+ *
+ * This resolves and validates a child `binder_buffer_object`
+ * embedded within another buffer object.
+ *
+ * The returned buffer pointer refers directly to memory owned by
+ * the parcel and remains valid until the parcel is destroyed.
+ * The returned memory must not be modified.
+ *
+ * @param p Parcel containing the serialized objects.
+ *
+ * @param parent_ref Reference to the parent buffer object.
+ *
+ * @param parent_offset Byte offset within the parent object at which
+ *      the embedded child buffer is expected to reside.
+ *
+ * @param child_hint Optional expected child object reference.
+ *      If not equal to `KMHAL_HIDL_PARCEL_OBJ_INVALID`,
+ *      the resolved child object must match this reference.
+ *      This may be used to disambiguate multiple embedded objects.
+ *
+ * @param expected_buf_size Optional expected size of the child buffer.
+ *      If not NULL, the resolved child buffer size must exactly match
+ *      `*expected_child_size`.
+ *
+ * @param out_buf Optional output pointer receiving the embedded buffer
+ *      address inside parcel-owned memory.
+ *
+ * @param out_buf_size Optional output pointer receiving the embedded
+ *      buffer size.
+ *
+ * @param out_ref Optional output pointer receiving the resolved
+ *      child object reference.
+ *
+ * @return 0 on success, non-zero on validation or lookup failure.
+ */
+int kmhal_hidl_parcel_read_embedded_buffer(const struct kmhal_hidl_parcel *p,
+                                           kmhal_hidl_parcel_obj_t parent_ref,
+                                           binder_size_t parent_offset,
+                                           kmhal_hidl_parcel_obj_t child_hint,
+                                           const size_t *expected_buf_size,
+                                           const void **out_buf,
+                                           size_t *out_buf_size,
+                                           kmhal_hidl_parcel_obj_t *out_ref);
 
 /**
  * Destroy a parcel and release all associated resources.

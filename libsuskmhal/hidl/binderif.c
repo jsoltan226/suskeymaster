@@ -9,6 +9,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <inttypes.h>
 #include <stdatomic.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -194,13 +195,12 @@ struct kmhal_hidl_binder_ctx * kmhal_hidl_binder_open_dev(const char *dev_path)
         if (r_ == -1)
             goto_error("Failed to get the binder protocol version");
         else if (ver.protocol_version != BINDER_CURRENT_PROTOCOL_VERSION)
-            goto_error("Kernel binder protocol version (%ld) "
-                    "doesn't match the current userspace version (%ld)",
-                    (long int)ver.protocol_version,
-                    (long int)BINDER_CURRENT_PROTOCOL_VERSION);
+            goto_error("Kernel binder protocol version (%"PRIi32") "
+                    "doesn't match the current userspace version (%"PRIi32")",
+                    ver.protocol_version, BINDER_CURRENT_PROTOCOL_VERSION);
         else
-            s_log_debug("Binder protocol version: %ld",
-                    (long int)ver.protocol_version);
+            s_log_debug("Binder protocol version: %"PRIi32,
+                    ver.protocol_version);
     }
 
     /* Map the transaction data read buffer */
@@ -697,8 +697,7 @@ static u32 handle_ioctl_response(const u8 **p, const u8 *end,
     case BR_ERROR: {
         i32 err;
         try_read_advance(err);
-        s_log_error("Error received: %ld (%s)",
-                (long int)err, strerror(err));
+        s_log_error("Error received: %"PRIi32" (%s)", err, strerror(err));
         ret |= WR_FAIL_ERROR;
         break;
     }
@@ -765,8 +764,8 @@ static u32 handle_ioctl_response(const u8 **p, const u8 *end,
         break;
     default:
         ret |= WR_FAIL_INVAL;
-        s_log_error("Unexpected binder reply received: %ld (%s)",
-                (long int)reply_cmd, binder_reply_to_string(reply_cmd));
+        s_log_error("Unexpected binder reply received: %"PRIu32" (%s)",
+                reply_cmd, binder_reply_to_string(reply_cmd));
     }
 #undef try_read_advance
 
