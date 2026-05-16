@@ -48,6 +48,10 @@ static inline binder_size_t align8(binder_size_t s);
 static int validate_parcel_object_ref(const struct kmhal_hidl_parcel *parcel,
                                       kmhal_hidl_parcel_obj_t obj_ref);
 
+static int validate_buffer_object(const struct kmhal_hidl_parcel *parcel,
+        const struct binder_buffer_object *obj, binder_size_t size, u32 flags,
+        binder_size_t parent, binder_size_t parent_offset);
+
 static int validate_parent(const struct kmhal_hidl_parcel *parcel,
                            binder_size_t parent_idx, binder_size_t child_idx);
 
@@ -238,22 +242,35 @@ kmhal_hidl_parcel_write_handle(struct kmhal_hidl_parcel *parcel,
 
 kmhal_hidl_parcel_obj_t
 kmhal_hidl_parcel_write_buffer_obj(struct kmhal_hidl_parcel *parcel,
-                                   const struct binder_buffer_object *obj)
+                                   const void *buffer, size_t buffer_size,
+                                   u32 flags, kmhal_hidl_parcel_obj_t parent,
+                                   binder_size_t parent_offset)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
-    u_check_params(obj != NULL && obj->hdr.type == BINDER_TYPE_PTR);
 
     const size_t new_idx = vector_size(parcel->objects);
 
-    const bool has_parent = !!(obj->flags & BINDER_BUFFER_FLAG_HAS_PARENT);
-    if (has_parent)
-        u_check_params(validate_parent(parcel, obj->parent, new_idx) == 0);
+    const bool has_parent = !!(flags & BINDER_BUFFER_FLAG_HAS_PARENT);
+    binder_size_t parent_idx = 0;
+    if (has_parent) {
+        parent_idx = (binder_size_t)parent;
+        u_check_params(validate_parent(parcel, parent_idx, new_idx) == 0);
+    }
+
+    struct binder_buffer_object obj = {
+        .hdr.type = BINDER_TYPE_PTR,
+        .buffer = (binder_uintptr_t)buffer,
+        .length = buffer_size,
+        .flags = flags,
+        .parent = has_parent ? parent_idx : 0,
+        .parent_offset  = has_parent ? parent_offset : 0
+    };
 
     const size_t off = align4(vector_size(parcel->buffer));
-    s_assert(off < UINT32_MAX - sizeof(*obj), "New offset too big");
+    s_assert(off < UINT32_MAX - sizeof(obj), "New offset too big");
 
-    vector_resize(&parcel->buffer, off + sizeof(*obj));
-    memcpy(parcel->buffer + off, obj, sizeof(*obj));
+    vector_resize(&parcel->buffer, off + sizeof(obj));
+    memcpy(parcel->buffer + off, &obj, sizeof(obj));
 
     vector_push_back(&parcel->objects, (struct parcel_obj) {
             .parcel_bp = parcel,
@@ -262,10 +279,10 @@ kmhal_hidl_parcel_write_buffer_obj(struct kmhal_hidl_parcel *parcel,
             .off = off,
 
             .has_parent = has_parent,
-            .parent = has_parent ? obj->parent : 0,
-            .parent_offset = has_parent ? obj->parent_offset : 0
+            .parent = obj.parent,
+            .parent_offset = obj.parent_offset
     });
-    parcel->sg_buffers_size += align8(obj->length);
+    parcel->sg_buffers_size += align8(obj.length);
 
     return (kmhal_hidl_parcel_obj_t)new_idx;
 }
@@ -282,16 +299,8 @@ kmhal_hidl_parcel_write_embedded_buffer(struct kmhal_hidl_parcel *parcel,
 
     const binder_size_t parent_idx = (binder_size_t)parent;
 
-    struct binder_buffer_object new_obj = {
-        .hdr.type = BINDER_TYPE_PTR,
-        .flags = BINDER_BUFFER_FLAG_HAS_PARENT,
-        .buffer = (binder_uintptr_t)buf,
-        .length = buf_size,
-        .parent = parent_idx,
-        .parent_offset = parent_offset
-    };
-
-    return kmhal_hidl_parcel_write_buffer_obj(parcel, &new_obj);
+    return kmhal_hidl_parcel_write_buffer_obj(parcel, buf, buf_size,
+            BINDER_BUFFER_FLAG_HAS_PARENT, parent_idx, parent_offset);
 }
 
 size_t kmhal_hidl_parcel_obj_idx(kmhal_hidl_parcel_obj_t obj)
@@ -483,7 +492,11 @@ int kmhal_hidl_parcel_read_handle(const struct kmhal_hidl_parcel *parcel,
 
 int kmhal_hidl_parcel_read_buffer_obj(const struct kmhal_hidl_parcel *parcel,
                                       kmhal_hidl_parcel_obj_t obj_ref,
-                                      struct binder_buffer_object *out)
+                                      binder_size_t exp_size,
+                                      const u32 *exp_flags,
+                                      const kmhal_hidl_parcel_obj_t *exp_parent,
+                                      const binder_size_t *exp_parent_offset,
+                                      const void **out)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
             parcel->buffer != NULL);
@@ -502,14 +515,20 @@ int kmhal_hidl_parcel_read_buffer_obj(const struct kmhal_hidl_parcel *parcel,
     struct binder_buffer_object tmp;
     memcpy(&tmp, parcel->buffer + obj->off,
             sizeof(struct binder_buffer_object));
-    if (tmp.hdr.type != BINDER_TYPE_PTR) {
-        s_log_error("Expected object type BINDER_TYPE_PTR (%u), got %u",
-                BINDER_TYPE_PTR, tmp.hdr.type);
-        return -1;
+
+    u32 flags = exp_flags != NULL ? *exp_flags : tmp.flags;
+    binder_size_t parent = exp_parent != NULL ? *exp_parent : tmp.parent;
+    binder_size_t parent_offset = exp_parent_offset != NULL ?
+        *exp_parent_offset : tmp.parent_offset;
+
+    if (validate_buffer_object(parcel, &tmp, exp_size,
+                flags, parent, parent_offset))
+    {
+        s_log_error("Invalid buffer object");
+        return 1;
     }
 
-    if (out != NULL)
-        memcpy(out, &tmp, sizeof(struct binder_buffer_object));
+    if (out != NULL) *out = (const void *)tmp.buffer;
 
     return 0;
 }
@@ -518,19 +537,28 @@ int kmhal_hidl_parcel_read_embedded_buffer(const struct kmhal_hidl_parcel *p,
                                            kmhal_hidl_parcel_obj_t parent_ref,
                                            binder_size_t parent_offset,
                                            kmhal_hidl_parcel_obj_t child_hint,
-                                           const size_t *expected_buf_size,
+                                           size_t expected_buf_size,
                                            const void **out_buf,
-                                           size_t *out_buf_size,
                                            kmhal_hidl_parcel_obj_t *out_ref)
 {
-    /* `kmhal_hidl_parcel_read_buffer_obj` already checks
-     * the parcel and parent ref */
+    u_check_params(p != NULL && atomic_load(&p->initialized_));
+
+    if (validate_parcel_object_ref(p, parent_ref)) {
+        s_log_error("Invalid parent object reference");
+        return -1;
+    }
+
+    const size_t parent_idx = (size_t)parent_ref;
+    const binder_size_t off = p->objects[parent_idx].off;
+    if (off > vector_size(p->buffer) ||
+            vector_size(p->buffer) - off < sizeof(struct binder_buffer_object))
+    {
+        s_log_error("Parent object overflows parcel buffer");
+        return -1;
+    }
 
     struct binder_buffer_object parent_obj;
-    if (kmhal_hidl_parcel_read_buffer_obj(p, parent_ref, &parent_obj)) {
-        s_log_error("Failed to read the parent binder buffer object");
-        return 1;
-    }
+    memcpy(&parent_obj, p->buffer + off, sizeof(struct binder_buffer_object));
 
     if (parent_offset > parent_obj.length ||
             parent_obj.length - parent_offset < sizeof(void *))
@@ -555,12 +583,20 @@ int kmhal_hidl_parcel_read_embedded_buffer(const struct kmhal_hidl_parcel *p,
             return 1;
         }
 
-        if (kmhal_hidl_parcel_read_buffer_obj(p, child_hint, &child_obj)) {
-            s_log_error("Failed to read the hinted child buffer object");
-            return 1;
+        const binder_size_t off = p->objects[hint_idx].off;
+        if (off > vector_size(p->buffer) ||
+                vector_size(p->buffer) - off < sizeof(struct binder_buffer_object))
+        {
+            s_log_error("Child object overflows parcel buffer");
+            return -1;
         }
 
-        if ((void *)child_obj.buffer == child_buffer_ptr) {
+        memcpy(&child_obj, p->buffer + off,
+                sizeof(struct binder_buffer_object));
+
+        if ((void *)child_obj.buffer == child_buffer_ptr &&
+                child_obj.parent_offset == parent_offset)
+        {
             found = true;
             found_idx = hint_idx;
         }
@@ -569,17 +605,23 @@ int kmhal_hidl_parcel_read_embedded_buffer(const struct kmhal_hidl_parcel *p,
     /* If we didn't find the object using the hint,
      * look for it iterating backwards */
     for (i64 i = vector_size(p->objects) - 1; !found && i >= 0; i--) {
-        const kmhal_hidl_parcel_obj_t curr_ref = (kmhal_hidl_parcel_obj_t)i;
 
-        if (kmhal_hidl_parcel_read_buffer_obj(p, curr_ref, &child_obj)) {
-            s_log_error("Failed to read child buffer object");
-            return 1;
+        const binder_size_t off = p->objects[i].off;
+        if (off > vector_size(p->buffer) ||
+                vector_size(p->buffer) - off < sizeof(struct binder_buffer_object))
+        {
+            s_log_error("Child object overflows parcel buffer");
+            return -1;
         }
 
-        if ((void *)child_obj.buffer == child_buffer_ptr) {
+        memcpy(&child_obj, p->buffer + off,
+                sizeof(struct binder_buffer_object));
+
+        if ((void *)child_obj.buffer == child_buffer_ptr &&
+                child_obj.parent_offset == parent_offset)
+        {
             found = true;
             found_idx = i;
-            break;
         }
     }
     if (!found) {
@@ -587,28 +629,17 @@ int kmhal_hidl_parcel_read_embedded_buffer(const struct kmhal_hidl_parcel *p,
         return 1;
     }
 
+    if (validate_buffer_object(p, &child_obj, expected_buf_size,
+                BINDER_BUFFER_FLAG_HAS_PARENT, parent_idx, parent_offset))
+    {
+        s_log_error("Invalid child buffer object");
+        return 1;
+    }
+
     const kmhal_hidl_parcel_obj_t found_ref =
         (kmhal_hidl_parcel_obj_t)found_idx;
 
-    if (expected_buf_size != NULL) {
-        if (child_obj.length != *expected_buf_size) {
-            s_log_error("Child buffer size doesn't match expected value");
-            return 1;
-        }
-    }
-
-    if (!(child_obj.flags & BINDER_BUFFER_FLAG_HAS_PARENT)) {
-        s_log_error("Child object doesn't have the HAS_PARENT flag set");
-        return 1;
-    }
-    const size_t parent_idx = (size_t)parent_ref;
-    if (child_obj.parent != parent_idx) {
-        s_log_error("Child buffer's parent field invalid");
-        return 1;
-    }
-
     if (out_buf) *out_buf = child_buffer_ptr;
-    if (out_buf_size) *out_buf_size = child_obj.length;
     if (out_ref) *out_ref = found_ref;
 
     return 0;
@@ -702,6 +733,46 @@ static int validate_parcel_object_ref(const struct kmhal_hidl_parcel *parcel,
     if (obj->off > UINT32_MAX) {
         s_log_error("Object's offset is too big");
         return 1;
+    }
+
+    return 0;
+}
+
+static int validate_buffer_object(const struct kmhal_hidl_parcel *parcel,
+        const struct binder_buffer_object *obj, binder_size_t size, u32 flags,
+        binder_size_t parent, binder_size_t parent_offset)
+{
+    if (parcel == NULL) {
+        s_log_error("Parcel is NULL");
+        return -1;
+    } else if (obj == NULL) {
+        s_log_error("Buffer object is NULL");
+        return -1;
+    }
+
+    if (obj->hdr.type != BINDER_TYPE_PTR) {
+        s_log_error("Object is not a BINDER_TYPE_PTR");
+        return -1;
+    }
+
+    if (obj->length != size) {
+        s_log_error("Object size doesn't match expected value");
+        return 1;
+    }
+    if (obj->flags != flags) {
+        s_log_error("Object flags don't match expected value");
+        return 1;
+    }
+    if (flags & BINDER_BUFFER_FLAG_HAS_PARENT) {
+        if (obj->parent != parent) {
+            s_log_error("Object's parent doesn't match the expected value");
+            return 1;
+        }
+        if (obj->parent_offset != parent_offset) {
+            s_log_error("Object's `parent_offset` doesn't match "
+                    "the expected value");
+            return 1;
+        }
     }
 
     return 0;

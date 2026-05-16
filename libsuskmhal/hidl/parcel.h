@@ -163,7 +163,9 @@ kmhal_hidl_parcel_write_handle(struct kmhal_hidl_parcel *parcel,
  */
 kmhal_hidl_parcel_obj_t
 kmhal_hidl_parcel_write_buffer_obj(struct kmhal_hidl_parcel *parcel,
-                                   const struct binder_buffer_object *obj);
+                                   const void *buffer, size_t buffer_size,
+                                   u32 flags, kmhal_hidl_parcel_obj_t parent,
+                                   binder_size_t parent_offset);
 
 /**
  * Serialize an embedded binder_buffer_object into the parcel.
@@ -331,8 +333,12 @@ int kmhal_hidl_parcel_read_handle(const struct kmhal_hidl_parcel *parcel,
  * @return 0 on success, non-zero on failure.
  */
 int kmhal_hidl_parcel_read_buffer_obj(const struct kmhal_hidl_parcel *parcel,
-                                      kmhal_hidl_parcel_obj_t obj,
-                                      struct binder_buffer_object *out);
+                                      kmhal_hidl_parcel_obj_t obj_ref,
+                                      binder_size_t exp_size,
+                                      const u32 *exp_flags,
+                                      const kmhal_hidl_parcel_obj_t *exp_parent,
+                                      const binder_size_t *exp_parent_offset,
+                                      const void **out);
 
 /**
  * Retrieve an embedded buffer referenced by a parent buffer object.
@@ -351,10 +357,8 @@ int kmhal_hidl_parcel_read_buffer_obj(const struct kmhal_hidl_parcel *parcel,
  * @param parent_offset Byte offset within the parent object at which
  *      the embedded child buffer is expected to reside.
  *
- * @param child_hint Optional expected child object reference.
- *      If not equal to `KMHAL_HIDL_PARCEL_OBJ_INVALID`,
- *      the resolved child object must match this reference.
- *      This may be used to disambiguate multiple embedded objects.
+ * @param child_hint Optional hint for the expected child object's position,
+ *      or `KMHAL_HIDL_PARCEL_OBJ_INVALID` if unspecified.
  *
  * @param expected_buf_size Optional expected size of the child buffer.
  *      If not NULL, the resolved child buffer size must exactly match
@@ -362,9 +366,6 @@ int kmhal_hidl_parcel_read_buffer_obj(const struct kmhal_hidl_parcel *parcel,
  *
  * @param out_buf Optional output pointer receiving the embedded buffer
  *      address inside parcel-owned memory.
- *
- * @param out_buf_size Optional output pointer receiving the embedded
- *      buffer size.
  *
  * @param out_ref Optional output pointer receiving the resolved
  *      child object reference.
@@ -375,9 +376,8 @@ int kmhal_hidl_parcel_read_embedded_buffer(const struct kmhal_hidl_parcel *p,
                                            kmhal_hidl_parcel_obj_t parent_ref,
                                            binder_size_t parent_offset,
                                            kmhal_hidl_parcel_obj_t child_hint,
-                                           const size_t *expected_buf_size,
+                                           size_t expected_buf_size,
                                            const void **out_buf,
-                                           size_t *out_buf_size,
                                            kmhal_hidl_parcel_obj_t *out_ref);
 
 /**
