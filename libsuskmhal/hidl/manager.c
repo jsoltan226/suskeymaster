@@ -28,9 +28,11 @@
 #define MGR_CMD_DEBUG_DUMP 7
 #define MGR_CMD_REGISTER_PASSTHROUGH_CLIENT 8
 
-static int read_hidl_vec_of_hidl_string(const struct kmhal_hidl_parcel *parcel,
-                                        size_t *offset_p,
-                                        struct kmhal_hidl_vec *out);
+static int read_hidl_vec_of_hidl_string(
+        const struct kmhal_hidl_parcel *parcel,
+        size_t *offset_p,
+        KMHAL_HIDL_VEC_OF_STRUCT(kmhal_hidl_string) *out
+);
 
 static int read_handle(const struct kmhal_hidl_parcel *parcel,
         size_t *offset_p, u32 *out_handle);
@@ -171,7 +173,7 @@ enum kmhal_hidl_android_status kmhal_hidl_manager_list(
         struct kmhal_hidl_binder_ctx *binder,
         struct kmhal_hidl_binder_transaction **txn_p,
 
-        struct kmhal_hidl_vec /* <struct kmhal_hidl_string> */ *out
+        KMHAL_HIDL_VEC_OF_STRUCT(kmhal_hidl_string) *out_fqInstanceNames
 )
 {
     u_check_params(kmhal_hidl_binder_ctx_ok(binder) && txn_p != NULL);
@@ -192,7 +194,7 @@ enum kmhal_hidl_android_status kmhal_hidl_manager_list(
 
     /* Read the returned hidl_vec<hidl_string> */
     size_t offset = KMHAL_HIDL_PARCEL_DATA_START_OFFSET;
-    if (read_hidl_vec_of_hidl_string(parcel, &offset, out)) {
+    if (read_hidl_vec_of_hidl_string(parcel, &offset, out_fqInstanceNames)) {
         ret = BAD_VALUE;
         goto_error("Failed to parse the reply");
     }
@@ -216,7 +218,7 @@ enum kmhal_hidl_android_status kmhal_hidl_manager_list_by_interface(
 
         const char *in_interface_name,
 
-        struct kmhal_hidl_vec /* <struct kmhal_hidl_string> */ *out
+        KMHAL_HIDL_VEC_OF_STRUCT(kmhal_hidl_string) *out_instanceNames
 )
 {
     u_check_params(kmhal_hidl_binder_ctx_ok(binder) && txn_p != NULL);
@@ -251,7 +253,7 @@ enum kmhal_hidl_android_status kmhal_hidl_manager_list_by_interface(
 
     /* Read the returned hidl_vec<hidl_string> */
     size_t offset = KMHAL_HIDL_PARCEL_DATA_START_OFFSET;
-    if (read_hidl_vec_of_hidl_string(parcel, &offset, out)) {
+    if (read_hidl_vec_of_hidl_string(parcel, &offset, out_instanceNames)) {
         ret = BAD_VALUE;
         goto_error("Failed to parse the reply");
     }
@@ -269,14 +271,17 @@ err:
     return ret;
 }
 
-static int read_hidl_vec_of_hidl_string(const struct kmhal_hidl_parcel *parcel,
-                                        size_t *offset_p,
-                                        struct kmhal_hidl_vec *out)
+static int read_hidl_vec_of_hidl_string(
+        const struct kmhal_hidl_parcel *parcel,
+        size_t *offset_p,
+        KMHAL_HIDL_VEC_OF_STRUCT(kmhal_hidl_string) *out
+)
 {
     kmhal_hidl_parcel_obj_t vec_bytes_ref;
-    struct kmhal_hidl_vec vec;
+    KMHAL_HIDL_VEC_OF_STRUCT(kmhal_hidl_string) vec;
 
-    if (kmhal_hidl_vec_of_read(struct kmhal_hidl_string, &vec, parcel,
+    if (kmhal_hidl_vec_of_read(struct kmhal_hidl_string,
+                KMHAL_HIDL_VECP_TO_GENERIC(&vec), parcel,
                 offset_p, &vec_bytes_ref))
     {
         s_log_error("Failed to read the returned HIDL vec");
@@ -284,9 +289,6 @@ static int read_hidl_vec_of_hidl_string(const struct kmhal_hidl_parcel *parcel,
     }
 
     for (u32 i = 0; i < vec.size; i++) {
-        const struct kmhal_hidl_string *const curr_hstr_p =
-            &((const struct kmhal_hidl_string *)vec.buffer)[i];
-
         const size_t parent_offset = i * sizeof(struct kmhal_hidl_string);
 
         const kmhal_hidl_parcel_obj_t child_hint =
@@ -295,7 +297,7 @@ static int read_hidl_vec_of_hidl_string(const struct kmhal_hidl_parcel *parcel,
             );
 
         if (kmhal_hidl_string_read_embedded(NULL, NULL, parcel,
-                    curr_hstr_p, vec_bytes_ref, parent_offset, child_hint))
+                    &vec.buffer[i], vec_bytes_ref, parent_offset, child_hint))
         {
             s_log_error("Failed to read embedded HIDL string @ idx %"PRIu32, i);
             return 1;

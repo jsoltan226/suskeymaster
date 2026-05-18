@@ -9,9 +9,6 @@
 #include <core/int.h>
 
 #ifdef __cplusplus
-namespace suskeymaster {
-namespace kmhal {
-namespace hidl {
 extern "C" {
 #endif /* __cplusplus */
 
@@ -167,9 +164,6 @@ void kmhal_hidl_hal_set_instname(struct kmhal_hidl_hal_sp *hal,
 
 #ifdef __cplusplus
 } /* extern "C" */
-} /* namespace hidl */
-} /* namespace kmhal */
-} /* namespace suskeymaster */
 #endif /* __cplusplus */
 
 #endif /* SUSKEYMASTER_KMHAL_HIDL_HAL_H_ */

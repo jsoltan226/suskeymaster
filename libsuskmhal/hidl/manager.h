@@ -10,9 +10,6 @@
 #include "hidl-types.h"
 
 #ifdef __cplusplus
-namespace suskeymaster {
-namespace kmhal {
-namespace hidl {
 extern "C" {
 #endif /* __cplusplus */
 
@@ -100,7 +97,7 @@ enum kmhal_hidl_android_status kmhal_hidl_manager_list(
         struct kmhal_hidl_binder_ctx *binder,
         struct kmhal_hidl_binder_transaction **txn_p,
 
-        struct kmhal_hidl_vec *out_fqInstanceNames
+        KMHAL_HIDL_VEC_OF_STRUCT(kmhal_hidl_string) *out_instanceNames
 );
 
 /**
@@ -127,16 +124,13 @@ enum kmhal_hidl_android_status kmhal_hidl_manager_list_by_interface(
         struct kmhal_hidl_binder_ctx *binder,
         struct kmhal_hidl_binder_transaction **txn_p,
 
-        const char *in_fqName,
+        const char *in_interface_name,
 
-        struct kmhal_hidl_vec *out_instanceNames
+        KMHAL_HIDL_VEC_OF_STRUCT(kmhal_hidl_string) *out_instanceNames
 );
 
 #ifdef __cplusplus
 } /* extern "C" */
-} /* namespace hidl */
-} /* namespace kmhal */
-} /* namespace suskeymaster */
 #endif /* __cplusplus */
 
 #endif /* SUSKEYMASTER_KMHAL_HIDL_MANAGER_H_ */

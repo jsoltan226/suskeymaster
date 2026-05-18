@@ -6,9 +6,6 @@
 #include <errno.h>
 
 #ifdef __cplusplus
-namespace suskeymaster {
-namespace kmhal {
-namespace hidl {
 extern "C" {
 #endif /* __cplusplus */
 
@@ -86,9 +83,6 @@ kmhal_hidl_base_get_descriptor(struct kmhal_hidl_binder_ctx *binder,
 
 #ifdef __cplusplus
 } /* extern "C" */
-} /* namespace hidl */
-} /* namespace kmhal */
-} /* namespace suskeymaster */
 #endif /* __cplusplus */
 
 #endif /* SUSKEYMASTER_KMHAL_HIDL_BASE_H_ */

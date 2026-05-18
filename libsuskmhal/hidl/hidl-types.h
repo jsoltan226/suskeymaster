@@ -11,9 +11,6 @@
 #include <stddef.h>
 
 #ifdef __cplusplus
-namespace suskeymaster {
-namespace kmhal {
-namespace hidl {
 extern "C" {
 #endif /* __cplusplus */
 
@@ -139,14 +136,62 @@ struct kmhal_hidl_vec {
     u32 size; /* number of elements */
     u32 owns_buffer;
 };
-_Static_assert(offsetof(struct kmhal_hidl_vec, buffer) == 0,
-        "Invalid offset of the buffer pointer in HIDL vec");
-_Static_assert(offsetof(struct kmhal_hidl_vec, size) == 8,
-        "Invalid offset of the size u32 in HIDL vec");
-_Static_assert(offsetof(struct kmhal_hidl_vec, owns_buffer) == 12,
-        "Invalid offset of the `owns_buffer` u32 in HIDL vec");
-_Static_assert(sizeof(struct kmhal_hidl_vec) == 16,
-        "Invalid size of the HIDL vec struct");
+
+#define KMHAL_HIDL_VEC_LAYOUT_ASSERTS(T)                        \
+_Static_assert(offsetof(T, buffer) == 0,                        \
+        "Invalid offset of the buffer pointer in HIDL vec");    \
+_Static_assert(offsetof(T, size) == 8,                          \
+        "Invalid offset of the size u32 in HIDL vec");          \
+_Static_assert(offsetof(T, owns_buffer) == 12,                  \
+        "Invalid offset of the `owns_buffer` u32 in HIDL vec"); \
+_Static_assert(sizeof(T) == 16,                                 \
+        "Invalid size of the HIDL vec struct")
+KMHAL_HIDL_VEC_LAYOUT_ASSERTS(struct kmhal_hidl_vec);
+
+#define KMHAL_HIDL_VEC_OF_DECL(T)                                              \
+    struct kmhal_hidl_vec_of_##T {                                             \
+        const T *buffer;                                                       \
+        u32 size;                                                              \
+        u32 owns_buffer;                                                       \
+    };                                                                         \
+    KMHAL_HIDL_VEC_LAYOUT_ASSERTS(struct kmhal_hidl_vec_of_##T)
+
+#define KMHAL_HIDL_VEC_OF_STRUCT_DECL(T)                                       \
+    struct kmhal_hidl_vec_of_struct_##T {                                      \
+        const struct T *buffer;                                                \
+        u32 size;                                                              \
+        u32 owns_buffer;                                                       \
+    };                                                                         \
+    KMHAL_HIDL_VEC_LAYOUT_ASSERTS(struct kmhal_hidl_vec_of_struct_##T)
+
+#define KMHAL_HIDL_VEC_OF_VEC_OF_DECL(T)                                       \
+    struct kmhal_hidl_vec_of_vec_of_##T {                                      \
+        const KMHAL_HIDL_VEC_OF(T) *buffer;                                    \
+        u32 size;                                                              \
+        u32 owns_buffer;                                                       \
+    };                                                                         \
+    KMHAL_HIDL_VEC_LAYOUT_ASSERTS(struct kmhal_hidl_vec_of_##T)
+
+#define KMHAL_HIDL_VEC_OF_VEC_OF_STRUCT_DECL(T)                                \
+    struct kmhal_hidl_vec_of_vec_of_struct_##T {                               \
+        const KMHAL_HIDL_VEC_OF_STRUCT(T) *buffer;                             \
+        u32 size;                                                              \
+        u32 owns_buffer;                                                       \
+    };                                                                         \
+    KMHAL_HIDL_VEC_LAYOUT_ASSERTS(struct kmhal_hidl_vec_of_struct_##T)
+
+#define KMHAL_HIDL_VEC_OF(T) struct kmhal_hidl_vec_of_##T
+#define KMHAL_HIDL_VEC_OF_STRUCT(T) struct kmhal_hidl_vec_of_struct_##T
+
+#define KMHAL_HIDL_VEC_OF_VEC_OF(T) struct kmhal_hidl_vec_of_vec_of_##T
+#define KMHAL_HIDL_VEC_OF_VEC_OF_STRUCT(T) \
+    struct kmhal_hidl_vec_of_vec_of_struct_##T
+
+#define KMHAL_HIDL_VECP_TO_GENERIC(v_p) ((struct kmhal_hidl_vec *)(v_p))
+
+KMHAL_HIDL_VEC_OF_DECL(uint8_t);
+KMHAL_HIDL_VEC_OF_STRUCT_DECL(kmhal_hidl_string);
+KMHAL_HIDL_VEC_OF_VEC_OF(uint8_t);
 
 /**
  * Write objects for both the HIDL vec struct and its contents into the parcel.
@@ -278,9 +323,6 @@ int kmhal_hidl_vec_read_embedded(const void **out,
 
 #ifdef __cplusplus
 } /* extern "C" */
-} /* namespace hidl */
-} /* namespace kmhal */
-} /* namespace suskeymaster */
 #endif /* __cplusplus */
 
 #endif /* SUSKEYMASTER_KMHAL_HIDL_TYPES_H_ */

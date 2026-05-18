@@ -468,7 +468,7 @@
      *                                                                                                  \
      * Must never appear in KeyCharacteristics.                                                         \
      */                                                                                                 \
-    KM_DECL_TAG(ROOT_OF_TRUST, BYTES, 704, rootOfTrust, NULL, ROOT_OF_TRUST_V3, _)                      \
+    KM_DECL_TAG(ROOT_OF_TRUST, BYTES, 704, rootOfTrust, NULL, ROOT_OF_TRUST, _)                         \
                                                                                                         \
     /**                                                                                                 \
      * Tag::OS_VERSION specifies the system OS version with which the key may be used.  This tag is     \
@@ -685,7 +685,7 @@
      */                                                                                                 \
     KM_DECL_TAG(BOOT_PATCHLEVEL, UINT, 719, bootPatchLevel, NULL, INTEGER, _)                           \
                                                                                                         \
-    /* Internal Samsung tag: key is a storage key (e.g. FBE). */                                        \
+    /* The key is a hardware-wrapped inline encryption key (for userdata FBE) */                        \
     KM_DECL_TAG(STORAGE_KEY, BOOL, 722, storageKey, NULL, NULL, _)                                      \
                                                                                                         \
     /* Internal Samsung tag: used to validate datetime requirements in begin(). */                      \

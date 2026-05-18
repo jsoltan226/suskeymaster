@@ -10,9 +10,6 @@
 #include "binderif.h"
 
 #ifdef __cplusplus
-namespace suskeymaster {
-namespace kmhal {
-namespace hidl {
 extern "C" {
 #endif /* __cplusplus */
 
@@ -85,9 +82,6 @@ void kmhal_hidl_util_destroy_txn_tmps(
 
 #ifdef __cplusplus
 } /* extern "C" */
-} /* namespace hidl */
-} /* namespace kmhal */
-} /* namespace suskeymaster */
 #endif /* __cplusplus */
 
 #endif /* SUSKEYMASTER_KMHAL_HIDL_TXN_UTIL_H_ */

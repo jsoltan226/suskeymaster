@@ -1,10 +1,10 @@
 #ifndef KEYMASTER_TYPES_H_
 #define KEYMASTER_TYPES_H_
 
+#include "hidl-types.h"
 #include <stdint.h>
 #include <stdbool.h>
 #include <core/vector.h>
-#include <string.h>
 #include <openssl/asn1.h>
 #include <openssl/asn1t.h>
 #include <openssl/crypto.h>
@@ -12,9 +12,6 @@
 
 #ifdef __cplusplus
 extern "C" {
-namespace suskeymaster {
-namespace kmhal {
-namespace util {
 #endif /* __cplusplus */
 
 /**
@@ -405,26 +402,41 @@ union KM_IntegerParams {
     /*
      * Enum types
      */
-    enum KM_Algorithm algorithm;
-    enum KM_BlockMode blockMode;
-    enum KM_PaddingMode paddingMode;
-    enum KM_Digest digest;
-    enum KM_EcCurve ecCurve;
-    enum KM_KeyOrigin origin;
-    enum KM_KeyBlobUsageRequirements keyBlobUsageRequirements;
-    enum KM_KeyPurpose purpose;
-    enum KM_KeyDerivationFunction keyDerivationFunction;
-    enum KM_HardwareAuthenticatorType hardwareAuthenticatorType;
-    enum KM_SecurityLevel hardwareType;
+    enum KM_Algorithm algorithm __attribute__ ((aligned(4)));
+    enum KM_BlockMode blockMode __attribute__ ((aligned(4)));
+    enum KM_PaddingMode paddingMode __attribute__ ((aligned(4)));
+    enum KM_Digest digest __attribute__ ((aligned(4)));
+    enum KM_EcCurve ecCurve __attribute__ ((aligned(4)));
+    enum KM_KeyOrigin origin __attribute__ ((aligned(4)));
+    enum KM_KeyBlobUsageRequirements keyBlobUsageRequirements __attribute__ ((aligned(4)));
+    enum KM_KeyPurpose purpose __attribute__ ((aligned(4)));
+    enum KM_KeyDerivationFunction keyDerivationFunction __attribute__ ((aligned(4)));
+    enum KM_HardwareAuthenticatorType hardwareAuthenticatorType __attribute__ ((aligned(4)));
 
     /*
      * Other types
      */
-    bool boolValue;
-    uint32_t integer;
-    uint64_t longInteger;
-    uint64_t dateTime;
+    bool boolValue __attribute__ ((aligned(1)));
+    uint32_t integer __attribute__ ((aligned(4)));
+    uint64_t longInteger __attribute__ ((aligned(8)));
+    uint64_t dateTime __attribute__ ((aligned(8)));
 };
+static_assert(offsetof(union KM_IntegerParams, algorithm) == 0, "wrong offset");
+static_assert(offsetof(union KM_IntegerParams, blockMode) == 0, "wrong offset");
+static_assert(offsetof(union KM_IntegerParams, paddingMode) == 0, "wrong offset");
+static_assert(offsetof(union KM_IntegerParams, digest) == 0, "wrong offset");
+static_assert(offsetof(union KM_IntegerParams, ecCurve) == 0, "wrong offset");
+static_assert(offsetof(union KM_IntegerParams, origin) == 0, "wrong offset");
+static_assert(offsetof(union KM_IntegerParams, keyBlobUsageRequirements) == 0, "wrong offset");
+static_assert(offsetof(union KM_IntegerParams, purpose) == 0, "wrong offset");
+static_assert(offsetof(union KM_IntegerParams, keyDerivationFunction) == 0, "wrong offset");
+static_assert(offsetof(union KM_IntegerParams, hardwareAuthenticatorType) == 0, "wrong offset");
+static_assert(offsetof(union KM_IntegerParams, boolValue) == 0, "wrong offset");
+static_assert(offsetof(union KM_IntegerParams, integer) == 0, "wrong offset");
+static_assert(offsetof(union KM_IntegerParams, longInteger) == 0, "wrong offset");
+static_assert(offsetof(union KM_IntegerParams, dateTime) == 0, "wrong offset");
+static_assert(sizeof(union KM_IntegerParams) == 8, "wrong size");
+static_assert(__alignof(union KM_IntegerParams) == 8, "wrong alignment");
 
 struct KM_KeyParameter {
 
@@ -432,31 +444,17 @@ struct KM_KeyParameter {
      * Discriminates the union/blob field used.  The blob cannot be placed in the union, but only
      * one of "f" and "blob" may ever be used at a time.
      */
-    enum KM_Tag tag;
-    union KM_IntegerParams f;
-    VECTOR(u8) blob; /* hidl_vec<uint8_t> */
+    enum KM_Tag tag __attribute__((aligned(4)));
+    union KM_IntegerParams f __attribute__((aligned(8)));
+    KMHAL_HIDL_VEC_OF(uint8_t) blob __attribute__((aligned(8)));
 };
-static inline void km_destroy_key_parameter(struct KM_KeyParameter *kp)
-{
-    if (kp == NULL)
-        return;
+static_assert(offsetof(struct KM_KeyParameter, tag) == 0, "wrong offset");
+static_assert(offsetof(struct KM_KeyParameter, f) == 8, "wrong offset");
+static_assert(offsetof(struct KM_KeyParameter, blob) == 16, "wrong offset");
+static_assert(sizeof(struct KM_KeyParameter) == 32, "wrong size");
+static_assert(__alignof(struct KM_KeyParameter) == 8, "wrong alignment");
 
-    kp->tag = KM_TAG_INVALID;
-    memset(&kp->f, 0, sizeof(union KM_IntegerParams));
-    vector_destroy(&kp->blob);
-}
-static inline void km_destroy_key_parameters(VECTOR(struct KM_KeyParameter) *kps_p)
-{
-    if (kps_p == NULL || *kps_p == NULL)
-        return;
-
-    VECTOR(struct KM_KeyParameter) const kps = *kps_p;
-
-    for (u32 i = 0; i < vector_size(kps); i++)
-        km_destroy_key_parameter(&kps[i]);
-
-    vector_destroy(kps_p);
-}
+KMHAL_HIDL_VEC_OF_STRUCT_DECL(KM_KeyParameter);
 
 /**
  * The OID for Android attestation records.  For the curious, it breaks down as follows:
@@ -498,28 +496,13 @@ enum KM_VerifiedBootState {
  * must never appear in KeyCharacteristics.
  */
 struct KM_KeyCharacteristics {
-    VECTOR(struct KM_KeyParameter) softwareEnforced;
-    VECTOR(struct KM_KeyParameter) hardwareEnforced;
+    KMHAL_HIDL_VEC_OF_STRUCT(KM_KeyParameter) softwareEnforced __attribute__((aligned(8)));
+    KMHAL_HIDL_VEC_OF_STRUCT(KM_KeyParameter) hardwareEnforced __attribute__((aligned(8)));
 };
-static inline void km_destroy_key_characteristics(struct KM_KeyCharacteristics *kc)
-{
-    if (kc == NULL)
-        return;
-
-    if (kc->softwareEnforced != NULL) {
-        for (u32 i = 0; i < vector_size(kc->softwareEnforced); i++)
-            km_destroy_key_parameter(&kc->softwareEnforced[i]);
-
-        vector_destroy(&kc->softwareEnforced);
-    }
-
-    if (kc->hardwareEnforced != NULL) {
-        for (u32 i = 0; i < vector_size(kc->hardwareEnforced); i++)
-            km_destroy_key_parameter(&kc->hardwareEnforced[i]);
-
-        vector_destroy(&kc->hardwareEnforced);
-    }
-}
+static_assert(offsetof(struct KM_KeyCharacteristics, softwareEnforced) == 0, "wrong offset");
+static_assert(offsetof(struct KM_KeyCharacteristics, hardwareEnforced) == 16, "wrong offset");
+static_assert(sizeof(struct KM_KeyCharacteristics) == 32, "wrong size");
+static_assert(__alignof(struct KM_KeyCharacteristics) == 8, "wrong alignment");
 
 /**
  * HardwareAuthToken is used to prove successful user authentication, to unlock the use of a key.
@@ -582,18 +565,6 @@ struct KM_HardwareAuthToken {
      */
     uint8_t mac[KM_AUTH_TOKEN_MAC_LENGTH];
 };
-static inline void km_destroy_hardware_auth_token(struct KM_HardwareAuthToken *auth_token)
-{
-    if (auth_token == NULL)
-        return;
-
-    auth_token->challenge = 0;
-    auth_token->userId = 0;
-    auth_token->authenticatorId = 0;
-    auth_token->authenticatorType = KM_AUTHENTICATOR_NONE;
-    auth_token->timestamp = 0;
-    memset(auth_token->mac, 0, KM_AUTH_TOKEN_MAC_LENGTH);
-}
 
 typedef uint64_t KM_OperationHandle_t;
 
@@ -609,7 +580,7 @@ struct KM_HmacSharingParameters {
      * agreement key (see documentation of computeSharedHmac in @4.0::IKeymaster).  It is either
      * empty or 32 bytes in length.
      */
-    VECTOR(u8) seed;
+    KMHAL_HIDL_VEC_OF(uint8_t) seed;
     /**
      * A 32-byte value which is guaranteed to be different each time
      * getHmacSharingParameters() is called.  Probabilistic uniqueness (i.e. random) is acceptable,
@@ -617,14 +588,6 @@ struct KM_HmacSharingParameters {
      */
     u8 nonce[32];
 };
-static inline void km_destroy_hmac_sharing_parameters(struct KM_HmacSharingParameters *params)
-{
-    if (params == NULL)
-        return;
-
-    vector_destroy(&params->seed);
-    memset(params->nonce, 0, sizeof(params->nonce));
-}
 
 /**
  * VerificationToken enables one Keymaster instance to validate authorizations for another.  See
@@ -645,7 +608,7 @@ struct KM_VerificationToken {
      * A list of the parameters verified.  Empty if the only parameters verified are time-related.
      * In that case the timestamp is the payload.
      */
-    VECTOR(struct KM_KeyParameter) parametersVerified;
+    KMHAL_HIDL_VEC_OF_STRUCT(KM_KeyParameter) parametersVerified;
     /**
      * SecurityLevel of the secure environment that generated the token.
      */
@@ -672,27 +635,16 @@ struct KM_VerificationToken {
      */
     u8 mac[KM_AUTH_TOKEN_MAC_LENGTH];
 };
-static inline void km_destroy_verification_token(struct KM_VerificationToken *vt)
-{
-    if (vt == NULL)
-        return;
 
-    vt->challenge = 0;
-    vt->timestamp = 0;
-    vector_destroy(&vt->parametersVerified);
-    vt->securityLevel = KM_SECURITY_LEVEL_SOFTWARE;
-    memset(vt->mac, 0, KM_AUTH_TOKEN_MAC_LENGTH);
-}
-
-typedef struct KM_RootOfTrust_V3 {
+typedef struct KM_RootOfTrust {
     ASN1_OCTET_STRING *verifiedBootKey;
     ASN1_BOOLEAN deviceLocked;
     ASN1_ENUMERATED *verifiedBootState;
     ASN1_OCTET_STRING *verifiedBootHash;
-} KM_ROOT_OF_TRUST_V3;
-DECLARE_ASN1_FUNCTIONS(KM_ROOT_OF_TRUST_V3);
+} KM_ROOT_OF_TRUST;
+DECLARE_ASN1_FUNCTIONS(KM_ROOT_OF_TRUST);
 
-#define ASN1_ROOT_OF_TRUST_V3 KM_ROOT_OF_TRUST_V3
+#define ASN1_ROOT_OF_TRUST KM_ROOT_OF_TRUST
 #define ASN1_SET_OF_INTEGER STACK_OF(ASN1_INTEGER)
 
 typedef struct KM_param_list {
@@ -715,7 +667,7 @@ typedef int64_t KM_DateTime_t;
  * For more information and detailed documentation, see
  *  https://source.android.com/docs/security/features/keystore/attestation#attestation-v3
  */
-typedef struct KM_KeyDescription_v3 {
+typedef struct KM_KeyDescription {
     ASN1_INTEGER *attestationVersion;
     ASN1_ENUMERATED *attestationSecurityLevel;
     ASN1_INTEGER *keymasterVersion;
@@ -728,8 +680,8 @@ typedef struct KM_KeyDescription_v3 {
 
     KM_PARAM_LIST *softwareEnforced;
     KM_PARAM_LIST *hardwareEnforced;
-} KM_KEY_DESC_V3;
-DECLARE_ASN1_FUNCTIONS(KM_KEY_DESC_V3);
+} KM_KEY_DESC;
+DECLARE_ASN1_FUNCTIONS(KM_KEY_DESC);
 
 typedef const char * (*KM_enum_toString_proc_t)(uint32_t);
 
@@ -753,9 +705,6 @@ const char * KM_KeyDerivationFunction_toString(uint32_t kdf);
 const char * KM_HardwareAuthenticatorType_toString(uint32_t hwautht);
 
 #ifdef __cplusplus
-} /* namespace util */
-} /* namespace kmhal */
-} /* namespace suskeymaster */
 } /* extern "C" */
 #endif /* __cplusplus */
 
