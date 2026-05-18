@@ -220,7 +220,8 @@ size_t kmhal_hidl_parcel_obj_idx(kmhal_hidl_parcel_obj_t obj);
  * @param parcel The parcel containg the object to be retrieved.
  * @param idx Index into @parcel's offsets array.
  *
- * @return A reference to the object or NULL if it doesn't exist.
+ * @return A reference to the object or
+ *  `KMHAL_HIDL_PARCEL_OBJ_INVALID` if it doesn't exist.
  */
 kmhal_hidl_parcel_obj_t
 kmhal_hidl_parcel_obj_get(const struct kmhal_hidl_parcel *parcel, size_t idx);

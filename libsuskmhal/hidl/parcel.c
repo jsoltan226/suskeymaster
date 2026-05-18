@@ -1,6 +1,6 @@
 #include "parcel.h"
+#include "base.h"
 #include "binderif.h"
-#include "hidl-types.h"
 #include <core/log.h>
 #include <core/int.h>
 #include <core/util.h>
