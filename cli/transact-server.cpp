@@ -29,7 +29,7 @@
 extern "C" {
 typedef struct IWK_KEY_DESC {
     ASN1_INTEGER *keyFormat;
-    ::suskeymaster::kmhal::util::KM_PARAM_LIST *keyParams;
+    KM_PARAM_LIST *keyParams;
 } IWK_KEY_DESC;
 
 typedef struct IWK_SECURE_KEY_WRAPPER {
@@ -43,7 +43,7 @@ typedef struct IWK_SECURE_KEY_WRAPPER {
 
 ASN1_SEQUENCE(IWK_KEY_DESC) = {
     ASN1_SIMPLE(IWK_KEY_DESC, keyFormat, ASN1_INTEGER),
-    ASN1_SIMPLE(IWK_KEY_DESC, keyParams, ::suskeymaster::kmhal::util::KM_PARAM_LIST)
+    ASN1_SIMPLE(IWK_KEY_DESC, keyParams, KM_PARAM_LIST)
 } ASN1_SEQUENCE_END(IWK_KEY_DESC)
 IMPLEMENT_ASN1_FUNCTIONS(IWK_KEY_DESC);
 
@@ -151,7 +151,7 @@ int verify_attestation(const hidl_vec<hidl_vec<uint8_t>> &cert_chain)
     bool verify_ok = false;
 
     VECTOR(u8) leaf_vec = NULL;
-    kmhal::util::KM_KEY_DESC_V3 *km_desc = NULL;
+    KM_KEY_DESC *km_desc = NULL;
 
     bool ok = false;
 
@@ -164,13 +164,13 @@ int verify_attestation(const hidl_vec<hidl_vec<uint8_t>> &cert_chain)
     vector_resize(&leaf_vec, leaf_der.size());
     std::memcpy(leaf_vec, leaf_der.data(), leaf_der.size());
 
-    if (certmod::leaf_cert_parse(leaf_vec, NULL, NULL, &km_desc)) {
+    if (leaf_cert_parse(leaf_vec, NULL, NULL, &km_desc)) {
         std::cerr << "Failed to parse the leaf certificate!" << std::endl;
         vector_destroy(&leaf_vec);
         goto err;
     }
 
-    certmod::key_desc_dump(pr_info, NULL, km_desc, 0, false);
+    key_desc_dump(pr_info, NULL, km_desc, 0, false);
 
     if (check_google_root(root_der, &root_old)) {
         std::cerr << "The root cert is not a Google Attestation Root certificate!" << std::endl;
@@ -190,7 +190,7 @@ int verify_attestation(const hidl_vec<hidl_vec<uint8_t>> &cert_chain)
 
 err:
     if (km_desc != NULL) {
-        kmhal::util::KM_KEY_DESC_V3_free(km_desc);
+        KM_KEY_DESC_free(km_desc);
         km_desc = NULL;
     }
     vector_destroy(&leaf_vec);
@@ -803,7 +803,7 @@ static int encode_iwk_key_desc_der(hidl_vec<uint8_t>& out_der,
     }
 
     if (key_desc->keyParams != NULL) {
-        kmhal::util::KM_PARAM_LIST_free(key_desc->keyParams);
+        KM_PARAM_LIST_free(key_desc->keyParams);
         key_desc->keyParams = NULL;
     }
     key_desc->keyParams = kmhal::util::key_params_2_param_list(params);

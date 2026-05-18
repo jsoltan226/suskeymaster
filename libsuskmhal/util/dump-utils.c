@@ -36,7 +36,7 @@ void KM_dump_param_list(KM_dump_log_proc_t log_proc,
 
 #define dump_BYTES_if_not_ROOT_OF_TRUST(tag, field_name, bound_enum)           \
     (void) _Generic(ps->field_name,                                            \
-        KM_ROOT_OF_TRUST_V3 *: ((KM_dump_root_of_trust(log_proc,               \
+        KM_ROOT_OF_TRUST *: ((KM_dump_root_of_trust(log_proc,                  \
                     "rootOfTrust", ps->rootOfTrust, i, false)), 0),            \
                                                                                \
         default: ((KM_dump_hex(log_proc, #field_name,                          \
@@ -362,7 +362,7 @@ void KM_datetime_to_str(char *buf, u32 buf_size, int64_t dt)
 }
 
 void KM_dump_root_of_trust(KM_dump_log_proc_t log_proc,
-        const char *field_name, const KM_ROOT_OF_TRUST_V3 *rot,
+        const char *field_name, const KM_ROOT_OF_TRUST *rot,
         uint8_t indent, bool end_without_comma)
 {
     char indent_buf[1024];

@@ -94,10 +94,10 @@ int sus_keymaster_hack_cert_chain(hidl_vec<hidl_vec<uint8_t>>& cert_chain)
 
     /* Get the new leaf & chain */
 
-    enum certmod::sus_key_variant variant = certmod::SUS_KEY_INVALID_;
+    enum sus_key_variant variant = SUS_KEY_INVALID_;
     VECTOR(u8) new_leaf = NULL;
     bool sus_send_indata = false;
-    if (certmod::sus_cert_generate_leaf(old_leaf, &sus_send_indata, &variant, &new_leaf)) {
+    if (sus_cert_generate_leaf(old_leaf, &sus_send_indata, &variant, &new_leaf)) {
         __android_log_print(ANDROID_LOG_ERROR, "SUS", "Failed to hack the leaf cert!");
         vector_destroy(&old_leaf);
         return 1;
@@ -116,16 +116,15 @@ int sus_keymaster_hack_cert_chain(hidl_vec<hidl_vec<uint8_t>>& cert_chain)
     (void) sus_send_indata;
 #endif /* SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA */
 
-    const struct certmod::keybox *kb = NULL;
-    if (certmod::keybox_read_lock_current(&kb)) {
+    const struct keybox *kb = NULL;
+    if (keybox_read_lock_current(&kb)) {
         __android_log_print(ANDROID_LOG_ERROR, "SUS", "Failed to get the current keybox!");
         vector_destroy(&new_leaf);
         return 1;
     }
     {
 
-        VECTOR(VECTOR(u8 const) const) new_chain =
-            certmod::keybox_get_cert_chain(kb, variant);
+        VECTOR(VECTOR(u8 const) const) new_chain = keybox_get_cert_chain(kb, variant);
         if (vector_size(new_chain) == 0) {
             __android_log_print(ANDROID_LOG_ERROR, "SUS", "Failed to get the new chain!");
             goto kb_out_err;
@@ -170,13 +169,13 @@ int sus_keymaster_hack_cert_chain(hidl_vec<hidl_vec<uint8_t>>& cert_chain)
         }
 
     }
-    certmod::keybox_unlock_current(&kb);
+    keybox_unlock_current(&kb);
 
     __android_log_print(ANDROID_LOG_INFO, "SUS", "Successfully hacked the cert chain!");
     return 0;
 
 kb_out_err:
-    certmod::keybox_unlock_current(&kb);
+    keybox_unlock_current(&kb);
     vector_destroy(&new_leaf);
     return 1;
 }

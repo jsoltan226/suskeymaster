@@ -892,14 +892,14 @@ KM_PARAM_LIST * key_params_2_param_list(hidl_vec<KeyParameter> const& params)
             const unsigned char *p = kp.blob.data();
             const unsigned char *const end = kp.blob.data() + kp.blob.size();
 
-            ret->rootOfTrust = d2i_KM_ROOT_OF_TRUST_V3(NULL, &p, kp.blob.size());
+            ret->rootOfTrust = d2i_KM_ROOT_OF_TRUST(NULL, &p, kp.blob.size());
             if (ret->rootOfTrust == NULL || p != end) {
                 std::cerr << "Failed to deserialize ROOT_OF_TRUST DER" << std::endl;
                 goto err;
             }
         }
 
-#define try_assign_ROOT_OF_TRUST_V3(field_) do { (void)ret->field_; } while (0)
+#define try_assign_ROOT_OF_TRUST(field_) do { (void)ret->field_; } while (0)
 
         switch (static_cast<KM_Tag>(kp.tag)) {
 #define KM_DECL_TAG(name_, type, tag_val, param_list_field, bound_enum, asn1_type, asn1_rep)    \
@@ -911,7 +911,7 @@ KM_PARAM_LIST * key_params_2_param_list(hidl_vec<KeyParameter> const& params)
                 goto err;
         }
 
-#undef try_assign_ROOT_OF_TRUST_V3
+#undef try_assign_ROOT_OF_TRUST
 
 #undef try_push_int
 #undef try_assign_int

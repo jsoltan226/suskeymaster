@@ -6,8 +6,6 @@
 #include <core/vector.h>
 
 #ifdef __cplusplus
-namespace suskeymaster {
-namespace certmod {
 extern "C" {
 #endif /* __cplusplus */
 
@@ -16,8 +14,6 @@ i32 sus_cert_sign(VECTOR(u8 const) tbs_der, VECTOR(u8) *out_sig,
 
 #ifdef __cplusplus
 } /* extern "C" */
-} /* namespace certmod */
-} /* namespace suskeymaster */
 #endif /* __cplusplus */
 
 #endif /* SUS_CERT_SIGN_H_ */

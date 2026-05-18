@@ -9,8 +9,6 @@
 #include <core/vector.h>
 
 #ifdef __cplusplus
-namespace suskeymaster {
-namespace certsign {
 extern "C" {
 #endif /* __cplusplus */
 
@@ -92,8 +90,6 @@ struct keybox_file_header {
 
 #ifdef __cplusplus
 } /* extern "C" */
-} /* namespace certsign */
-} /* namespace suskeymaster */
 #endif /* __cplusplus */
 
 #endif /* SUS_CERT_SIGN_KEYBOX_INTERNAL_H_ */

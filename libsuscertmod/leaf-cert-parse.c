@@ -30,7 +30,7 @@ static i32 ec_pubkey_sanity(const EVP_PKEY *key);
 i32 leaf_cert_parse(const VECTOR(u8) cert,
         enum sus_key_variant *out_variant,
         EVP_PKEY **out_subj_pubkey,
-        KM_KEY_DESC_V3 **out_km_desc
+        KM_KEY_DESC **out_km_desc
 )
 {
     bool ok = false;

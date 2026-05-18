@@ -12,11 +12,11 @@
 
 #define MODULE_NAME "key-desc"
 
-static i32 validate_km_desc(const KM_KEY_DESC_V3 *desc);
+static i32 validate_km_desc(const KM_KEY_DESC *desc);
 
-KM_KEY_DESC_V3 * key_desc_unpack(const ASN1_OCTET_STRING *desc)
+KM_KEY_DESC * key_desc_unpack(const ASN1_OCTET_STRING *desc)
 {
-    KM_KEY_DESC_V3 *ret = NULL;
+    KM_KEY_DESC *ret = NULL;
 
     const unsigned char *p = NULL;
     long total_len = 0;
@@ -31,7 +31,7 @@ KM_KEY_DESC_V3 * key_desc_unpack(const ASN1_OCTET_STRING *desc)
         goto_error("Invalid length of KM extension string: %ld", total_len);
     end = p + total_len;
 
-    ret = d2i_KM_KEY_DESC_V3(NULL, &p, total_len);
+    ret = d2i_KM_KEY_DESC(NULL, &p, total_len);
     if (ret == NULL)
         goto_error("Failed to deserialize the key description DER");
     if (p != end)
@@ -44,14 +44,14 @@ KM_KEY_DESC_V3 * key_desc_unpack(const ASN1_OCTET_STRING *desc)
 
 err:
     if (ret != NULL) {
-        KM_KEY_DESC_V3_free(ret);
+        KM_KEY_DESC_free(ret);
         ret = NULL;
     }
 
     return NULL;
 }
 
-ASN1_OCTET_STRING * key_desc_repack(const KM_KEY_DESC_V3 *desc)
+ASN1_OCTET_STRING * key_desc_repack(const KM_KEY_DESC *desc)
 {
     unsigned char *der = NULL;
     int der_len = 0;
@@ -60,7 +60,7 @@ ASN1_OCTET_STRING * key_desc_repack(const KM_KEY_DESC_V3 *desc)
 
     /* Construct the actual KeyDescription sequence */
     {
-        der_len = i2d_KM_KEY_DESC_V3(desc, NULL);
+        der_len = i2d_KM_KEY_DESC(desc, NULL);
         if (der_len <= 0)
             goto_error("Failed to measure the length of the key description DER");
 
@@ -71,7 +71,7 @@ ASN1_OCTET_STRING * key_desc_repack(const KM_KEY_DESC_V3 *desc)
         unsigned char *p = der;
         unsigned char *const end = p + der_len;
 
-        if (i2d_KM_KEY_DESC_V3(desc, &p) != der_len)
+        if (i2d_KM_KEY_DESC(desc, &p) != der_len)
             goto_error("Failed to i2d the key description");
         else if (p != end)
             goto_error("Invalid number of bytes written");
@@ -102,7 +102,7 @@ err:
 }
 
 void key_desc_dump(KM_dump_log_proc_t log_proc,
-        const char *field_name, const KM_KEY_DESC_V3 *desc,
+        const char *field_name, const KM_KEY_DESC *desc,
         uint8_t indent, bool end_without_comma)
 {
     char indent_buf[1024];
@@ -120,7 +120,7 @@ void key_desc_dump(KM_dump_log_proc_t log_proc,
         goto out;
     }
 
-    KM_DUMP_FUNCTION_PROLOGUE(log_proc, KM_KEY_DESC_V3, "KEY DESCRIPTION",
+    KM_DUMP_FUNCTION_PROLOGUE(log_proc, KM_KEY_DESC, "KEY DESCRIPTION",
             field_name, "key_desc", desc == NULL,
             indent_buf, end_without_comma, goto out);
 
@@ -186,7 +186,7 @@ out:
     }
 }
 
-static i32 validate_km_desc(const KM_KEY_DESC_V3 *desc)
+static i32 validate_km_desc(const KM_KEY_DESC *desc)
 {
 #define ATTESTATION_VERSION 3
 #define KEYMASTER_VERSION 4
@@ -303,6 +303,11 @@ static i32 validate_km_desc(const KM_KEY_DESC_V3 *desc)
             s_log_error("Invalid verified boot state "
                     "in hardwareEnforced authorization list: %lld",
                     (long long int)i);
+            return 1;
+        }
+
+        if (desc->hardwareEnforced->rootOfTrust->verifiedBootHash == NULL) {
+            s_log_error("rootOfTrust verifiedBootHash is NULL");
             return 1;
         }
     }

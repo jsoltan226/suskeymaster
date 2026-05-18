@@ -6,8 +6,6 @@
 #include "certmod.h"
 
 #ifdef __cplusplus
-namespace suskeymaster {
-namespace certmod {
 extern "C" {
 #endif /* __cplusplus */
 
@@ -52,8 +50,6 @@ VECTOR(u8 const) keybox_get_keyblob(const struct keybox *kb,
 
 #ifdef __cplusplus
 } /* extern "C" */
-} /* namespace certsign */
-} /* namespace suskeymaster */
 #endif /* __cplusplus */
 
 #endif /* SUS_CERT_SIGN_KEYBOX_H_ */

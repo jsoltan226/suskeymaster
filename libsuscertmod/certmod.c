@@ -30,11 +30,11 @@
 
 static void print_openssl_errors(void);
 
-static int mod_root_of_trust(KM_ROOT_OF_TRUST_V3 *rot);
+static int mod_root_of_trust(KM_ROOT_OF_TRUST *rot);
 static int mod_patch_levels(KM_PARAM_LIST *al,
         const char *al_name);
 
-static int mod_key_desc(KM_KEY_DESC_V3 *desc);
+static int mod_key_desc(KM_KEY_DESC *desc);
 
 static void key_desc_dump_log_proc(const char *fmt, ...)
 {
@@ -63,7 +63,7 @@ i32 sus_cert_generate_leaf(const VECTOR(u8) old_leaf,
     *out_is_sus_send_indata = false;
 
     EVP_PKEY *attested_pubkey = NULL;
-    KM_KEY_DESC_V3 *km_desc = NULL;
+    KM_KEY_DESC *km_desc = NULL;
     enum sus_key_variant variant = SUS_KEY_INVALID_;
     unsigned char *tmp_out_buf = NULL;
     VECTOR(u8) out = NULL;
@@ -134,7 +134,7 @@ err:
     }
 
     if (km_desc != NULL) {
-        KM_KEY_DESC_V3_free(km_desc);
+        KM_KEY_DESC_free(km_desc);
         km_desc = NULL;
     }
 
@@ -166,7 +166,7 @@ static void print_openssl_errors(void)
     s_log_error("END OPENSSL ERRORS");
 }
 
-static int mod_key_desc(KM_KEY_DESC_V3 *desc)
+static int mod_key_desc(KM_KEY_DESC *desc)
 {
     /** Top-level Key Description modifications */
     int64_t e = 0LL;
@@ -258,7 +258,7 @@ static int mod_key_desc(KM_KEY_DESC_V3 *desc)
     return 0;
 }
 
-static int mod_root_of_trust(KM_ROOT_OF_TRUST_V3 *rot)
+static int mod_root_of_trust(KM_ROOT_OF_TRUST *rot)
 {
     int64_t i = 0;
 

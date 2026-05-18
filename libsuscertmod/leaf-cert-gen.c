@@ -23,8 +23,8 @@ static i32 set_serial(X509 *x509, i64 val);
 static i32 set_tbs_signature_algorithm(X509 *x509,
         enum sus_key_variant signing_key_variant);
 
-static i32 set_notbefore(X509 *x509, const KM_KEY_DESC_V3 *desc);
-static i32 set_notafter(X509 *x509, const KM_KEY_DESC_V3 *desc,
+static i32 set_notbefore(X509 *x509, const KM_KEY_DESC *desc);
+static i32 set_notafter(X509 *x509, const KM_KEY_DESC *desc,
         i64 issuer_not_after);
 static i32 set_issuer_from_keybox(X509 *x509, i64 *out_issuer_not_after,
         enum sus_key_variant signing_key_variant);
@@ -32,10 +32,10 @@ static i32 set_issuer(X509 *x509,
         const VECTOR(u8) title, const VECTOR(u8) serial);
 static i32 set_subject(X509 *x509, const u8 *common_name_str);
 
-static i32 set_keyusage(X509 *x509, const KM_KEY_DESC_V3 *desc);
+static i32 set_keyusage(X509 *x509, const KM_KEY_DESC *desc);
 static i32 set_attestation_extension(X509 *x509,
-        const KM_KEY_DESC_V3 *desc);
-static i32 construct_tbs_der(const KM_KEY_DESC_V3 *km_desc,
+        const KM_KEY_DESC *desc);
+static i32 construct_tbs_der(const KM_KEY_DESC *km_desc,
         enum sus_key_variant signing_key_variant, EVP_PKEY *subj_pubkey,
         VECTOR(u8) *out_der);
 
@@ -52,7 +52,7 @@ static void encode_der_sig_bitstr_tl(unsigned char **p, unsigned long content_le
 i32 leaf_cert_gen(VECTOR(u8) *out,
         enum sus_key_variant signing_key_variant,
         EVP_PKEY *subj_pubkey,
-        const KM_KEY_DESC_V3 *km_desc
+        const KM_KEY_DESC *km_desc
 )
 {
     if ((signing_key_variant != SUS_KEY_EC &&
@@ -153,7 +153,7 @@ static i32 set_tbs_signature_algorithm(X509 *x509,
     return 0;
 }
 
-static i32 set_notbefore(X509 *x509, const KM_KEY_DESC_V3 *desc)
+static i32 set_notbefore(X509 *x509, const KM_KEY_DESC *desc)
 {
     ASN1_TIME *not_before = NULL;
     i32 ret = 1;
@@ -203,7 +203,7 @@ err:
     return ret;
 }
 
-static i32 set_notafter(X509 *x509, const KM_KEY_DESC_V3 *desc,
+static i32 set_notafter(X509 *x509, const KM_KEY_DESC *desc,
         i64 issuer_not_after)
 {
     ASN1_TIME *not_after = NULL;
@@ -347,7 +347,7 @@ err:
     return ret;
 }
 
-static i32 set_keyusage(X509 *x509, const KM_KEY_DESC_V3 *desc)
+static i32 set_keyusage(X509 *x509, const KM_KEY_DESC *desc)
 {
     u16 val = 0x0000;
     ASN1_BIT_STRING *bstr = NULL;
@@ -422,7 +422,7 @@ err:
     return ret;
 }
 
-static i32 set_attestation_extension(X509 *x509, const KM_KEY_DESC_V3 *desc)
+static i32 set_attestation_extension(X509 *x509, const KM_KEY_DESC *desc)
 {
     ASN1_OCTET_STRING *key_desc_str = NULL;
     ASN1_OBJECT *km_ext_obj = NULL;
@@ -464,7 +464,7 @@ err:
     return ret;
 }
 
-static i32 construct_tbs_der(const KM_KEY_DESC_V3 *km_desc,
+static i32 construct_tbs_der(const KM_KEY_DESC *km_desc,
         enum sus_key_variant signing_key_variant, EVP_PKEY *subj_pubkey,
         VECTOR(u8) *out_der)
 {

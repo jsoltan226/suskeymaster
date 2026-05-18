@@ -290,7 +290,7 @@ int KM_samsung_paramset_to_param_list(
             const unsigned char *p = data;
             const int len = ASN1_STRING_length(curr->b);
 
-            ret->rootOfTrust = d2i_KM_ROOT_OF_TRUST_V3(&ret->rootOfTrust,
+            ret->rootOfTrust = d2i_KM_ROOT_OF_TRUST(&ret->rootOfTrust,
                     &p, len);
             if (ret->rootOfTrust == NULL) {
                 s_log_warn("Failed to parse the rootOfTrust SEQUENCE; not adding");
@@ -338,7 +338,7 @@ int KM_samsung_paramset_to_param_list(
             ASN1_SET_OF_INTEGER **_SET_OF_INTEGER_;
             ASN1_OCTET_STRING **_OCTET_STRING_;
 
-            KM_ROOT_OF_TRUST_V3 **_ROOT_OF_TRUST_V3_;
+            KM_ROOT_OF_TRUST **_ROOT_OF_TRUST_;
 
             void *v;
         } target;

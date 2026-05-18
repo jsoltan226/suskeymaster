@@ -8,10 +8,6 @@
 
 #ifdef __cplusplus
 extern "C" {
-namespace suskeymaster {
-namespace certmod {
-using ::suskeymaster::kmhal::util::KM_KEY_DESC_V3;
-using ::suskeymaster::kmhal::util::KM_dump_log_proc_t;
 #endif /* __cplusplus */
 
 /* Various utilities for working with Android Attestation Extension objects,
@@ -30,7 +26,7 @@ using ::suskeymaster::kmhal::util::KM_dump_log_proc_t;
  * with data from the ASN.1 string `desc`.
  * On failure, returns `NULL`.
  */
-KM_KEY_DESC_V3 * key_desc_unpack(const ASN1_OCTET_STRING *desc);
+KM_KEY_DESC * key_desc_unpack(const ASN1_OCTET_STRING *desc);
 
 /* Repacks the key description struct `desc` into a new ASN.1 octet string
  * with an Android Attestation Extension object.
@@ -39,7 +35,7 @@ KM_KEY_DESC_V3 * key_desc_unpack(const ASN1_OCTET_STRING *desc);
  * from the key description struct `desc`.
  * On failure, returns `NULL`.
  */
-ASN1_OCTET_STRING * key_desc_repack(const KM_KEY_DESC_V3 *desc);
+ASN1_OCTET_STRING * key_desc_repack(const KM_KEY_DESC *desc);
 
 /* Prints the contents of the key description `desc` using `log_proc`,
  * with the base indentation level `indent`.
@@ -60,11 +56,9 @@ ASN1_OCTET_STRING * key_desc_repack(const KM_KEY_DESC_V3 *desc);
  *
  * where in both cases indentation is added according to `indent`.
  * */
-KM_DUMP_DECL_FUNCTION(key_desc_dump, KM_KEY_DESC_V3, desc);
+KM_DUMP_DECL_FUNCTION(key_desc_dump, KM_KEY_DESC, desc);
 
 #ifdef __cplusplus
-} /* namespace certmod */
-} /* namespace suskeymaster */
 } /* extern "C" */
 #endif /* __cplusplus */
 

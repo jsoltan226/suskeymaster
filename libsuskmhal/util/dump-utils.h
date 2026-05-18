@@ -5,9 +5,6 @@
 #include <limits.h>
 
 #ifdef __cplusplus
-namespace suskeymaster {
-namespace kmhal {
-namespace util {
 extern "C" {
 #endif /* __cplusplus */
 
@@ -93,13 +90,10 @@ void KM_dump_enum_arr(KM_dump_log_proc_t log_proc,
 void KM_datetime_to_str(char *buf, u32 buf_size, int64_t dt);
 KM_DUMP_DECL_FUNCTION(KM_dump_datetime, ASN1_INTEGER, datetime);
 
-KM_DUMP_DECL_FUNCTION(KM_dump_root_of_trust, KM_ROOT_OF_TRUST_V3, rot);
+KM_DUMP_DECL_FUNCTION(KM_dump_root_of_trust, KM_ROOT_OF_TRUST, rot);
 
 #ifdef __cplusplus
 } /* extern "C" */
-} /* namespace util */
-} /* namespace kmhal */
-} /* namespace suskeymaster */
 #endif /* __cplusplus */
 
 #endif /* SUSKEYMASTER_KMHAL_UTIL_DUMP_H_ */

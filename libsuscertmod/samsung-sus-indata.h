@@ -6,8 +6,6 @@
 #endif /* SUSKEYMASTER_BUILD_HOST */
 
 #ifdef __cplusplus
-namespace suskeymaster {
-namespace certmod {
 extern "C" {
 #endif /* __cplusplus */
 
@@ -20,8 +18,6 @@ unsigned int g_send_indata_att_challenge_len = sizeof(g_send_indata_att_challeng
 
 #ifdef __cplusplus
 } /* extern "C" */
-} /* namespace certmod */
-} /* namespace suskeymaster */
 #endif /* __cplusplus */
 
 #endif /* SUS_CERT_MOD_SAMSUNG_SUS_INDATA_H_ */

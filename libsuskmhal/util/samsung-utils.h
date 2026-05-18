@@ -70,17 +70,6 @@ typedef struct KM_samsung_ekey_blob {
 } KM_SAMSUNG_EKEY_BLOB;
 DECLARE_ASN1_FUNCTIONS(KM_SAMSUNG_EKEY_BLOB)
 
-#ifdef __cplusplus
-} /* extern "C" */
-#endif /* __cplusplus */
-
-#ifdef __cplusplus
-namespace suskeymaster {
-namespace kmhal {
-namespace util {
-extern "C" {
-#endif /* __cplusplus */
-
 bool KM_samsung_is_integer_param(uint32_t tag);
 
 int KM_samsung_make_integer_param(KM_SAMSUNG_PARAM **out_par,
@@ -102,9 +91,6 @@ int KM_samsung_paramset_to_param_list(
 
 #ifdef __cplusplus
 } /* extern "C" */
-} /* namespace util */
-} /* namespace kmhal */
-} /* namespace suskeymaster */
 #endif /* __cplusplus */
 
 #endif /* SUSKEYMASTER_KMHAL_SAMSUNG_UTILS_H_ */
