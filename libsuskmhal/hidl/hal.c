@@ -1,8 +1,7 @@
-#include "txn-util.h"
-#define _GNU_SOURCE
 #include "hal.h"
 #include "base.h"
 #include "manager.h"
+#include "txn-util.h"
 #include "binderif.h"
 #include <core/log.h>
 #include <core/util.h>

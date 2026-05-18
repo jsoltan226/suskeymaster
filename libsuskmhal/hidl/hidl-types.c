@@ -54,20 +54,20 @@ kmhal_hidl_string_write_embedded(struct kmhal_hidl_parcel *parcel,
 
 int kmhal_hidl_string_read(struct kmhal_hidl_string *out,
                            const struct kmhal_hidl_parcel *parcel,
-                           kmhal_hidl_parcel_obj_t hstr_obj_ref,
+                           size_t *offset_p,
                            kmhal_hidl_parcel_obj_t *out_child_ref)
 {
     u_check_params(parcel != NULL);
 
     const struct kmhal_hidl_string *hstr_p;
-    if (kmhal_hidl_parcel_read_buffer_obj(parcel, hstr_obj_ref,
+    kmhal_hidl_parcel_obj_t hstr_obj_ref;
+    if (kmhal_hidl_parcel_read_buffer_obj(parcel, offset_p,
             sizeof(struct kmhal_hidl_string), NULL, NULL, NULL,
-            (const void **)&hstr_p))
+            (const void **)&hstr_p, &hstr_obj_ref))
     {
         s_log_error("Failed to read the HIDL string struct object");
         return 1;
     }
-
 
     const kmhal_hidl_parcel_obj_t child_hint = kmhal_hidl_parcel_obj_get(parcel,
             kmhal_hidl_parcel_obj_idx(hstr_obj_ref) + 1
@@ -169,15 +169,16 @@ kmhal_hidl_vec_write_embedded(struct kmhal_hidl_parcel *parcel,
 
 int kmhal_hidl_vec_read(struct kmhal_hidl_vec *out, size_t elem_size,
                         const struct kmhal_hidl_parcel *parcel,
-                        kmhal_hidl_parcel_obj_t vec_obj_ref,
+                        size_t *offset_p,
                         kmhal_hidl_parcel_obj_t *out_child_ref)
 {
     u_check_params(parcel != NULL);
 
     const struct kmhal_hidl_vec *vec_p;
-    if (kmhal_hidl_parcel_read_buffer_obj(parcel, vec_obj_ref,
+    kmhal_hidl_parcel_obj_t vec_obj_ref;
+    if (kmhal_hidl_parcel_read_buffer_obj(parcel, offset_p,
             sizeof(struct kmhal_hidl_vec), NULL, NULL, NULL,
-            (const void **)&vec_p))
+            (const void **)&vec_p, &vec_obj_ref))
     {
         s_log_error("Failed to read the HIDL vec struct object");
         return 1;

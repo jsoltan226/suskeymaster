@@ -29,9 +29,11 @@
 #define MGR_CMD_REGISTER_PASSTHROUGH_CLIENT 8
 
 static int read_hidl_vec_of_hidl_string(const struct kmhal_hidl_parcel *parcel,
+                                        size_t *offset_p,
                                         struct kmhal_hidl_vec *out);
 
-static int read_handle(const struct kmhal_hidl_parcel *parcel, u32 *out_handle);
+static int read_handle(const struct kmhal_hidl_parcel *parcel,
+        size_t *offset_p, u32 *out_handle);
 
 enum kmhal_hidl_android_status kmhal_hidl_manager_find_current_ver_fqname(
         struct kmhal_hidl_binder_ctx *binder,
@@ -135,7 +137,8 @@ enum kmhal_hidl_android_status kmhal_hidl_manager_get(
         goto err;
 
     /* Read the returned handle... */
-    if (read_handle(parcel, &handle)) {
+    size_t off = KMHAL_HIDL_PARCEL_DATA_START_OFFSET;
+    if (read_handle(parcel, &off, &handle)) {
         ret = BAD_VALUE;
         goto err;
     }
@@ -188,7 +191,8 @@ enum kmhal_hidl_android_status kmhal_hidl_manager_list(
         goto err;
 
     /* Read the returned hidl_vec<hidl_string> */
-    if (read_hidl_vec_of_hidl_string(parcel, out)) {
+    size_t offset = KMHAL_HIDL_PARCEL_DATA_START_OFFSET;
+    if (read_hidl_vec_of_hidl_string(parcel, &offset, out)) {
         ret = BAD_VALUE;
         goto_error("Failed to parse the reply");
     }
@@ -246,7 +250,8 @@ enum kmhal_hidl_android_status kmhal_hidl_manager_list_by_interface(
         goto err;
 
     /* Read the returned hidl_vec<hidl_string> */
-    if (read_hidl_vec_of_hidl_string(parcel, out)) {
+    size_t offset = KMHAL_HIDL_PARCEL_DATA_START_OFFSET;
+    if (read_hidl_vec_of_hidl_string(parcel, &offset, out)) {
         ret = BAD_VALUE;
         goto_error("Failed to parse the reply");
     }
@@ -265,20 +270,14 @@ err:
 }
 
 static int read_hidl_vec_of_hidl_string(const struct kmhal_hidl_parcel *parcel,
+                                        size_t *offset_p,
                                         struct kmhal_hidl_vec *out)
 {
-    kmhal_hidl_parcel_obj_t vec_obj_ref, vec_bytes_ref;
+    kmhal_hidl_parcel_obj_t vec_bytes_ref;
     struct kmhal_hidl_vec vec;
 
-    vec_obj_ref = kmhal_hidl_parcel_obj_get(parcel, 0);
-    if (!KMHAL_HIDL_PARCEL_OBJ_IS_VALID(vec_obj_ref)) {
-        s_log_error("Failed to get a reference to the first object "
-                "in the reply");
-        return 1;
-    }
-
     if (kmhal_hidl_vec_of_read(struct kmhal_hidl_string, &vec, parcel,
-                vec_obj_ref, &vec_bytes_ref))
+                offset_p, &vec_bytes_ref))
     {
         s_log_error("Failed to read the returned HIDL vec");
         return 1;
@@ -308,21 +307,12 @@ static int read_hidl_vec_of_hidl_string(const struct kmhal_hidl_parcel *parcel,
     return 0;
 }
 
-static int read_handle(const struct kmhal_hidl_parcel *parcel, u32 *out_handle)
+static int read_handle(const struct kmhal_hidl_parcel *parcel,
+        size_t *offset_p, u32 *out_handle)
 {
-    kmhal_hidl_parcel_obj_t flat_binder_obj_ref;
     struct flat_binder_object flat_binder_obj;
 
-    flat_binder_obj_ref = kmhal_hidl_parcel_obj_get(parcel, 0);
-    if (!KMHAL_HIDL_PARCEL_OBJ_IS_VALID(flat_binder_obj_ref)) {
-        s_log_error("Failed to get a reference to the first binder object "
-                "in the reply");
-        return 1;
-    }
-
-    if (kmhal_hidl_parcel_read_handle(parcel, flat_binder_obj_ref,
-                &flat_binder_obj))
-    {
+    if (kmhal_hidl_parcel_read_handle(parcel, offset_p, &flat_binder_obj)) {
         s_log_error("Failed to read the flat_binder_object (handle) "
                 "from the reply");
         return 1;

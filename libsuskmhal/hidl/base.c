@@ -116,16 +116,10 @@ kmhal_hidl_base_get_descriptor(struct kmhal_hidl_binder_ctx *binder,
     }
 
     {
-        kmhal_hidl_parcel_obj_t hstr_obj_ref;
         struct kmhal_hidl_string hstr;
+        size_t off = KMHAL_HIDL_PARCEL_DATA_START_OFFSET;
 
-        hstr_obj_ref = kmhal_hidl_parcel_obj_get(parcel, 0);
-        if (!KMHAL_HIDL_PARCEL_OBJ_IS_VALID(hstr_obj_ref)) {
-            ret = BAD_VALUE;
-            goto_error("Failed to get a handle to the first returned object");
-        }
-
-        if (kmhal_hidl_string_read(&hstr, parcel, hstr_obj_ref, NULL)) {
+        if (kmhal_hidl_string_read(&hstr, parcel, &off, NULL)) {
             ret = BAD_VALUE;
             goto_error("Failed to read the returned HIDL string");
         }

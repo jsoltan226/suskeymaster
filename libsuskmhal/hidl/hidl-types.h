@@ -89,7 +89,8 @@ kmhal_hidl_string_write_embedded(struct kmhal_hidl_parcel *parcel,
  *
  * @param parcel The parcel from which to read.
  *
- * @param hstr_obj_ref A reference to the HIDL string struct object.
+ * @param offset_p A pointer to the offset of the object. Must not be NULL.
+ *  On success, incremented to point to after the read object.
  *
  * @param out_child_ref An optional output pointer for the HIDL string
  *  contents object (child of @hstr_obj_ref).
@@ -98,7 +99,7 @@ kmhal_hidl_string_write_embedded(struct kmhal_hidl_parcel *parcel,
  */
 int kmhal_hidl_string_read(struct kmhal_hidl_string *out,
                            const struct kmhal_hidl_parcel *parcel,
-                           kmhal_hidl_parcel_obj_t hstr_obj_ref,
+                           size_t *offset_p,
                            kmhal_hidl_parcel_obj_t *out_child_ref);
 
 /**
@@ -220,7 +221,8 @@ kmhal_hidl_vec_write_embedded(struct kmhal_hidl_parcel *parcel,
  *
  * @param parcel The parcel from which to read.
  *
- * @param vec_obj_ref A reference to the HIDL vec struct object.
+ * @param offset_p A pointer to the offset of the object. Must not be NULL.
+ *  On success, incremented to point to after the read object.
  *
  * @param out_child_ref An optional output pointer for the HIDL vec
  *  contents object (child of @vec_obj_ref).
@@ -229,7 +231,7 @@ kmhal_hidl_vec_write_embedded(struct kmhal_hidl_parcel *parcel,
  */
 int kmhal_hidl_vec_read(struct kmhal_hidl_vec *out, size_t elem_size,
                         const struct kmhal_hidl_parcel *parcel,
-                        kmhal_hidl_parcel_obj_t vec_obj_ref,
+                        size_t *offset_p,
                         kmhal_hidl_parcel_obj_t *out_child_ref);
 
 #define kmhal_hidl_vec_of_read(T, out, parcel,  \

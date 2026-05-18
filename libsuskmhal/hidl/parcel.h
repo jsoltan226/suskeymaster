@@ -60,6 +60,10 @@ typedef u32 kmhal_hidl_parcel_obj_t;
 #define KMHAL_HIDL_PARCEL_OBJ_IS_VALID(obj) \
     ((obj) != KMHAL_HIDL_PARCEL_OBJ_INVALID)
 
+/* The first 4 bytes of the HIDL parcel are always the status code,
+ * and so the actual data only starts after it */
+#define KMHAL_HIDL_PARCEL_DATA_START_OFFSET (sizeof(u32))
+
 /**
  * Allocate and initialize a new empty parcel.
  * The returned parcel initially contains no serialized data.
@@ -227,6 +231,20 @@ kmhal_hidl_parcel_obj_t
 kmhal_hidl_parcel_obj_get(const struct kmhal_hidl_parcel *parcel, size_t idx);
 
 /**
+ * Find an object in the parcel's list based on its offset.
+ *
+ * @param parcel The parcel to search in.
+ *
+ * @param off The offset of the object.
+ *
+ * @return A reference to the found object or
+ *  `KMHAL_HIDL_PARCEL_OBJ_INVALID` if it doesn't exist.
+ */
+kmhal_hidl_parcel_obj_t
+kmhal_hidl_parcel_obj_find_by_offset(const struct kmhal_hidl_parcel *parcel,
+                                     size_t offset);
+
+/**
  * Pack the parcel into a binder scatter-gather transaction.
  *
  * This function:
@@ -265,6 +283,7 @@ void kmhal_hidl_parcel_pack(struct kmhal_hidl_binder_transaction *txn,
  *      Pointer to the parcel handle. The parcel is consumed by this function.
  *
  * @param out Optional output structure receiving reply metadata. May be NULL.
+ *
  * @return
  *      0 if the transaction completed successfully,
  *      1 if the transaction failed,
@@ -277,8 +296,11 @@ int kmhal_hidl_parcel_unpack(struct kmhal_hidl_parcel **parcel_p,
  * The offset doesn't have to be aligned.
  *
  * @param parcel The parcel from which to read.
+ *
  * @param offset The offset at which to start reading.
+ *
  * @param out Optional output pointer. May be NULL, but why would you do that?
+ *
  * @param len The amount of data to read.
  *  If @out is not NULL, the provided buffer must be at least @len long.
  *
@@ -291,55 +313,84 @@ int kmhal_hidl_parcel_peek(const struct kmhal_hidl_parcel *parcel,
  * The offset must be 4-byte aligned.
  *
  * @param parcel Parcel from which the value will be read.
- * @param offset 4-byte-aligned offset of the integer value.
+ *
+ * @param offset_p A pointer to the offset of the object. Must not be NULL.
+ *  On success, incremented to point to after the read object.
+ *  Note: The value must be 4-byte aligned.
+ *
  * @param out Output pointer, may be NULL.
  *
  * @return 0 on success, non-zero on failure.
  */
 int kmhal_hidl_parcel_read_u32(const struct kmhal_hidl_parcel *parcel,
-                               binder_size_t offset, u32 *out);
+                               size_t *offset_p, u32 *out);
 
 /* Read a uint64 value from the parcel's buffer.
  * The offset must be 4-byte aligned.
  *
  * @param parcel Parcel from which the value will be read.
- * @param offset 4-byte-aligned offset of the integer value.
+ *
+ * @param offset_p A pointer to the offset of the object. Must not be NULL.
+ *  On success, incremented to point to after the read object.
+ *  Note: The value must be 4-byte aligned.
+ *
  * @param out Output pointer, may be NULL.
  *
  * @return 0 on success, non-zero on failure.
  */
 int kmhal_hidl_parcel_read_u64(const struct kmhal_hidl_parcel *parcel,
-                               binder_size_t offset, u64 *out);
+                               size_t *offset_p, u64 *out);
 
 /* Read a flat_binder_object from the parcel's buffer.
  *
  * @param parcel Parcel from which the object will be read.
- * @param obj A reference to the object to read.
- *  See `kmhal_hidl_parcel_get_obj.`
+ *
+ * @param offset_p A pointer to the offset of the object. Must not be NULL.
+ *  On success, incremented to point to after the read object.
+ *  Note: The value must be 4-byte aligned.
+ *
  * @param out Output pointer, may be NULL.
  *
  * @return 0 on success, non-zero on failure.
  */
 int kmhal_hidl_parcel_read_handle(const struct kmhal_hidl_parcel *parcel,
-                                  kmhal_hidl_parcel_obj_t obj,
+                                  size_t *offset_p,
                                   struct flat_binder_object *out);
 
 /* Read a binder_buffer_object from the parcel's buffer.
  *
  * @param parcel Parcel from which the object will be read.
- * @param obj A reference to the object to read.
- *  See `kmhal_hidl_parcel_get_obj.`
- * @param out Output pointer, may be NULL.
+ *
+ * @param offset_p A pointer to the offset of the object. Must not be NULL.
+ *  On success, incremented to point to after the read object.
+ *
+ * @param exp_size The expected size of the object's buffer.
+ *
+ * @param exp_flags A pointer to the expected value of the object's `flags`.
+ *  May be NULL.
+ *
+ * @param exp_parent A pointer to the expected value of the object's `parent`.
+ *  May be NULL. Ignored if @exp_flags is not set to point to a value with
+ *  `BINDER_BUFFER_FLAG_HAS_PARENT`.
+ *
+ * @param exp_parent_offset A pointer to the expected value of the object's
+ *  `parent_offset`. May be NULL. Ignored if @exp_flags is not set
+ *  to point to a value with `BINDER_BUFFER_FLAG_HAS_PARENT`.
+ *
+ * @param out Output pointer for the object's buffer. May be NULL.
+ *
+ * @param out_ref Output pointer for the object's reference. May be NULL.
  *
  * @return 0 on success, non-zero on failure.
  */
 int kmhal_hidl_parcel_read_buffer_obj(const struct kmhal_hidl_parcel *parcel,
-                                      kmhal_hidl_parcel_obj_t obj_ref,
+                                      size_t *offset_p,
                                       binder_size_t exp_size,
                                       const u32 *exp_flags,
                                       const kmhal_hidl_parcel_obj_t *exp_parent,
                                       const binder_size_t *exp_parent_offset,
-                                      const void **out);
+                                      const void **out,
+                                      kmhal_hidl_parcel_obj_t *out_ref);
 
 /**
  * Retrieve an embedded buffer referenced by a parent buffer object.
