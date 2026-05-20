@@ -125,10 +125,10 @@ int kmhal_hidl_string_read(struct kmhal_hidl_string *out,
 int kmhal_hidl_string_read_embedded(const char **out,
                                     kmhal_hidl_parcel_obj_t *out_ref,
                                     const struct kmhal_hidl_parcel *parcel,
+                                    size_t *offset_p,
                                     const struct kmhal_hidl_string *hstr,
                                     kmhal_hidl_parcel_obj_t parent_handle,
-                                    size_t parent_offset,
-                                    kmhal_hidl_parcel_obj_t child_hint);
+                                    size_t parent_offset);
 
 /* The C struct representation of the HIDL vec type */
 struct kmhal_hidl_vec {
@@ -191,7 +191,7 @@ KMHAL_HIDL_VEC_LAYOUT_ASSERTS(struct kmhal_hidl_vec);
 
 KMHAL_HIDL_VEC_OF_DECL(uint8_t);
 KMHAL_HIDL_VEC_OF_STRUCT_DECL(kmhal_hidl_string);
-KMHAL_HIDL_VEC_OF_VEC_OF(uint8_t);
+KMHAL_HIDL_VEC_OF_VEC_OF_DECL(uint8_t);
 
 /**
  * Write objects for both the HIDL vec struct and its contents into the parcel.
@@ -309,11 +309,11 @@ int kmhal_hidl_vec_read(struct kmhal_hidl_vec *out, size_t elem_size,
 int kmhal_hidl_vec_read_embedded(const void **out,
                                  kmhal_hidl_parcel_obj_t *out_ref,
                                  const struct kmhal_hidl_parcel *parcel,
+                                 size_t *offset_p,
                                  const struct kmhal_hidl_vec *vec,
                                  size_t elem_size,
                                  kmhal_hidl_parcel_obj_t parent_handle,
-                                 size_t parent_offset,
-                                 kmhal_hidl_parcel_obj_t child_hint);
+                                 size_t parent_offset);
 
 #define kmhal_hidl_vec_of_read_embedded(T, out, out_ref, parcel,    \
         parent_vec, parent_handle, parent_offset, child_hint)       \

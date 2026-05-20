@@ -291,13 +291,8 @@ static int read_hidl_vec_of_hidl_string(
     for (u32 i = 0; i < vec.size; i++) {
         const size_t parent_offset = i * sizeof(struct kmhal_hidl_string);
 
-        const kmhal_hidl_parcel_obj_t child_hint =
-            kmhal_hidl_parcel_obj_get(parcel,
-                    kmhal_hidl_parcel_obj_idx(vec_bytes_ref) + 1 + i
-            );
-
-        if (kmhal_hidl_string_read_embedded(NULL, NULL, parcel,
-                    &vec.buffer[i], vec_bytes_ref, parent_offset, child_hint))
+        if (kmhal_hidl_string_read_embedded(NULL, NULL, parcel, offset_p,
+                    &vec.buffer[i], vec_bytes_ref, parent_offset))
         {
             s_log_error("Failed to read embedded HIDL string @ idx %"PRIu32, i);
             return 1;

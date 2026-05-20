@@ -340,7 +340,7 @@ kmhal_hidl_parcel_obj_find_by_offset(const struct kmhal_hidl_parcel *parcel,
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
 
     if (vector_size(parcel->buffer) < sizeof(struct binder_buffer_object) ||
-        offset > vector_size(parcel->buffer) -
+        align4(offset) > vector_size(parcel->buffer) -
             sizeof(struct binder_buffer_object))
     {
         s_log_error("Binder buffer object offset out of bounds");
@@ -473,6 +473,8 @@ int kmhal_hidl_parcel_read_u32(const struct kmhal_hidl_parcel *parcel,
 
     if (out != NULL)
         memcpy(out, parcel->buffer + *offset_p, sizeof(u32));
+    *offset_p += sizeof(u32);
+
     return 0;
 }
 
@@ -491,6 +493,8 @@ int kmhal_hidl_parcel_read_u64(const struct kmhal_hidl_parcel *parcel,
 
     if (out != NULL)
         memcpy(out, parcel->buffer + *offset_p, sizeof(u64));
+    *offset_p += sizeof(u64);
+
     return 0;
 }
 
@@ -526,6 +530,7 @@ int kmhal_hidl_parcel_read_handle(const struct kmhal_hidl_parcel *parcel,
 
     if (out != NULL)
         memcpy(out, &tmp, sizeof(struct flat_binder_object));
+    *offset_p += sizeof(struct flat_binder_object);
 
     return 0;
 }
@@ -574,14 +579,15 @@ int kmhal_hidl_parcel_read_buffer_obj(const struct kmhal_hidl_parcel *parcel,
 }
 
 int kmhal_hidl_parcel_read_embedded_buffer(const struct kmhal_hidl_parcel *p,
+                                           size_t *off_p,
                                            kmhal_hidl_parcel_obj_t parent_ref,
                                            binder_size_t parent_offset,
-                                           kmhal_hidl_parcel_obj_t child_hint,
                                            size_t expected_buf_size,
                                            const void **out_buf,
                                            kmhal_hidl_parcel_obj_t *out_ref)
 {
     u_check_params(p != NULL && atomic_load(&p->initialized_));
+    u_check_params(off_p != NULL);
 
     if (validate_parcel_object_ref(p, parent_ref)) {
         s_log_error("Invalid parent object reference");
@@ -612,62 +618,31 @@ int kmhal_hidl_parcel_read_embedded_buffer(const struct kmhal_hidl_parcel *p,
     memcpy(&child_buffer_ptr, (const uint8_t *)parent_obj.buffer + parent_offset,
             sizeof(void *));
 
-    bool found = false;
-    u32 found_idx = 0;
-    struct binder_buffer_object child_obj;
-
-    if (KMHAL_HIDL_PARCEL_OBJ_IS_VALID(child_hint)) {
-        size_t hint_idx = (size_t)child_hint;
-        if (hint_idx >= vector_size(p->objects)) {
-            s_log_error("Invalid child object hint");
-            return 1;
-        }
-
-        const binder_size_t off = p->objects[hint_idx].off;
-        if (off > vector_size(p->buffer) ||
-                vector_size(p->buffer) - off < sizeof(struct binder_buffer_object))
-        {
-            s_log_error("Child object overflows parcel buffer");
-            return -1;
-        }
-
-        memcpy(&child_obj, p->buffer + off,
-                sizeof(struct binder_buffer_object));
-
-        if ((void *)child_obj.buffer == child_buffer_ptr &&
-                child_obj.parent_offset == parent_offset)
-        {
-            found = true;
-            found_idx = hint_idx;
-        }
-    }
-
-    /* If we didn't find the object using the hint,
-     * look for it iterating backwards */
-    for (i64 i = vector_size(p->objects) - 1; !found && i >= 0; i--) {
-
-        const binder_size_t off = p->objects[i].off;
-        if (off > vector_size(p->buffer) ||
-                vector_size(p->buffer) - off < sizeof(struct binder_buffer_object))
-        {
-            s_log_error("Child object overflows parcel buffer");
-            return -1;
-        }
-
-        memcpy(&child_obj, p->buffer + off,
-                sizeof(struct binder_buffer_object));
-
-        if ((void *)child_obj.buffer == child_buffer_ptr &&
-                child_obj.parent_offset == parent_offset)
-        {
-            found = true;
-            found_idx = i;
-        }
-    }
-    if (!found) {
+    kmhal_hidl_parcel_obj_t child_ref =
+        kmhal_hidl_parcel_obj_find_by_offset(p, *off_p);
+    if (!KMHAL_HIDL_PARCEL_OBJ_IS_VALID(child_ref)) {
         s_log_error("Couldn't find embedded buffer object");
         return 1;
     }
+    const size_t child_idx = (size_t)child_ref;
+    const struct parcel_obj *const child = &p->objects[child_idx];
+
+    if (child->off != *off_p) {
+        s_log_error("Given and found child object offset mismatch");
+        return 1;
+    }
+
+    /* If the offset was found in the `offsets` array of the parcel
+     * using `kmhal_hidl_parcel_obj_find_by_offset`,
+     * we have a guarantee that it's valid */
+    struct binder_buffer_object child_obj;
+    memcpy(&child_obj, p->buffer + child->off, sizeof(child_obj));
+
+    if ((void *)child_obj.buffer != child_buffer_ptr) {
+        s_log_error("Expected and found embedded buffer pointer mismatch");
+        return 1;
+    }
+    /* The rest is validated by `validate_buffer_object` */
 
     if (validate_buffer_object(p, &child_obj, expected_buf_size,
                 BINDER_BUFFER_FLAG_HAS_PARENT, parent_idx, parent_offset))
@@ -676,11 +651,9 @@ int kmhal_hidl_parcel_read_embedded_buffer(const struct kmhal_hidl_parcel *p,
         return 1;
     }
 
-    const kmhal_hidl_parcel_obj_t found_ref =
-        (kmhal_hidl_parcel_obj_t)found_idx;
-
     if (out_buf) *out_buf = child_buffer_ptr;
-    if (out_ref) *out_ref = found_ref;
+    if (out_ref) *out_ref = child_ref;
+    *off_p += sizeof(struct binder_buffer_object);
 
     return 0;
 }

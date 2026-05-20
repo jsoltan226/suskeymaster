@@ -69,13 +69,9 @@ int kmhal_hidl_string_read(struct kmhal_hidl_string *out,
         return 1;
     }
 
-    const kmhal_hidl_parcel_obj_t child_hint = kmhal_hidl_parcel_obj_get(parcel,
-            kmhal_hidl_parcel_obj_idx(hstr_obj_ref) + 1
-    );
-
     if (kmhal_hidl_string_read_embedded(NULL,
-                out_child_ref, parcel, hstr_p, hstr_obj_ref,
-                offsetof(struct kmhal_hidl_string, buffer), child_hint))
+                out_child_ref, parcel, offset_p, hstr_p, hstr_obj_ref,
+                offsetof(struct kmhal_hidl_string, buffer)))
     {
         s_log_error("Failed to read the HIDL string bytes object");
         return 1;
@@ -90,10 +86,10 @@ int kmhal_hidl_string_read(struct kmhal_hidl_string *out,
 int kmhal_hidl_string_read_embedded(const char **out,
                                     kmhal_hidl_parcel_obj_t *out_ref,
                                     const struct kmhal_hidl_parcel *parcel,
+                                    size_t *offset_p,
                                     const struct kmhal_hidl_string *hstr,
                                     kmhal_hidl_parcel_obj_t parent_handle,
-                                    size_t parent_offset,
-                                    kmhal_hidl_parcel_obj_t child_hint)
+                                    size_t parent_offset)
 {
     u_check_params(parcel != NULL && hstr != NULL &&
             KMHAL_HIDL_PARCEL_OBJ_IS_VALID(parent_handle));
@@ -101,9 +97,9 @@ int kmhal_hidl_string_read_embedded(const char **out,
     const size_t expected_size = hstr->length + 1;
     const void *tmp_out = NULL;
 
-    if (kmhal_hidl_parcel_read_embedded_buffer(parcel, parent_handle,
+    if (kmhal_hidl_parcel_read_embedded_buffer(parcel, offset_p, parent_handle,
                 parent_offset + offsetof(struct kmhal_hidl_string, buffer),
-                child_hint, expected_size, &tmp_out, out_ref))
+                expected_size, &tmp_out, out_ref))
     {
         s_log_error("Failed to read the embedded HIDL string bytes");
         return 1;
@@ -184,13 +180,9 @@ int kmhal_hidl_vec_read(struct kmhal_hidl_vec *out, size_t elem_size,
         return 1;
     }
 
-    const kmhal_hidl_parcel_obj_t child_hint = kmhal_hidl_parcel_obj_get(parcel,
-            kmhal_hidl_parcel_obj_idx(vec_obj_ref) + 1
-    );
-
-    if (kmhal_hidl_vec_read_embedded(NULL, out_child_ref, parcel,
+    if (kmhal_hidl_vec_read_embedded(NULL, out_child_ref, parcel, offset_p,
                 vec_p, elem_size, vec_obj_ref,
-                offsetof(struct kmhal_hidl_vec, buffer), child_hint))
+                offsetof(struct kmhal_hidl_vec, buffer)))
     {
         s_log_error("Failed to read the HIDL vec bytes object");
         return 1;
@@ -205,19 +197,19 @@ int kmhal_hidl_vec_read(struct kmhal_hidl_vec *out, size_t elem_size,
 int kmhal_hidl_vec_read_embedded(const void **out,
                                  kmhal_hidl_parcel_obj_t *out_ref,
                                  const struct kmhal_hidl_parcel *parcel,
+                                 size_t *offset_p,
                                  const struct kmhal_hidl_vec *vec,
                                  size_t elem_size,
                                  kmhal_hidl_parcel_obj_t parent_handle,
-                                 size_t parent_offset,
-                                 kmhal_hidl_parcel_obj_t child_hint)
+                                 size_t parent_offset)
 {
     u_check_params(parcel != NULL && vec != NULL &&
             KMHAL_HIDL_PARCEL_OBJ_IS_VALID(parent_handle));
     u_check_params(vec->size * elem_size < UINT32_MAX);
 
-    if (kmhal_hidl_parcel_read_embedded_buffer(parcel, parent_handle,
+    if (kmhal_hidl_parcel_read_embedded_buffer(parcel, offset_p, parent_handle,
                 parent_offset + offsetof(struct kmhal_hidl_vec, buffer),
-                child_hint, vec->size * elem_size, out, out_ref))
+                vec->size * elem_size, out, out_ref))
     {
         s_log_error("Failed to read the embedded HIDL vec bytes");
         return 1;

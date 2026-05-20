@@ -47,8 +47,8 @@ enum kmhal_hidl_android_status kmhal_hidl_util_check_allocate_txn_tmps(
  *
  * @param parcel_p A valid pointer to a parcel that is
  *  packed and ready for transact.
- *  After the transaction, `*parcel_p` will contain a new parcel initialized
- *  from the reply data. See `kmhal_hidl_parcel_new_from_reply`.
+ *  After a successful transaction, `*parcel_p` will contain a new parcel
+ *  initialized from the reply data. See `kmhal_hidl_parcel_new_from_reply`.
  *
  * @param out_reply Optional output pointer for the returned reply.
  *
@@ -59,6 +59,13 @@ enum kmhal_hidl_android_status kmhal_hidl_util_check_allocate_txn_tmps(
  *  Note: On success, only the parcel should be destroyed,
  *  while on failure, both `txn_p` and `parcel_p` should be passed to
  *  `kmhal_hidl_util_destroy_txn_tmps`.
+ *
+ * Note: In any case, `txn_p` and `parcel_p` should later be freed
+ * with `kmhal_hidl_util_destroy_txn_tmps` as needed.
+ * The parcel should always get destroyed after the transaction,
+ * but `txn_p` - on success and if `write_free_reply` is set -
+ * will already contain the FREE_BUFFER command, so it should be flushed
+ * before being destroyed.
  */
 enum kmhal_hidl_android_status kmhal_hidl_util_transact_and_unpack(
         struct kmhal_hidl_binder_ctx *binder,

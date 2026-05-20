@@ -401,13 +401,13 @@ int kmhal_hidl_parcel_read_buffer_obj(const struct kmhal_hidl_parcel *parcel,
  *
  * @param p Parcel containing the serialized objects.
  *
+ * @param offset_p A pointer to the offset of the object. Must not be NULL.
+ *  On success, incremented to point to after the read object.
+ *
  * @param parent_ref Reference to the parent buffer object.
  *
  * @param parent_offset Byte offset within the parent object at which
  *      the embedded child buffer is expected to reside.
- *
- * @param child_hint Optional hint for the expected child object's position,
- *      or `KMHAL_HIDL_PARCEL_OBJ_INVALID` if unspecified.
  *
  * @param expected_buf_size Optional expected size of the child buffer.
  *      If not NULL, the resolved child buffer size must exactly match
@@ -422,9 +422,9 @@ int kmhal_hidl_parcel_read_buffer_obj(const struct kmhal_hidl_parcel *parcel,
  * @return 0 on success, non-zero on validation or lookup failure.
  */
 int kmhal_hidl_parcel_read_embedded_buffer(const struct kmhal_hidl_parcel *p,
+                                           size_t *off_p,
                                            kmhal_hidl_parcel_obj_t parent_ref,
                                            binder_size_t parent_offset,
-                                           kmhal_hidl_parcel_obj_t child_hint,
                                            size_t expected_buf_size,
                                            const void **out_buf,
                                            kmhal_hidl_parcel_obj_t *out_ref);

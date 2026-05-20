@@ -1,6 +1,7 @@
 #include "hal.h"
 #include "base.h"
 #include "manager.h"
+#include "parcel.h"
 #include "txn-util.h"
 #include "binderif.h"
 #include <core/log.h>
@@ -29,6 +30,11 @@ struct kmhal_hidl_hal_sp {
     const char *instname;
 };
 
+static enum kmhal_hidl_android_status
+validate_arg_descs(const struct kmhal_hidl_hal_arg_write_desc *in_args,
+                   u32 n_in_args,
+                   struct kmhal_hidl_hal_arg_parse_desc *out_args,
+                   u32 n_out_args);
 
 struct kmhal_hidl_hal_sp * kmhal_hidl_hal_sp_new_empty(void)
 {
@@ -172,6 +178,53 @@ skip_binder_refs:
     *hal_p = NULL;
 }
 
+enum kmhal_hidl_android_status
+kmhal_hidl_hal_call(struct kmhal_hidl_hal_sp *hal, u32 cmd,
+                    const struct kmhal_hidl_hal_arg_write_desc *in_args,
+                    u32 n_in_args,
+                    struct kmhal_hidl_hal_arg_parse_desc *out_args,
+                    u32 n_out_args)
+{
+    u_check_params(hal != NULL);
+    enum kmhal_hidl_android_status ret = UNKNOWN_ERROR;
+
+    if ((ret = validate_arg_descs(in_args, n_in_args, out_args, n_out_args))
+            != OK)
+        goto_error("Invalid argument descriptors");
+
+    struct kmhal_hidl_parcel *p = NULL;
+    kmhal_hidl_util_check_allocate_txn_tmps(&hal->txn, &p);
+
+    kmhal_hidl_parcel_write_cstring(p, hal->fqname);
+    for (u32 i = 0; i < n_in_args; i++) {
+        const struct kmhal_hidl_hal_arg_write_desc *const arg = &in_args[i];
+        if (arg->size == 0)
+            continue;
+
+        arg->write_proc(p, arg->data, arg->size);
+    }
+    kmhal_hidl_parcel_pack(hal->txn, p, hal->handle, cmd);
+
+    if ((ret = kmhal_hidl_util_transact_and_unpack(hal->binder, &hal->txn, &p,
+                NULL, true)) != OK)
+        goto_error("Binder HIDL transaction failed");
+
+    size_t off = KMHAL_HIDL_PARCEL_DATA_START_OFFSET;
+    for (u32 i = 0; i < n_out_args; i++) {
+        const struct kmhal_hidl_hal_arg_parse_desc *const arg = &out_args[i];
+
+        if (arg->parse_proc(p, &off, arg->out, arg->out_size)) {
+            ret = BAD_VALUE;
+            goto_error("Failed to parse arg no %u \"%s\" from the reply",
+                    i, arg->name);
+        }
+    }
+
+err:
+    kmhal_hidl_parcel_destroy(&p);
+    return ret;
+}
+
 struct kmhal_hidl_binder_ctx *
 kmhal_hidl_hal_get_binder(struct kmhal_hidl_hal_sp *hal,
                           bool *opt_out_owns_binder)
@@ -245,4 +298,52 @@ void kmhal_hidl_hal_set_instname(struct kmhal_hidl_hal_sp *hal,
 {
     u_check_params(hal != NULL && atomic_load(&hal->initialized_));
     hal->instname = instname;
+}
+
+static enum kmhal_hidl_android_status
+validate_arg_descs(const struct kmhal_hidl_hal_arg_write_desc *in_args,
+                   u32 n_in_args,
+                   struct kmhal_hidl_hal_arg_parse_desc *out_args,
+                   u32 n_out_args)
+{
+    if (in_args == NULL && n_in_args > 0) {
+        s_log_error("in_args is NULL but n_in_args > 0");
+        return UNEXPECTED_NULL;
+    }
+    if (out_args == NULL && n_out_args > 0) {
+        s_log_error("out_args is NULL but n_out_args > 0");
+        return UNEXPECTED_NULL;
+    }
+
+    enum kmhal_hidl_android_status ret = OK;
+    for (u32 i = 0; i < n_in_args; i++) {
+        const struct kmhal_hidl_hal_arg_write_desc *const arg = &in_args[i];
+
+        if (arg->name == NULL) {
+            s_log_error("In arg %u: name is NULL", i);
+            ret = UNEXPECTED_NULL;
+        } else if (arg->write_proc == NULL) {
+            s_log_error("In arg %u: write_proc is NULL", i);
+            ret = UNEXPECTED_NULL;
+        } else if (arg->data == NULL && arg->size > 0) {
+            s_log_error("Out arg %u: data is NULL but size > 0", i);
+            ret = UNEXPECTED_NULL;
+        }
+    }
+    for (u32 i = 0; i < n_out_args; i++) {
+        const struct kmhal_hidl_hal_arg_parse_desc *const arg = &out_args[i];
+
+        if (arg->name == NULL) {
+            s_log_error("Out arg %u: name is NULL", i);
+            ret = UNEXPECTED_NULL;
+        } else if (arg->parse_proc == NULL) {
+            s_log_error("Out arg %u: parse_proc is NULL", i);
+            ret = UNEXPECTED_NULL;
+        } else if (arg->out == NULL && arg->out_size > 0) {
+            s_log_error("Out arg %u: out pointer is NULL but size > 0", i);
+            ret = UNEXPECTED_NULL;
+        }
+    }
+
+    return ret;
 }
