@@ -31,7 +31,8 @@ HidlSusKeymaster3_0::HidlSusKeymaster3_0(void)
             nullptr, false
     );
     if (!this->hal) {
-        std::cerr << "Failed to get a handle to the keymaster HAL service" << std::endl;
+        /* std::cerr << "Failed to get a handle to the keymaster HAL service" << std::endl; */
+        return;
     }
 }
 
@@ -65,7 +66,7 @@ enum kmhal_hidl_KM_3_0_cmd {
     KM_3_0_UPDATE = 13,
     KM_3_0_FINISH = 14,
     KM_3_0_ABORT = 15,
-    KM_3_0_N_CMDS__
+    KM_3_0_N_CMDS__ = KM_3_0_ABORT
 };
 
 #define check_hal_ok() do {                                         \

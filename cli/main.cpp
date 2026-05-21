@@ -1097,6 +1097,8 @@ static void setup_cgd_log(void)
     (void) s_configure_log_outputs(S_LOG_STDOUT_MASKS, &s_log_cfg);
     s_log_cfg.out.file = stderr;
     (void) s_configure_log_outputs(S_LOG_STDERR_MASKS, &s_log_cfg);
+
+    s_configure_log_level(S_LOG_TRACE);
 }
 
 static void check_print_help(int argc, const char **argv,
@@ -1831,11 +1833,15 @@ static int match_and_run_handler(int argc, const char **argv)
 
     /* Init HAL if needed */
     if (matched_cmd->required_hal_version > HAL_NONE) {
+        const s_log_level old = s_get_log_level();
+        s_configure_log_level(S_LOG_WARNING);
         if (init_g_hal(matched_cmd->required_hal_version)) {
             std::cerr << "HAL initialization failed for a command that requires it " <<
                 "(\"" << full_cmd_name << "\")" << std::endl;
+            s_configure_log_level(old);
             return EXIT_FAILURE;
         }
+        s_configure_log_level(old);
     }
 
     /* Run the handler with the parsed arguments */

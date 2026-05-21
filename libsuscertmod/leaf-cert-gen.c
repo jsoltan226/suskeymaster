@@ -377,18 +377,14 @@ static i32 set_keyusage(X509 *x509, const KM_KEY_DESC *desc)
 
             switch (v) {
             case KM_PURPOSE_SIGN:
-            case KM_PURPOSE_VERIFY:
                 val |= KU_DIGITAL_SIGNATURE;
                 break;
-#if 0
-            case KM_PURPOSE_ENCRYPT:
             case KM_PURPOSE_DECRYPT:
                 val |= KU_DATA_ENCIPHERMENT;
-            /* fallthrough*/
+                break;
             case KM_PURPOSE_WRAP_KEY:
                 val |= KU_KEY_ENCIPHERMENT;
                 break;
-#endif /* 0 */
             }
         }
     }

@@ -96,6 +96,14 @@ kmhal_hidl_hal_sp_new_get(const char *fqname, const char *instname,
     if (kmhal_hidl_manager_get(ret->binder, &ret->txn,
                 ret->fqname, ret->instname, &ret->handle))
         goto_error("Failed to get() a handle to the HAL");
+    else if (ret->handle == 0) {
+        /* This error is expected when getting the wrong version,
+         * so we might need to call this function multiple times
+         * before we get the correct one, therefore we might
+         * not want this error spammed */
+        s_log_verbose("Invalid handle received");
+        goto err;
+    }
     ret->owns_handle = true;
 
     return ret;

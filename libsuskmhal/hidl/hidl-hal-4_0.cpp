@@ -1,64 +1,44 @@
 #ifndef SUSKEYMASTER_HAL_DISABLE_4_0
 #define HIDL_DISABLE_INSTRUMENTATION
+#include "base.h"
+#include "hal.h"
 #include "hidl-hal.hpp"
+#include "keymaster-hidl.hpp"
+#include <core/int.h>
+#include <core/util.h>
 #include <core/vector.h>
+#include <cstdint>
 #include <hidl/HidlSupport.h>
-#include <android/hardware/keymaster/4.0/types.h>
 #include <android/hardware/keymaster/generic/types.h>
-#ifndef SUSKEYMASTER_BUILD_HOST
-#include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
-#endif /* SUSKEYMASTER_BUILD_HOST */
-#include <dlfcn.h>
+#include <iostream>
+
+#define MODULE_NAME "keymaster-hidl-hal-4.0"
 
 using namespace ::android::hardware::keymaster::generic;
+using ::android::hardware::hidl_vec;
 
 namespace suskeymaster {
 namespace kmhal {
 namespace hidl {
 
-#if 0 /*ndef SUSKEYMASTER_BUILD_HOST*/
-
-using ::android::hardware::hidl_vec;
-
-static const char *km4_0_tryGetService_symname = "_ZN7android8hardware9keymaster4V4_016IKeymasterDevice13tryGetServiceERKNSt3__112basic_stringIcNS4_11char_traitsIcEENS4_9allocatorIcEEEEb";
+#ifndef SUSKEYMASTER_BUILD_HOST
 
 HidlSusKeymaster4_0::HidlSusKeymaster4_0(void)
 {
-    this->lib_handle = nullptr;
-    this->hal = nullptr;
-
-    this->lib_handle = dlopen("android.hardware.keymaster@4.0", RTLD_NOW);
-    if (this->lib_handle == NULL) {
-        std::cerr << "Failed to dlopen the keymaster 4.0 library: " << dlerror() << std::endl;
-        return;
-    }
-
-    using tryGetService_fn_t =
-        ::android::sp<::android::hardware::keymaster::V4_0::IKeymasterDevice>
-            (*)(std::string, bool);
-
-    tryGetService_fn_t tryGetService = reinterpret_cast<tryGetService_fn_t>(
-            dlsym(this->lib_handle, km4_0_tryGetService_symname)
+    this->hal = kmhal_hidl_hal_sp_new_get(
+            "android.hardware.keymaster@4.0::IKeymasterDevice", "default",
+            nullptr, false
     );
-    if (!tryGetService) {
-        std::cerr << "Failed to dlsym V4_0::IKeymasterDevice::tryGetService: " <<
-            dlerror() << std::endl;
-        return;
-    }
-
-    this->hal = tryGetService("default", false);
     if (!this->hal) {
-        std::cerr << "Failed to get a handle to the keymaster 4.0 HAL" << std::endl;
+        /* std::cerr << "Failed to get a handle to the keymaster HAL service" << std::endl; */
         return;
     }
 }
 
 HidlSusKeymaster4_0::~HidlSusKeymaster4_0(void)
 {
-    if (this->lib_handle) {
-        dlclose(this->lib_handle);
-        this->lib_handle = nullptr;
-    }
+    if (this->hal != NULL)
+        kmhal_hidl_hal_sp_destroy(&this->hal);
 }
 
 bool HidlSusKeymaster4_0::isHALOk(void)
@@ -66,89 +46,31 @@ bool HidlSusKeymaster4_0::isHALOk(void)
     if (!this->hal)
         return false;
 
-    return this->hal->ping().isOk();
+    return kmhal_hidl_hal_ping(this->hal) == OK;
 }
 
-
-using ErrorCode_4_0 = ::android::hardware::keymaster::V4_0::ErrorCode;
-using KeyFormat_4_0 = ::android::hardware::keymaster::V4_0::KeyFormat;
-using KeyPurpose_4_0 = ::android::hardware::keymaster::V4_0::KeyPurpose;
-using KeyParameter_4_0 = ::android::hardware::keymaster::V4_0::KeyParameter;
-using SecurityLevel_4_0 = ::android::hardware::keymaster::V4_0::SecurityLevel;
-using KeyCharacteristics_4_0 = ::android::hardware::keymaster::V4_0::KeyCharacteristics;
-using HardwareAuthToken_4_0 = ::android::hardware::keymaster::V4_0::HardwareAuthToken;
-using VerificationToken_4_0 = ::android::hardware::keymaster::V4_0::VerificationToken;
-using HmacSharingParameters_4_0 = ::android::hardware::keymaster::V4_0::HmacSharingParameters;
-
-static constexpr ErrorCode from_4_0(ErrorCode_4_0 e) { return static_cast<ErrorCode>(e); }
-
-static constexpr KeyFormat_4_0 to_4_0(KeyFormat e) { return static_cast<KeyFormat_4_0>(e); }
-
-static constexpr KeyPurpose_4_0 to_4_0(KeyPurpose e) { return static_cast<KeyPurpose_4_0>(e); }
-
-static constexpr SecurityLevel from_4_0(SecurityLevel_4_0 e) {
-    return static_cast<SecurityLevel>(e);
-}
-
-static_assert(sizeof(KeyParameter) == sizeof(KeyParameter_4_0));
-static_assert(alignof(KeyParameter) == alignof(KeyParameter_4_0));
-static_assert(sizeof(hidl_vec<KeyParameter>) == sizeof(hidl_vec<KeyParameter_4_0>));
-static_assert(alignof(hidl_vec<KeyParameter>) == alignof(hidl_vec<KeyParameter_4_0>));
-static const hidl_vec<KeyParameter_4_0>& to_4_0(const hidl_vec<KeyParameter>& params)
-{
-    /* V4.0 and `generic` KeyParameter structs are identical */
-    return *reinterpret_cast<const hidl_vec<KeyParameter_4_0> *>(&params);
-}
-static const hidl_vec<KeyParameter>& from_4_0(const hidl_vec<KeyParameter_4_0>& params)
-{
-    return *reinterpret_cast<const hidl_vec<KeyParameter> *>(&params);
-}
-
-
-static_assert(sizeof(KeyCharacteristics) == sizeof(KeyCharacteristics_4_0));
-static_assert(alignof(KeyCharacteristics) == alignof(KeyCharacteristics_4_0));
-static const KeyCharacteristics& from_4_0(const KeyCharacteristics_4_0& kc)
-{
-    /* V4.0 and `generic` KeyCharacteristics structs are identical */
-    return *reinterpret_cast<const KeyCharacteristics *>(&kc);
-}
-
-static_assert(sizeof(HardwareAuthToken) == sizeof(HardwareAuthToken_4_0));
-static_assert(alignof(HardwareAuthToken) == alignof(HardwareAuthToken_4_0));
-static const HardwareAuthToken_4_0& to_4_0(const HardwareAuthToken& at)
-{
-    /* V4.0 and `generic` HardwareAuthToken structs are identical */
-    return *reinterpret_cast<const HardwareAuthToken_4_0 *>(&at);
-}
-
-static_assert(sizeof(VerificationToken) == sizeof(VerificationToken_4_0));
-static_assert(alignof(VerificationToken) == alignof(VerificationToken_4_0));
-static const VerificationToken_4_0& to_4_0(const VerificationToken& vt)
-{
-    /* V4.0 and `generic` VerificationToken structs are identical */
-    return *reinterpret_cast<const VerificationToken_4_0 *>(&vt);
-}
-static const VerificationToken& from_4_0(const VerificationToken_4_0& vt)
-{
-    return *reinterpret_cast<const VerificationToken *>(&vt);
-}
-
-static_assert(sizeof(HmacSharingParameters) == sizeof(HmacSharingParameters_4_0));
-static_assert(alignof(HmacSharingParameters) == alignof(HmacSharingParameters_4_0));
-static_assert(sizeof(hidl_vec<HmacSharingParameters>) ==
-        sizeof(hidl_vec<HmacSharingParameters_4_0>));
-static_assert(alignof(hidl_vec<HmacSharingParameters>) ==
-        alignof(hidl_vec<HmacSharingParameters_4_0>));
-static const HmacSharingParameters& from_4_0(const HmacSharingParameters_4_0& sp)
-{
-    return *reinterpret_cast<const HmacSharingParameters *>(&sp);
-}
-static const hidl_vec<HmacSharingParameters_4_0>& to_4_0(
-        const hidl_vec<HmacSharingParameters>& sp_vec
-)
-{
-    return *reinterpret_cast<const hidl_vec<HmacSharingParameters_4_0> *>(&sp_vec);
-}
+enum kmhal_hidl_KM_4_0_cmd {
+    KM_4_0_GET_HARDWARE_INFO = 1,
+    KM_4_0_GET_HMAC_SHARING_PARAMETERS = 2,
+    KM_4_0_COMPUTE_SHARED_HMAC = 3,
+    KM_4_0_VERIFY_AUTHORIZATION = 4,
+    KM_4_0_ADD_RNG_ENTROPY = 5,
+    KM_4_0_GENERATE_KEY = 6,
+    KM_4_0_IMPORT_KEY = 7,
+    KM_4_0_IMPORT_WRAPPED_KEY = 8,
+    KM_4_0_GET_KEY_CHARACTERISTICS = 9,
+    KM_4_0_EXPORT_KEY = 10,
+    KM_4_0_ATTEST_KEY = 11,
+    KM_4_0_UPGRADE_KEY = 12,
+    KM_4_0_DELETE_KEY = 13,
+    KM_4_0_DELETE_ALL_KEYS = 14,
+    KM_4_0_DESTROY_ATTESTATION_IDS = 15,
+    KM_4_0_BEGIN = 16,
+    KM_4_0_UPDATE = 17,
+    KM_4_0_FINISH = 18,
+    KM_4_0_ABORT = 19,
+    KM_4_0_N_CMDS__ = KM_4_0_ABORT
+};
 
 #define check_hal_ok() do {                                         \
     if (!this->isHALOk()) {                                         \
@@ -157,82 +79,178 @@ static const hidl_vec<HmacSharingParameters_4_0>& to_4_0(
     }                                                               \
 } while (0)
 
+static inline const void ** to_data_p(ErrorCode *e) {
+    return reinterpret_cast<const void **>(e);
+}
+static inline const void ** to_data_p(u32 *u) {
+    return reinterpret_cast<const void **>(u);
+}
+static inline const void ** to_data_p(u64 *u) {
+    return reinterpret_cast<const void **>(u);
+}
+static inline const void ** to_data_p(const struct kmhal_hidl_string **u) {
+    return reinterpret_cast<const void **>(u);
+}
+
 void HidlSusKeymaster4_0::getHardwareInfo(SecurityLevel& out_securityLevel,
         hidl_string& out_keymasterName, hidl_string& out_keymasterAuthorName)
 {
     if (!this->isHALOk()) {
+fail:
         out_securityLevel = SecurityLevel::SOFTWARE;
         out_keymasterName = "N/A";
         out_keymasterAuthorName = "N/A";
         return;
     }
 
-    this->hal->getHardwareInfo(
-        [&](SecurityLevel_4_0 securityLevel,
-            const auto& keymasterName, const auto& keymasterAuthorName)
-        {
-            out_securityLevel = from_4_0(securityLevel);
-            out_keymasterName = keymasterName;
-            out_keymasterAuthorName = keymasterAuthorName;
-        }
-    );
+    struct kmhal_hidl_hal_arg_write_desc *const in_args = nullptr;
+    const size_t n_in_args = 0;
+
+    u32 securityLevel = 0;
+    const struct kmhal_hidl_string *keymasterName = nullptr, *keymasterAuthorName = nullptr;
+
+    struct kmhal_hidl_hal_arg_parse_desc out_args[] = {
+        { "securityLevel", to_data_p(&securityLevel), sizeof(u32), kmhal_hidl_hal_arg_parse_u32 },
+        { "keymasterName", to_data_p(&keymasterName), sizeof(hidl_string),
+            kmhal_hidl_hal_arg_parse_hidl_string },
+        { "keymasterAuthorName", to_data_p(&keymasterAuthorName), sizeof(hidl_string),
+            kmhal_hidl_hal_arg_parse_hidl_string },
+    };
+    const size_t n_out_args = u_arr_size(out_args);
+
+    if (kmhal_hidl_hal_call(this->hal, KM_4_0_GET_HARDWARE_INFO,
+            in_args, n_in_args, out_args, n_out_args) != OK)
+    {
+        std::cerr << "getHardwareInfo call failed!" << std::endl;
+        goto fail;
+    }
+
+    out_securityLevel = static_cast<SecurityLevel>(securityLevel);
+    out_keymasterName = hidl_string(*reinterpret_cast<const hidl_string *>(keymasterName));
+    out_keymasterAuthorName =
+        hidl_string(*reinterpret_cast<const hidl_string *>(keymasterAuthorName));
 }
 
-ErrorCode HidlSusKeymaster4_0::getHmacSharingParameters(HmacSharingParameters& out_params)
+ErrorCode HidlSusKeymaster4_0::getHmacSharingParameters(HmacSharingParameters &out_params)
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
+    const void *params = nullptr;
 
-    this->hal->getHmacSharingParameters([&](ErrorCode_4_0 err,
-                const HmacSharingParameters_4_0& params)
-        {
-            ret = from_4_0(err);
-            if (err == ErrorCode_4_0::OK)
-                out_params = from_4_0(params);
-        }
-    );
+    struct kmhal_hidl_hal_arg_write_desc *const in_args = nullptr;
+    const size_t n_in_args = 0;
+
+    struct kmhal_hidl_hal_arg_parse_desc out_args[] = {
+        { "error", to_data_p(&ret), sizeof(u32), kmhal_hidl_hal_arg_parse_u32 },
+        { "params", &params, sizeof(HmacSharingParameters), read_hmac_sharing_parameters },
+    };
+    const size_t n_out_args = u_arr_size(out_args);
+
+    if (kmhal_hidl_hal_call(this->hal, KM_4_0_GET_HMAC_SHARING_PARAMETERS,
+                in_args, n_in_args, out_args, n_out_args))
+    {
+        std::cerr << __func__ << ": HIDL call failed" << std::endl;
+        return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
+    }
+    if (ret == ErrorCode::OK) {
+        out_params = HmacSharingParameters(
+                *reinterpret_cast<const HmacSharingParameters *>(params)
+        );
+    }
+
     return ret;
 }
 
 ErrorCode HidlSusKeymaster4_0::computeSharedHmac(hidl_vec<HmacSharingParameters> const& params,
-            hidl_vec<uint8_t>& out_sharingCheck)
+        hidl_vec<uint8_t>& out_sharingCheck)
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
+    const void *sharingCheck = nullptr;
 
-    this->hal->computeSharedHmac(to_4_0(params), [&](ErrorCode_4_0 err, const auto& sharingCheck)
-        {
-            ret = from_4_0(err);
-            if (err == ErrorCode_4_0::OK)
-                out_sharingCheck = sharingCheck;
-        }
-    );
+    struct kmhal_hidl_hal_arg_write_desc in_args[] = {
+        { "params", &params, sizeof(hidl_vec<HmacSharingParameters>),
+            write_vec_of_hmac_sharing_parameters },
+    };
+    const size_t n_in_args = u_arr_size(in_args);
+
+    struct kmhal_hidl_hal_arg_parse_desc out_args[] = {
+        { "error", to_data_p(&ret), sizeof(u32), kmhal_hidl_hal_arg_parse_u32 },
+        { "sharingCheck", &sharingCheck, sizeof(hidl_vec<uint8_t>), read_vec_of_primitive<u8> },
+    };
+    const size_t n_out_args = u_arr_size(out_args);
+
+    if (kmhal_hidl_hal_call(this->hal, KM_4_0_GET_HMAC_SHARING_PARAMETERS,
+                in_args, n_in_args, out_args, n_out_args))
+    {
+        std::cerr << __func__ << ": HIDL call failed" << std::endl;
+        return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
+    }
+    if (ret == ErrorCode::OK) {
+        out_sharingCheck = hidl_vec<uint8_t>(
+                *reinterpret_cast<const hidl_vec<uint8_t> *>(sharingCheck)
+        );
+    }
+
     return ret;
 }
 
 ErrorCode HidlSusKeymaster4_0::verifyAuthorization(uint64_t operationHandle,
-            hidl_vec<KeyParameter> const& parametersToVerify, HardwareAuthToken const& authToken,
-            VerificationToken& out_token)
+        hidl_vec<KeyParameter> const& parametersToVerify, HardwareAuthToken const& authToken,
+        VerificationToken& out_token)
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
+    const void *token = nullptr;
 
-    this->hal->verifyAuthorization(operationHandle,
-            to_4_0(parametersToVerify), to_4_0(authToken),
-        [&](ErrorCode_4_0 err, const VerificationToken_4_0& token)
-        {
-            ret = from_4_0(err);
-            if (err == ErrorCode_4_0::OK)
-                out_token = from_4_0(token);
-        }
-    );
+    struct kmhal_hidl_hal_arg_write_desc in_args[] = {
+        { "parametersToVerify", &parametersToVerify, sizeof(hidl_vec<KeyParameter>),
+            write_vec_of_key_parameter },
+        { "authToken", &authToken, sizeof(HardwareAuthToken), write_hardware_auth_token },
+    };
+    const size_t n_in_args = u_arr_size(in_args);
+
+    struct kmhal_hidl_hal_arg_parse_desc out_args[] = {
+        { "error", to_data_p(&ret), sizeof(u32), kmhal_hidl_hal_arg_parse_u32 },
+        { "token", &token, sizeof(VerificationToken), read_verification_token },
+    };
+    const size_t n_out_args = u_arr_size(out_args);
+
+    if (kmhal_hidl_hal_call(this->hal, KM_4_0_GET_HMAC_SHARING_PARAMETERS,
+                in_args, n_in_args, out_args, n_out_args))
+    {
+        std::cerr << __func__ << ": HIDL call failed" << std::endl;
+        return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
+    }
+    if (ret == ErrorCode::OK)
+        out_token = VerificationToken(*reinterpret_cast<const VerificationToken *>(token));
+
     return ret;
 }
 
 ErrorCode HidlSusKeymaster4_0::addRngEntropy(hidl_vec<uint8_t> const& data)
 {
     check_hal_ok();
-    return from_4_0(this->hal->addRngEntropy(data));
+    ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
+
+    struct kmhal_hidl_hal_arg_write_desc in_args[] = {
+        { "data", &data, sizeof(hidl_vec<uint8_t>), write_vec_of_primitive<uint8_t> },
+    };
+    const size_t n_in_args = u_arr_size(in_args);
+
+    struct kmhal_hidl_hal_arg_parse_desc out_args[] = {
+        { "error", to_data_p(&ret), sizeof(u32), kmhal_hidl_hal_arg_parse_u32 },
+    };
+    const size_t n_out_args = u_arr_size(out_args);
+
+    if (kmhal_hidl_hal_call(this->hal, KM_4_0_ADD_RNG_ENTROPY,
+                in_args, n_in_args, out_args, n_out_args))
+    {
+        std::cerr << __func__ << ": HIDL call failed" << std::endl;
+        return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
+    }
+
+    return ret;
 }
 
 ErrorCode HidlSusKeymaster4_0::generateKey(hidl_vec<KeyParameter> const& keyParams,
@@ -241,18 +259,33 @@ ErrorCode HidlSusKeymaster4_0::generateKey(hidl_vec<KeyParameter> const& keyPara
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
+    const void *keyBlob = nullptr, *keyCharacteristics = nullptr;
 
-    this->hal->generateKey(to_4_0(keyParams),
-        [&](ErrorCode_4_0 error, auto const& keyBlob,
-            KeyCharacteristics_4_0 const& keyCharacteristics)
-        {
-            ret = from_4_0(error);
-            if (error == ErrorCode_4_0::OK) {
-                out_keyBlob = keyBlob;
-                out_keyCharacteristics = from_4_0(keyCharacteristics);
-            }
-        }
-    );
+    struct kmhal_hidl_hal_arg_write_desc in_args[] = {
+        { "keyParams", &keyParams, sizeof(hidl_vec<KeyParameter>), write_vec_of_key_parameter }
+    };
+    const size_t n_in_args = u_arr_size(in_args);
+
+    struct kmhal_hidl_hal_arg_parse_desc out_args[] = {
+        { "error", to_data_p(&ret), sizeof(u32), kmhal_hidl_hal_arg_parse_u32 },
+        { "keyBlob", &keyBlob, sizeof(hidl_vec<u8>), read_vec_of_primitive<u8> },
+        { "keyCharacteristics", &keyCharacteristics, sizeof(KeyCharacteristics),
+            read_key_characteristics }
+    };
+    const size_t n_out_args = u_arr_size(out_args);
+
+    if (kmhal_hidl_hal_call(this->hal, KM_4_0_GENERATE_KEY,
+                in_args, n_in_args, out_args, n_out_args))
+    {
+        std::cerr << __func__ << ": HIDL call failed" << std::endl;
+        return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
+    }
+    if (ret == ErrorCode::OK) {
+        out_keyBlob = hidl_vec<uint8_t>(*reinterpret_cast<const hidl_vec<uint8_t> *>(keyBlob));
+        out_keyCharacteristics =
+            KeyCharacteristics(*reinterpret_cast<const KeyCharacteristics *>(keyCharacteristics));
+    }
+
     return ret;
 }
 
@@ -263,16 +296,35 @@ ErrorCode HidlSusKeymaster4_0::importKey(hidl_vec<KeyParameter> const& keyParams
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
+    const void *keyBlob = nullptr, *keyCharacteristics = nullptr;
 
-    this->hal->importKey(to_4_0(keyParams), to_4_0(keyFormat), keyData,
-        [&](ErrorCode_4_0 error, auto const& keyBlob, auto const& keyCharacteristics) {
-            ret = from_4_0(error);
-            if (error == ErrorCode_4_0::OK) {
-                out_keyBlob = keyBlob;
-                out_keyCharacteristics = from_4_0(keyCharacteristics);
-            }
-        }
-    );
+    struct kmhal_hidl_hal_arg_write_desc in_args[] = {
+        { "keyParams", &keyParams, sizeof(hidl_vec<KeyParameter>), write_vec_of_key_parameter },
+        { "keyFormat", &keyFormat, sizeof(u32), kmhal_hidl_hal_arg_write_u32 },
+        { "keyData", &keyData, sizeof(hidl_vec<u8>), write_vec_of_primitive<u8> },
+    };
+    const size_t n_in_args = u_arr_size(in_args);
+
+    struct kmhal_hidl_hal_arg_parse_desc out_args[] = {
+        { "error", to_data_p(&ret), sizeof(u32), kmhal_hidl_hal_arg_parse_u32 },
+        { "keyBlob", &keyBlob, sizeof(hidl_vec<u8>), read_vec_of_primitive<u8> },
+        { "keyCharacteristics", &keyCharacteristics, sizeof(KeyCharacteristics),
+            read_key_characteristics }
+    };
+    const size_t n_out_args = u_arr_size(out_args);
+
+    if (kmhal_hidl_hal_call(this->hal, KM_4_0_IMPORT_KEY,
+                in_args, n_in_args, out_args, n_out_args))
+    {
+        std::cerr << __func__ << ": HIDL call failed" << std::endl;
+        return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
+    }
+    if (ret == ErrorCode::OK) {
+        out_keyBlob = hidl_vec<uint8_t>(*reinterpret_cast<const hidl_vec<uint8_t> *>(keyBlob));
+        out_keyCharacteristics =
+            KeyCharacteristics(*reinterpret_cast<const KeyCharacteristics *>(keyCharacteristics));
+    }
+
     return ret;
 }
 
@@ -284,18 +336,39 @@ ErrorCode HidlSusKeymaster4_0::importWrappedKey(hidl_vec<uint8_t> const& wrapped
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
+    const void *keyBlob = nullptr, *keyCharacteristics = nullptr;
 
-    this->hal->importWrappedKey(wrappedKeyData, wrappingKeyBlob, maskingKey,
-            to_4_0(unwrappingParams), passwordSid, biometricSid,
-        [&](ErrorCode_4_0 err, const auto& keyBlob, const auto& keyCharacteristics)
-        {
-            ret = from_4_0(err);
-            if (err == ErrorCode_4_0::OK) {
-                out_keyBlob = keyBlob;
-                out_keyCharacteristics = from_4_0(keyCharacteristics);
-            }
-        }
-    );
+    struct kmhal_hidl_hal_arg_write_desc in_args[] = {
+        { "wrappedKeyData", &wrappedKeyData, sizeof(hidl_vec<u8>), write_vec_of_primitive<u8> },
+        { "wrappingKeyBlob", &wrappingKeyBlob, sizeof(hidl_vec<u8>), write_vec_of_primitive<u8> },
+        { "maskingKey", &maskingKey, sizeof(hidl_vec<u8>), write_vec_of_primitive<u8> },
+        { "unwrappingParams", &unwrappingParams, sizeof(hidl_vec<KeyParameter>),
+            write_vec_of_key_parameter },
+        { "passwordSid", &passwordSid, sizeof(u64), kmhal_hidl_hal_arg_write_u64 },
+        { "biometricSid", &biometricSid, sizeof(u64), kmhal_hidl_hal_arg_write_u64 },
+    };
+    const size_t n_in_args = u_arr_size(in_args);
+
+    struct kmhal_hidl_hal_arg_parse_desc out_args[] = {
+        { "error", to_data_p(&ret), sizeof(u32), kmhal_hidl_hal_arg_parse_u32 },
+        { "keyBlob", &keyBlob, sizeof(hidl_vec<u8>), read_vec_of_primitive<u8> },
+        { "keyCharacteristics", &keyCharacteristics, sizeof(KeyCharacteristics),
+            read_key_characteristics }
+    };
+    const size_t n_out_args = u_arr_size(out_args);
+
+    if (kmhal_hidl_hal_call(this->hal, KM_4_0_IMPORT_WRAPPED_KEY,
+                in_args, n_in_args, out_args, n_out_args))
+    {
+        std::cerr << __func__ << ": HIDL call failed" << std::endl;
+        return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
+    }
+    if (ret == ErrorCode::OK) {
+        out_keyBlob = hidl_vec<uint8_t>(*reinterpret_cast<const hidl_vec<uint8_t> *>(keyBlob));
+        out_keyCharacteristics =
+            KeyCharacteristics(*reinterpret_cast<const KeyCharacteristics *>(keyCharacteristics));
+    }
+
     return ret;
 }
 
@@ -307,14 +380,33 @@ ErrorCode HidlSusKeymaster4_0::getKeyCharacteristics(
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
+    const void *keyCharacteristics = nullptr;
 
-    this->hal->getKeyCharacteristics(keyBlob, applicationId, applicationData,
-        [&](ErrorCode_4_0 error, auto const& keyCharacteristics) {
-            ret = from_4_0(error);
-            if (error == ErrorCode_4_0::OK)
-                out_keyCharacteristics = from_4_0(keyCharacteristics);
-        }
-    );
+    struct kmhal_hidl_hal_arg_write_desc in_args[] = {
+        { "keyBlob", &keyBlob, sizeof(hidl_vec<u8>), write_vec_of_primitive<u8> },
+        { "applicationId", &applicationId, sizeof(hidl_vec<u8>), write_vec_of_primitive<u8> },
+        { "applicationData", &applicationData, sizeof(hidl_vec<u8>), write_vec_of_primitive<u8> },
+    };
+    const size_t n_in_args = u_arr_size(in_args);
+
+    struct kmhal_hidl_hal_arg_parse_desc out_args[] = {
+        { "error", to_data_p(&ret), sizeof(u32), kmhal_hidl_hal_arg_parse_u32 },
+        { "keyCharacteristics", &keyCharacteristics, sizeof(KeyCharacteristics),
+            read_key_characteristics }
+    };
+    const size_t n_out_args = u_arr_size(out_args);
+
+    if (kmhal_hidl_hal_call(this->hal, KM_4_0_GET_KEY_CHARACTERISTICS,
+                in_args, n_in_args, out_args, n_out_args))
+    {
+        std::cerr << __func__ << ": HIDL call failed" << std::endl;
+        return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
+    }
+    if (ret == ErrorCode::OK) {
+        out_keyCharacteristics =
+            KeyCharacteristics(*reinterpret_cast<const KeyCharacteristics *>(keyCharacteristics));
+    }
+
     return ret;
 }
 
@@ -326,14 +418,33 @@ ErrorCode HidlSusKeymaster4_0::exportKey(KeyFormat keyFormat,
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
+    const void *keyMaterial = nullptr;
 
-    this->hal->exportKey(to_4_0(keyFormat), keyBlob, applicationId, applicationData,
-        [&](ErrorCode_4_0 error, auto const& keyMaterial) {
-            ret = from_4_0(error);
-            if (error == ErrorCode_4_0::OK)
-                out_keyMaterial = keyMaterial;
-        }
-    );
+    struct kmhal_hidl_hal_arg_write_desc in_args[] = {
+        { "keyFormat", &keyFormat, sizeof(u32), kmhal_hidl_hal_arg_write_u32 },
+        { "keyBlob", &keyBlob, sizeof(hidl_vec<u8>), write_vec_of_primitive<u8> },
+        { "applicationId", &applicationId, sizeof(hidl_vec<u8>), write_vec_of_primitive<u8> },
+        { "applicationData", &applicationData, sizeof(hidl_vec<u8>), write_vec_of_primitive<u8> },
+    };
+    const size_t n_in_args = u_arr_size(in_args);
+
+    struct kmhal_hidl_hal_arg_parse_desc out_args[] = {
+        { "error", to_data_p(&ret), sizeof(u32), kmhal_hidl_hal_arg_parse_u32 },
+        { "keyMaterial", &keyMaterial, sizeof(hidl_vec<u8>), read_vec_of_primitive<u8> },
+    };
+    const size_t n_out_args = u_arr_size(out_args);
+
+    if (kmhal_hidl_hal_call(this->hal, KM_4_0_EXPORT_KEY,
+                in_args, n_in_args, out_args, n_out_args))
+    {
+        std::cerr << __func__ << ": HIDL call failed" << std::endl;
+        return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
+    }
+    if (ret == ErrorCode::OK) {
+        out_keyMaterial =
+            hidl_vec<uint8_t>(*reinterpret_cast<const hidl_vec<uint8_t> *>(keyMaterial));
+    }
+
     return ret;
 }
 
@@ -344,14 +455,34 @@ ErrorCode HidlSusKeymaster4_0::attestKey(
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
+    const void *certChain = nullptr;
 
-    this->hal->attestKey(keyToAttest, to_4_0(attestParams),
-        [&](ErrorCode_4_0 error, auto const& certChain) {
-            ret = from_4_0(error);
-            if (error == ErrorCode_4_0::OK)
-                out_certChain = certChain;
-        }
-    );
+    struct kmhal_hidl_hal_arg_write_desc in_args[] = {
+        { "keyToAttest", &keyToAttest, sizeof(hidl_vec<u8>), write_vec_of_primitive<u8> },
+        { "attestParams", &attestParams, sizeof(hidl_vec<KeyParameter>),
+            write_vec_of_key_parameter }
+    };
+    const size_t n_in_args = u_arr_size(in_args);
+
+    struct kmhal_hidl_hal_arg_parse_desc out_args[] = {
+        { "error", to_data_p(&ret), sizeof(u32), kmhal_hidl_hal_arg_parse_u32 },
+        { "certChain", &certChain, sizeof(hidl_vec<hidl_vec<u8>>),
+            read_vec_of_vec_of_primitive<u8> },
+    };
+    const size_t n_out_args = u_arr_size(out_args);
+
+    if (kmhal_hidl_hal_call(this->hal, KM_4_0_ATTEST_KEY,
+                in_args, n_in_args, out_args, n_out_args))
+    {
+        std::cerr << __func__ << ": HIDL call failed" << std::endl;
+        return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
+    }
+    if (ret == ErrorCode::OK) {
+        out_certChain = hidl_vec<hidl_vec<uint8_t>>(
+                *reinterpret_cast<const hidl_vec<hidl_vec<uint8_t>> *>(certChain)
+        );
+    }
+
     return ret;
 }
 
@@ -362,33 +493,106 @@ ErrorCode HidlSusKeymaster4_0::upgradeKey(
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
+    const void *upgradedKeyBlob = nullptr;
 
-    this->hal->upgradeKey(keyBlobToUpgrade, to_4_0(upgradeParams),
-        [&](ErrorCode_4_0 error, auto const& upgradedKeyBlob) {
-            ret = from_4_0(error);
-            if (error == ErrorCode_4_0::OK)
-                out_upgradedKeyBlob = upgradedKeyBlob;
-        }
-    );
+    struct kmhal_hidl_hal_arg_write_desc in_args[] = {
+        { "keyBlobToUpgrade", &keyBlobToUpgrade, sizeof(hidl_vec<u8>),
+            write_vec_of_primitive<u8> },
+        { "upgradeParams", &upgradeParams, sizeof(hidl_vec<KeyParameter>),
+            write_vec_of_key_parameter }
+    };
+    const size_t n_in_args = u_arr_size(in_args);
+
+    struct kmhal_hidl_hal_arg_parse_desc out_args[] = {
+        { "error", to_data_p(&ret), sizeof(u32), kmhal_hidl_hal_arg_parse_u32 },
+        { "upgradedKeyBlob", &upgradedKeyBlob, sizeof(hidl_vec<u8>),
+            read_vec_of_primitive<u8> },
+    };
+    const size_t n_out_args = u_arr_size(out_args);
+
+    if (kmhal_hidl_hal_call(this->hal, KM_4_0_UPGRADE_KEY,
+                in_args, n_in_args, out_args, n_out_args))
+    {
+        std::cerr << __func__ << ": HIDL call failed" << std::endl;
+        return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
+    }
+    if (ret == ErrorCode::OK) {
+        out_upgradedKeyBlob =
+            hidl_vec<uint8_t>(*reinterpret_cast<const hidl_vec<uint8_t> *>(upgradedKeyBlob));
+    }
+
     return ret;
 }
 
 ErrorCode HidlSusKeymaster4_0::deleteKey(hidl_vec<uint8_t> const& keyBlob)
 {
     check_hal_ok();
-    return from_4_0(this->hal->deleteKey(keyBlob));
+    ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
+
+    struct kmhal_hidl_hal_arg_write_desc in_args[] = {
+        { "keyBlob", &keyBlob, sizeof(hidl_vec<u8>), write_vec_of_primitive<u8> },
+    };
+    const size_t n_in_args = u_arr_size(in_args);
+
+    struct kmhal_hidl_hal_arg_parse_desc out_args[] = {
+        { "error", to_data_p(&ret), sizeof(u32), kmhal_hidl_hal_arg_parse_u32 },
+    };
+    const size_t n_out_args = u_arr_size(out_args);
+
+    if (kmhal_hidl_hal_call(this->hal, KM_4_0_DELETE_KEY,
+                in_args, n_in_args, out_args, n_out_args))
+    {
+        std::cerr << __func__ << ": HIDL call failed" << std::endl;
+        return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
+    }
+
+    return ret;
 }
 
 ErrorCode HidlSusKeymaster4_0::deleteAllKeys(void)
 {
     check_hal_ok();
-    return from_4_0(this->hal->deleteAllKeys());
+    ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
+
+    struct kmhal_hidl_hal_arg_write_desc *const in_args = nullptr;
+    const size_t n_in_args = 0;
+
+    struct kmhal_hidl_hal_arg_parse_desc out_args[] = {
+        { "error", to_data_p(&ret), sizeof(u32), kmhal_hidl_hal_arg_parse_u32 },
+    };
+    const size_t n_out_args = u_arr_size(out_args);
+
+    if (kmhal_hidl_hal_call(this->hal, KM_4_0_DELETE_ALL_KEYS,
+                in_args, n_in_args, out_args, n_out_args))
+    {
+        std::cerr << __func__ << ": HIDL call failed" << std::endl;
+        return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
+    }
+
+    return ret;
 }
 
 ErrorCode HidlSusKeymaster4_0::destroyAttestationIds(void)
 {
     check_hal_ok();
-    return from_4_0(this->hal->destroyAttestationIds());
+    ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
+
+    struct kmhal_hidl_hal_arg_write_desc *const in_args = nullptr;
+    const size_t n_in_args = 0;
+
+    struct kmhal_hidl_hal_arg_parse_desc out_args[] = {
+        { "error", to_data_p(&ret), sizeof(u32), kmhal_hidl_hal_arg_parse_u32 },
+    };
+    const size_t n_out_args = u_arr_size(out_args);
+
+    if (kmhal_hidl_hal_call(this->hal, KM_4_0_DESTROY_ATTESTATION_IDS,
+                in_args, n_in_args, out_args, n_out_args))
+    {
+        std::cerr << __func__ << ": HIDL call failed" << std::endl;
+        return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
+    }
+
+    return ret;
 }
 
 ErrorCode HidlSusKeymaster4_0::begin(KeyPurpose purpose,
@@ -400,16 +604,34 @@ ErrorCode HidlSusKeymaster4_0::begin(KeyPurpose purpose,
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
+    const void *outParams = nullptr;
 
-    this->hal->begin(to_4_0(purpose), keyBlob, to_4_0(inParams), to_4_0(authToken),
-        [&](ErrorCode_4_0 error, auto const& outParams, uint64_t operationHandle) {
-            ret = from_4_0(error);
-            if (error == ErrorCode_4_0::OK) {
-                out_outParams = from_4_0(outParams);
-                out_operationHandle = operationHandle;
-            }
-        }
-    );
+    struct kmhal_hidl_hal_arg_write_desc in_args[] = {
+        { "purpose", &purpose, sizeof(u32), kmhal_hidl_hal_arg_write_u32 },
+        { "keyBlob", &keyBlob, sizeof(hidl_vec<u8>), write_vec_of_primitive<u8> },
+        { "inParams", &inParams, sizeof(hidl_vec<KeyParameter>), write_vec_of_key_parameter },
+        { "authToken", &authToken, sizeof(HardwareAuthToken), write_hardware_auth_token }
+    };
+    const size_t n_in_args = u_arr_size(in_args);
+
+    struct kmhal_hidl_hal_arg_parse_desc out_args[] = {
+        { "error", to_data_p(&ret), sizeof(u32), kmhal_hidl_hal_arg_parse_u32 },
+        { "outParams", &outParams, sizeof(hidl_vec<KeyParameter>), read_vec_of_key_parameter },
+        { "operationHandle", to_data_p(&out_operationHandle), sizeof(u64),
+            kmhal_hidl_hal_arg_parse_u64 }
+    };
+    const size_t n_out_args = u_arr_size(out_args);
+
+    if (kmhal_hidl_hal_call(this->hal, KM_4_0_BEGIN, in_args, n_in_args, out_args, n_out_args)) {
+        std::cerr << __func__ << ": HIDL call failed" << std::endl;
+        return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
+    }
+    if (ret == ErrorCode::OK) {
+        out_outParams = hidl_vec<KeyParameter>(
+                *reinterpret_cast<const hidl_vec<KeyParameter> *>(outParams)
+        );
+    }
+
     return ret;
 }
 
@@ -424,19 +646,38 @@ ErrorCode HidlSusKeymaster4_0::update(uint64_t operationHandle,
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
+    const void *outParams = nullptr, *output = nullptr;
 
-    this->hal->update(operationHandle, to_4_0(inParams), input,
-            to_4_0(authToken), to_4_0(verificationToken),
-        [&](ErrorCode_4_0 error, uint32_t inputConsumed,
-            auto const& outParams, auto const& output) {
-            ret = from_4_0(error);
-            if (error == ErrorCode_4_0::OK) {
-                out_inputConsumed = inputConsumed;
-                out_outParams = from_4_0(outParams);
-                out_output = output;
-            }
-        }
-    );
+    struct kmhal_hidl_hal_arg_write_desc in_args[] = {
+        { "operationHandle", &operationHandle, sizeof(u64), kmhal_hidl_hal_arg_write_u64 },
+        { "inParams", &inParams, sizeof(hidl_vec<KeyParameter>), write_vec_of_key_parameter },
+        { "input", &input, sizeof(hidl_vec<u8>), write_vec_of_primitive<u8> },
+        { "authToken", &authToken, sizeof(HardwareAuthToken), write_hardware_auth_token },
+        { "verificationToken", &verificationToken, sizeof(VerificationToken),
+            write_verification_token }
+    };
+    const size_t n_in_args = u_arr_size(in_args);
+
+    struct kmhal_hidl_hal_arg_parse_desc out_args[] = {
+        { "error", to_data_p(&ret), sizeof(u32), kmhal_hidl_hal_arg_parse_u32 },
+        { "inputConsumed", to_data_p(&out_inputConsumed), sizeof(u32),
+            kmhal_hidl_hal_arg_parse_u32 },
+        { "outParams", &outParams, sizeof(hidl_vec<KeyParameter>), read_vec_of_key_parameter },
+        { "output", &output, sizeof(hidl_vec<u8>), read_vec_of_primitive<u8> },
+    };
+    const size_t n_out_args = u_arr_size(out_args);
+
+    if (kmhal_hidl_hal_call(this->hal, KM_4_0_UPDATE, in_args, n_in_args, out_args, n_out_args)) {
+        std::cerr << __func__ << ": HIDL call failed" << std::endl;
+        return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
+    }
+    if (ret == ErrorCode::OK) {
+        out_outParams = hidl_vec<KeyParameter>(
+                *reinterpret_cast<const hidl_vec<KeyParameter> *>(outParams)
+        );
+        out_output = hidl_vec<uint8_t>(*reinterpret_cast<const hidl_vec<uint8_t> *>(output));
+    }
+
     return ret;
 }
 
@@ -451,24 +692,61 @@ ErrorCode HidlSusKeymaster4_0::finish(uint64_t operationHandle,
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
+    const void *outParams = nullptr, *output = nullptr;
 
-    this->hal->finish(operationHandle, to_4_0(inParams), input, signature,
-            to_4_0(authToken), to_4_0(verificationToken),
-        [&](ErrorCode_4_0 error, auto const& outParams, auto const& output) {
-            ret = from_4_0(error);
-            if (error == ErrorCode_4_0::OK) {
-                out_outParams = from_4_0(outParams);
-                out_output = output;
-            }
-        }
-    );
+    struct kmhal_hidl_hal_arg_write_desc in_args[] = {
+        { "operationHandle", &operationHandle, sizeof(u64), kmhal_hidl_hal_arg_write_u64 },
+        { "inParams", &inParams, sizeof(hidl_vec<KeyParameter>), write_vec_of_key_parameter },
+        { "input", &input, sizeof(hidl_vec<u8>), write_vec_of_primitive<u8> },
+        { "signature", &signature, sizeof(hidl_vec<u8>), write_vec_of_primitive<u8> },
+        { "authToken", &authToken, sizeof(HardwareAuthToken), write_hardware_auth_token },
+        { "verificationToken", &verificationToken, sizeof(VerificationToken),
+            write_verification_token }
+    };
+    const size_t n_in_args = u_arr_size(in_args);
+
+    struct kmhal_hidl_hal_arg_parse_desc out_args[] = {
+        { "error", to_data_p(&ret), sizeof(u32), kmhal_hidl_hal_arg_parse_u32 },
+        { "outParams", &outParams, sizeof(hidl_vec<KeyParameter>), read_vec_of_key_parameter },
+        { "output", &output, sizeof(hidl_vec<u8>), read_vec_of_primitive<u8> },
+    };
+    const size_t n_out_args = u_arr_size(out_args);
+
+    if (kmhal_hidl_hal_call(this->hal, KM_4_0_FINISH, in_args, n_in_args, out_args, n_out_args)) {
+        std::cerr << __func__ << ": HIDL call failed" << std::endl;
+        return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
+    }
+    if (ret == ErrorCode::OK) {
+        out_outParams = hidl_vec<KeyParameter>(
+                *reinterpret_cast<const hidl_vec<KeyParameter> *>(outParams)
+        );
+        out_output = hidl_vec<uint8_t>(*reinterpret_cast<const hidl_vec<uint8_t> *>(output));
+    }
+
     return ret;
 }
 
 ErrorCode HidlSusKeymaster4_0::abort(uint64_t operationHandle)
 {
     check_hal_ok();
-    return from_4_0(this->hal->abort(operationHandle));
+    ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
+
+    struct kmhal_hidl_hal_arg_write_desc in_args[] = {
+        { "operationHandle", &operationHandle, sizeof(u64), kmhal_hidl_hal_arg_write_u64 },
+    };
+    const size_t n_in_args = u_arr_size(in_args);
+
+    struct kmhal_hidl_hal_arg_parse_desc out_args[] = {
+        { "error", to_data_p(&ret), sizeof(u32), kmhal_hidl_hal_arg_parse_u32 },
+    };
+    const size_t n_out_args = u_arr_size(out_args);
+
+    if (kmhal_hidl_hal_call(this->hal, KM_4_0_ABORT, in_args, n_in_args, out_args, n_out_args)) {
+        std::cerr << __func__ << ": HIDL call failed" << std::endl;
+        return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
+    }
+
+    return ret;
 }
 
 #undef check_hal_ok

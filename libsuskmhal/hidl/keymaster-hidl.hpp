@@ -349,4 +349,285 @@ int read_key_characteristics(const struct kmhal_hidl_parcel *p,
     return 0;
 }
 
+static inline
+void write_hmac_sharing_parameters(struct kmhal_hidl_parcel *p,
+                                   const void *data, size_t size)
+{
+    if (data == NULL || size != sizeof(struct KM_HmacSharingParameters))
+        s_abort("keymaster-hidl-types", __func__, "Invalid parameters");
+
+
+    kmhal_hidl_parcel_obj_t hsp_ref =
+    kmhal_hidl_parcel_write_buffer_obj(p, data, size,
+            0, KMHAL_HIDL_PARCEL_OBJ_INVALID, 0);
+
+    const struct KM_HmacSharingParameters *hsp_p =
+        reinterpret_cast<const struct KM_HmacSharingParameters *>(data);
+    kmhal_hidl_vec_write_embedded(p,
+            reinterpret_cast<const struct kmhal_hidl_vec *>(&hsp_p->seed), sizeof(uint8_t),
+            hsp_ref, offsetof(struct KM_HmacSharingParameters, seed));
+}
+
+static inline
+int read_hmac_sharing_parameters(const struct kmhal_hidl_parcel *p,
+                                 size_t *off_p,
+                                 const void **out_p, size_t out_size)
+{
+    if (out_p == NULL || out_size != sizeof(struct KM_HmacSharingParameters))
+        s_abort("keymaster-hidl-types", __func__, "Invalid parameters");
+
+    kmhal_hidl_parcel_obj_t hsp_ref;
+
+    u32 exp_flags = 0;
+    if (kmhal_hidl_parcel_read_buffer_obj(p, off_p, sizeof(struct KM_HmacSharingParameters),
+                &exp_flags, nullptr, nullptr, out_p, &hsp_ref))
+    {
+        s_log(S_LOG_ERROR, "keymaster-hidl-types",
+                "Failed to read the HmacSharingParameters buffer object");
+        return 1;
+    }
+
+    const struct KM_HmacSharingParameters *hsp_p =
+        reinterpret_cast<const struct KM_HmacSharingParameters *>(*out_p);
+
+    if (kmhal_hidl_vec_read_embedded(nullptr, nullptr, p, off_p,
+                reinterpret_cast<const struct kmhal_hidl_vec *>(&hsp_p->seed), sizeof(uint8_t),
+                hsp_ref, offsetof(struct KM_HmacSharingParameters, seed)))
+    {
+        s_log(S_LOG_ERROR, "keymaster-hidl-types",
+                "Failed to read the HmacSharingParameters' embedded seed HIDL vec buffer object");
+        return 1;
+    }
+
+    return 0;
+}
+
+static inline
+void write_vec_of_hmac_sharing_parameters(struct kmhal_hidl_parcel *p,
+                                          const void *data, size_t size)
+{
+    if (data == NULL || size != sizeof(struct kmhal_hidl_vec))
+        s_abort("keymaster-hidl-types", __func__, "Invalid parameters");
+
+    const struct kmhal_hidl_vec *vec_p = reinterpret_cast<const struct kmhal_hidl_vec *>(data);
+
+    kmhal_hidl_parcel_obj_t vec_ref =
+    kmhal_hidl_vec_write(p, vec_p, sizeof(struct KM_HmacSharingParameters),
+            KMHAL_HIDL_PARCEL_OBJ_INVALID, 0, nullptr);
+
+    for (u32 i = 0; i < vec_p->size; i++) {
+        const struct KM_HmacSharingParameters *const curr =
+            &reinterpret_cast<const struct KM_HmacSharingParameters *>(vec_p->buffer)[i];
+
+        kmhal_hidl_vec_write_embedded(p,
+                reinterpret_cast<const struct kmhal_hidl_vec *>(&curr->seed),
+                sizeof(uint8_t), vec_ref,
+                i*sizeof(struct KM_HmacSharingParameters) +
+                    offsetof(struct KM_HmacSharingParameters, seed)
+        );
+    }
+}
+
+static inline
+int read_vec_of_hmac_sharing_parameters(const struct kmhal_hidl_parcel *p,
+                                        size_t *off_p,
+                                        const void **out_p, size_t out_size)
+{
+    if (out_p == NULL || out_size != sizeof(struct kmhal_hidl_vec)) {
+        s_log(S_LOG_ERROR, "keymaster-hidl-types", "%s: Invalid parameters", __func__);
+        return -1;
+    }
+
+    kmhal_hidl_parcel_obj_t vec_ref;
+
+    if (kmhal_hidl_vec_read(reinterpret_cast<const struct kmhal_hidl_vec **>(out_p),
+                sizeof(struct KM_HmacSharingParameters), p, off_p, &vec_ref))
+    {
+        s_log(S_LOG_ERROR, "keymaster-hidl-types",
+                "Failed to read the HIDL vec buffer object");
+        return 1;
+    }
+
+    const struct kmhal_hidl_vec *const vec_p =
+        reinterpret_cast<const struct kmhal_hidl_vec *>(*out_p);
+
+    for (u32 i = 0; i < vec_p->size; i++) {
+        const size_t parent_offset =
+            i*sizeof(struct KM_HmacSharingParameters) +
+                offsetof(struct KM_HmacSharingParameters, seed);
+
+        const struct kmhal_hidl_vec *const curr_blob =
+        reinterpret_cast<const struct kmhal_hidl_vec *>(
+                reinterpret_cast<const u8 *>(vec_p->buffer) + parent_offset
+        );
+
+        if (kmhal_hidl_vec_read_embedded(nullptr, nullptr, p, off_p,
+                    curr_blob, sizeof(uint8_t), vec_ref, parent_offset))
+        {
+                s_log(S_LOG_ERROR, "keymaster-hidl-types",
+                        "Failed to read embedded HmacSharingParameters' "
+                        "embedded seed HIDL vec buffer");
+                return 1;
+        }
+    }
+
+    return 0;
+}
+
+static inline
+void write_hardware_auth_token(struct kmhal_hidl_parcel *p,
+                               const void *data, size_t size)
+{
+    if (data == NULL || size != sizeof(struct KM_HardwareAuthToken))
+        s_abort("keymaster-hidl-types", __func__, "Invalid parameters");
+
+
+    kmhal_hidl_parcel_obj_t hat_ref =
+    kmhal_hidl_parcel_write_buffer_obj(p, data, size,
+            0, KMHAL_HIDL_PARCEL_OBJ_INVALID, 0);
+
+    const struct KM_HardwareAuthToken *hat_p =
+        reinterpret_cast<const struct KM_HardwareAuthToken *>(data);
+    kmhal_hidl_vec_write_embedded(p,
+            reinterpret_cast<const struct kmhal_hidl_vec *>(&hat_p->mac), sizeof(uint8_t),
+            hat_ref, offsetof(struct KM_HardwareAuthToken, mac));
+}
+
+static inline
+int read_hardware_auth_token(const struct kmhal_hidl_parcel *p,
+                             size_t *off_p,
+                             const void **out_p, size_t out_size)
+{
+    if (out_p == NULL || out_size != sizeof(struct KM_HardwareAuthToken))
+        s_abort("keymaster-hidl-types", __func__, "Invalid parameters");
+
+    kmhal_hidl_parcel_obj_t hat_ref;
+
+    u32 exp_flags = 0;
+    if (kmhal_hidl_parcel_read_buffer_obj(p, off_p, sizeof(struct KM_HardwareAuthToken),
+                &exp_flags, nullptr, nullptr, out_p, &hat_ref))
+    {
+        s_log(S_LOG_ERROR, "keymaster-hidl-types",
+                "Failed to read the HardwareAuthToken buffer object");
+        return 1;
+    }
+
+    const struct KM_HardwareAuthToken *hat_p =
+        reinterpret_cast<const struct KM_HardwareAuthToken *>(*out_p);
+
+    if (kmhal_hidl_vec_read_embedded(nullptr, nullptr, p, off_p,
+                reinterpret_cast<const struct kmhal_hidl_vec *>(&hat_p->mac), sizeof(uint8_t),
+                hat_ref, offsetof(struct KM_HardwareAuthToken, mac)))
+    {
+        s_log(S_LOG_ERROR, "keymaster-hidl-types",
+                "Failed to read the HardwareAuthToken's embedded mac HIDL vec buffer object");
+        return 1;
+    }
+
+    return 0;
+}
+
+static inline
+void write_verification_token(struct kmhal_hidl_parcel *p,
+                              const void *data, size_t size)
+{
+    if (data == NULL || size != sizeof(struct KM_HardwareAuthToken))
+        s_abort("keymaster-hidl-types", __func__, "Invalid parameters");
+
+
+    kmhal_hidl_parcel_obj_t vt_ref =
+    kmhal_hidl_parcel_write_buffer_obj(p, data, size,
+            0, KMHAL_HIDL_PARCEL_OBJ_INVALID, 0);
+
+    const struct KM_VerificationToken *vt_p =
+        reinterpret_cast<const struct KM_VerificationToken *>(data);
+
+    kmhal_hidl_parcel_obj_t pv_ref =
+    kmhal_hidl_vec_write_embedded(p,
+            reinterpret_cast<const struct kmhal_hidl_vec *>(&vt_p->parametersVerified),
+            sizeof(struct KM_KeyParameter), vt_ref,
+            offsetof(struct KM_VerificationToken, parametersVerified));
+    for (u32 i = 0; i < vt_p->parametersVerified.size; i++) {
+        const struct KM_KeyParameter *const curr =
+            &reinterpret_cast<const struct KM_KeyParameter *>(vt_p->parametersVerified.buffer)[i];
+
+        kmhal_hidl_vec_write_embedded(p,
+                reinterpret_cast<const struct kmhal_hidl_vec *>(&curr->blob),
+                sizeof(uint8_t), pv_ref,
+                i*sizeof(struct KM_KeyParameter) + offsetof(struct KM_KeyParameter, blob)
+        );
+    }
+
+    kmhal_hidl_vec_write_embedded(p,
+            reinterpret_cast<const struct kmhal_hidl_vec *>(&vt_p->mac), sizeof(uint8_t),
+            vt_ref, offsetof(struct KM_HardwareAuthToken, mac));
+}
+
+static inline
+int read_verification_token(const struct kmhal_hidl_parcel *p,
+                            size_t *off_p,
+                            const void **out_p, size_t out_size)
+{
+    if (out_p == NULL || out_size != sizeof(struct KM_VerificationToken))
+        s_abort("keymaster-hidl-types", __func__, "Invalid parameters");
+
+    kmhal_hidl_parcel_obj_t vt_ref;
+
+    u32 exp_flags = 0;
+    if (kmhal_hidl_parcel_read_buffer_obj(p, off_p, sizeof(struct KM_VerificationToken),
+                &exp_flags, nullptr, nullptr, out_p, &vt_ref))
+    {
+        s_log(S_LOG_ERROR, "keymaster-hidl-types",
+                "Failed to read the VerificationToken buffer object");
+        return 1;
+    }
+
+    const struct KM_VerificationToken *vt_p =
+        reinterpret_cast<const struct KM_VerificationToken *>(*out_p);
+
+    kmhal_hidl_parcel_obj_t pv_ref;
+
+    if (kmhal_hidl_vec_read_embedded(nullptr, &pv_ref, p, off_p,
+                reinterpret_cast<const struct kmhal_hidl_vec *>(&vt_p->mac),
+                sizeof(struct KM_KeyParameter),
+                vt_ref, offsetof(struct KM_VerificationToken, parametersVerified)))
+    {
+        s_log(S_LOG_ERROR, "keymaster-hidl-types",
+                "Failed to read the VerificationToken's embedded parametersVerified "
+                "HIDL vec buffer object");
+        return 1;
+    }
+
+    for (u32 i = 0; i < vt_p->parametersVerified.size; i++) {
+        const size_t parent_offset =
+            i*sizeof(struct KM_KeyParameter) + offsetof(struct KM_KeyParameter, blob);
+
+        const struct kmhal_hidl_vec *curr_blob = reinterpret_cast<const struct kmhal_hidl_vec *>(
+                reinterpret_cast<const u8 *>(vt_p->parametersVerified.buffer) + parent_offset
+        );
+
+        if (kmhal_hidl_vec_read_embedded(nullptr, nullptr, p, off_p,
+                    curr_blob, sizeof(uint8_t), pv_ref, parent_offset))
+        {
+            s_log(S_LOG_ERROR, "keymaster-hidl-types",
+                    "Failed to read the VerificationToken "
+                    "embedded parametersVerified embedded KeyParameter's embedded blob "
+                    "HIDL vec buffer object");
+            return 1;
+        }
+    }
+
+
+    if (kmhal_hidl_vec_read_embedded(nullptr, nullptr, p, off_p,
+                reinterpret_cast<const struct kmhal_hidl_vec *>(&vt_p->mac), sizeof(uint8_t),
+                vt_ref, offsetof(struct KM_VerificationToken, mac)))
+    {
+        s_log(S_LOG_ERROR, "keymaster-hidl-types",
+                "Failed to read the VerificationToken's embedded mac HIDL vec buffer object");
+        return 1;
+    }
+
+    return 0;
+}
+
 #endif /* SUSKEYMASTER_KMHAL_HIDL_KEYMASTER_HIDL_H_ */
