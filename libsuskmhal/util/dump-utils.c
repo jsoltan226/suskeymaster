@@ -392,8 +392,10 @@ void KM_dump_root_of_trust(KM_dump_log_proc_t log_proc,
         );
     }
 
-    KM_dump_hex(log_proc, "verifiedBootHash", rot->verifiedBootHash,
-            indent + 1, true);
+    if (rot->verifiedBootHash != NULL) {
+        KM_dump_hex(log_proc, "verifiedBootHash", rot->verifiedBootHash,
+                indent + 1, true);
+    }
 
     KM_DUMP_FUNCTION_EPILOGUE(log_proc, "ROOT OF TRUST", field_name,
             indent_buf, end_without_comma);

@@ -294,6 +294,7 @@ ErrorCode HidlSusKeymaster3_0::exportKey(KeyFormat keyFormat,
     const void *keyMaterial = nullptr;
 
     struct kmhal_hidl_hal_arg_write_desc in_args[] = {
+        { "keyFormat", &keyFormat, sizeof(u32), kmhal_hidl_hal_arg_write_u32 },
         { "keyBlob", &keyBlob, sizeof(hidl_vec<u8>), write_vec_of_primitive<u8> },
         { "applicationId", &applicationId, sizeof(hidl_vec<u8>), write_vec_of_primitive<u8> },
         { "applicationData", &applicationData, sizeof(hidl_vec<u8>), write_vec_of_primitive<u8> },

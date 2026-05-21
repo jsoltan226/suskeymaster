@@ -186,7 +186,7 @@ void kmhal_hidl_parcel_write_u64(struct kmhal_hidl_parcel *parcel, u64 u)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
 
-    size_t off = align8(vector_size(parcel->buffer));
+    size_t off = align4(vector_size(parcel->buffer));
     s_assert(off < UINT32_MAX - sizeof(u64), "New offset too bit");
 
     vector_resize(&parcel->buffer, off + sizeof(u64));
@@ -622,27 +622,27 @@ int kmhal_hidl_parcel_read_embedded_buffer(const struct kmhal_hidl_parcel *p,
             sizeof(struct binder_buffer_object));
 
     if (parent_offset > parent_obj.length ||
-            parent_obj.length - parent_offset < sizeof(void *))
+            parent_obj.length - parent_offset < sizeof(binder_uintptr_t))
     {
         s_log_error("Parent offsets would overflow parent's buffer");
         return 1;
     }
 
     /* Read the pointer value @ parent_buf[parent_offset] */
-    const void *child_buffer_ptr = NULL;
+    binder_uintptr_t child_buffer_ptr = 0;
     memcpy(&child_buffer_ptr,
             (const uint8_t *)parent_obj.buffer + parent_offset,
-            sizeof(void *)
+            sizeof(binder_uintptr_t)
     );
 
-    if (child_buffer_ptr == NULL && expected_buf_size > 0) {
+    if (!child_buffer_ptr && expected_buf_size > 0) {
         s_log_error("Child pointer is NULL while expected size > 0");
         return 1;
     }
 
     kmhal_hidl_parcel_obj_t child_ref = KMHAL_HIDL_PARCEL_OBJ_INVALID;
 
-    if (child_buffer_ptr != NULL) {
+    if (child_buffer_ptr) {
         child_ref = kmhal_hidl_parcel_obj_find_by_offset(p, *off_p);
         if (!KMHAL_HIDL_PARCEL_OBJ_IS_VALID(child_ref)) {
             s_log_error("Couldn't find embedded buffer object");
@@ -662,7 +662,7 @@ int kmhal_hidl_parcel_read_embedded_buffer(const struct kmhal_hidl_parcel *p,
         struct binder_buffer_object child_obj;
         memcpy(&child_obj, p->buffer + child->off, sizeof(child_obj));
 
-        if ((void *)child_obj.buffer != child_buffer_ptr) {
+        if (child_obj.buffer != child_buffer_ptr) {
             s_log_error("Expected and found embedded buffer pointer mismatch");
             return 1;
         }
@@ -676,7 +676,7 @@ int kmhal_hidl_parcel_read_embedded_buffer(const struct kmhal_hidl_parcel *p,
         }
     }
 
-    if (out_buf) *out_buf = child_buffer_ptr;
+    if (out_buf) *out_buf = (const void *)child_buffer_ptr;
     if (out_ref) *out_ref = child_ref;
     *off_p += sizeof(struct binder_buffer_object);
 
@@ -794,7 +794,6 @@ static int validate_buffer_object(const struct kmhal_hidl_parcel *parcel,
     }
 
     if (obj->length != size) {
-        s_log_debug("obj->length: %zu, size: %zu", obj->length, size);
         s_log_error("Object size doesn't match expected value");
         return 1;
     }

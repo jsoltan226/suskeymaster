@@ -182,9 +182,8 @@ int read_vec_of_key_parameter(const struct kmhal_hidl_parcel *p,
 
     kmhal_hidl_parcel_obj_t vec_ref;
 
-    u32 exp_flags = 0;
-    if (kmhal_hidl_parcel_read_buffer_obj(p, off_p, sizeof(struct kmhal_hidl_vec),
-                &exp_flags, nullptr, nullptr, out_p, &vec_ref))
+    if (kmhal_hidl_vec_read(reinterpret_cast<const struct kmhal_hidl_vec **>(out_p),
+                sizeof(struct KM_KeyParameter), p, off_p, &vec_ref))
     {
         s_log(S_LOG_ERROR, "keymaster-hidl-types",
                 "Failed to read the HIDL vec buffer object");

@@ -137,8 +137,22 @@ int verify(HidlSusKeymaster& hal,
     hidl_vec<uint8_t> const& message, hidl_vec<uint8_t> const& signature,
     hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_verify_params)
 {
+    hidl_vec<uint8_t> app_id, app_data;
+    extract_application_id_and_data(in_verify_params, app_id, app_data);
+    KeyCharacteristics kc;
+    ErrorCode e = ErrorCode::UNKNOWN_ERROR;
+    if ((e = hal.getKeyCharacteristics(key, app_id, app_data, kc)) != ErrorCode::OK) {
+        std::cerr << "Couldn't get the key's characteristics: "
+            << static_cast<int>(e) << " (" << toString(e) << ")" << std::endl;
+        return 1;
+    }
+
+    hidl_vec<KeyParameter> dummy(in_verify_params);
+    hidl_vec<KeyParameter> verify_params;
+    init_sign_params_from_user_and_characteristics(dummy, kc, verify_params);
+
     if (do_generic_operation_cycle(hal, KeyPurpose::VERIFY, key,
-                message, in_verify_params, &signature, nullptr, nullptr) != ErrorCode::OK)
+                message, verify_params, &signature, nullptr, nullptr) != ErrorCode::OK)
     {
         std::cerr << "Signature verification failed!" << std::endl;
         return 1;
@@ -196,6 +210,7 @@ static ErrorCode do_generic_operation_cycle(HidlSusKeymaster& hal,
         if (e != ErrorCode::OK) {
             std::cerr << toString(op) << ": UPDATE operation failed: "
                 << static_cast<int>(e) << " (" << toString(e) << ")" << std::endl;
+            (void) hal.abort(operation_handle);
             return e;
         } else if (consumed == 0) {
             std::cerr << toString(op) << ": input_consumed is 0!" << std::endl;
@@ -545,6 +560,14 @@ static void init_sign_params_from_user_and_characteristics(
             std::cerr << "WARNING: "
                 << toString(alg) << " signing without a digest parameter!" << std::endl;
         }
+    }
+
+    for (const Tag t : { Tag::APPLICATION_ID, Tag::APPLICATION_DATA }) {
+        const hidl_vec<uint8_t> *blob = find_blob_tag(t, params);
+        if (blob == nullptr)
+            continue;
+
+        verify_defaults.emplace_back(t, *blob);
     }
 
     kmhal::util::init_default_params(params, defaults);

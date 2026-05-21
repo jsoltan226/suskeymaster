@@ -32,7 +32,8 @@ int generate_key(HidlSusKeymaster& hal,
     hidl_vec<uint8_t>& out_wrapped_blob);
 
 int attest_key(HidlSusKeymaster& hal,
-    hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_attest_params);
+    hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_attest_params,
+    hidl_vec<hidl_vec<uint8_t>>& out_cert_chain);
 
 int import_key(HidlSusKeymaster& hal,
     hidl_vec<uint8_t> const& priv_pkcs8,
@@ -324,7 +325,7 @@ static inline void init_default_params_for_alg_and_purposes(hidl_vec<KeyParamete
              * by both TEE and STRONGBOX devices */
             defaults.emplace_back(Tag::KEY_SIZE, 2048);
 
-            defaults.emplace_back(Tag::RSA_PUBLIC_EXPONENT, 65537);
+            defaults.emplace_back(Tag::RSA_PUBLIC_EXPONENT, UINT64_C(65537));
         }
 
         /* All RSA private operations require an authorized digest */

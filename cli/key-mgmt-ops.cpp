@@ -102,7 +102,8 @@ int generate_key(HidlSusKeymaster& hal,
 }
 
 int attest_key(HidlSusKeymaster& hal,
-    hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_attest_params)
+    hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_attest_params,
+    hidl_vec<hidl_vec<uint8_t>>& out_cert_chain)
 {
     hidl_vec<KeyParameter> params = in_attest_params;
 
@@ -125,6 +126,7 @@ int attest_key(HidlSusKeymaster& hal,
     }
 
     std::cout << "Successfully generated KeyMaster key attestation" << std::endl;
+    out_cert_chain = cert_chain;
 
     return transact::server::verify_attestation(cert_chain);
 }

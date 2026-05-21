@@ -188,9 +188,14 @@ out:
 
 static i32 validate_km_desc(const KM_KEY_DESC *desc)
 {
-#define ATTESTATION_VERSION 3
-#define KEYMASTER_VERSION 4
-    int64_t i = 0;
+    static const i64 supported_versions[][2] = {
+        /* attestation, keymaster */
+        { 3, 4 },
+        { 2, 3 }
+    };
+    i64 att_ver = 0, km_ver = 0;
+
+    i64 i = 0;
 
     if (desc->attestationVersion == NULL ||
             !ASN1_INTEGER_get_int64(&i, desc->attestationVersion))
@@ -200,10 +205,7 @@ static i32 validate_km_desc(const KM_KEY_DESC *desc)
         return -1;
     }
     i &= 0x00000000FFFFFFFF;
-    if (i != ATTESTATION_VERSION) {
-        s_log_error("Unsupported attestation version: %lld", (long long int)i);
-        return 1;
-    }
+    att_ver = i;
 
     if (desc->attestationSecurityLevel == NULL ||
             !ASN1_ENUMERATED_get_int64(&i, desc->attestationSecurityLevel))
@@ -231,10 +233,7 @@ static i32 validate_km_desc(const KM_KEY_DESC *desc)
         return -1;
     }
     i &= 0x00000000FFFFFFFF;
-    if (i != KEYMASTER_VERSION) {
-        s_log_error("Unsupported keymaster version: %lld", (long long int)i);
-        return 1;
-    }
+    km_ver = i;
 
     if (desc->keymasterSecurityLevel == NULL ||
             !ASN1_ENUMERATED_get_int64(&i, desc->keymasterSecurityLevel))
@@ -251,6 +250,22 @@ static i32 validate_km_desc(const KM_KEY_DESC *desc)
         break;
     default:
         s_log_error("Invalid keymaster security level: %lld", (long long int)i);
+        return 1;
+    }
+
+    bool found = false;
+    for (u32 i = 0; i < u_arr_size(supported_versions); i++) {
+        if (att_ver == supported_versions[i][0] &&
+            km_ver == supported_versions[i][1])
+        {
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        s_log_error("Unsupported versions: "
+                "attestation: %"PRIi64", keymaster: %"PRIi64,
+                att_ver, km_ver);
         return 1;
     }
 
@@ -306,8 +321,17 @@ static i32 validate_km_desc(const KM_KEY_DESC *desc)
             return 1;
         }
 
-        if (desc->hardwareEnforced->rootOfTrust->verifiedBootHash == NULL) {
-            s_log_error("rootOfTrust verifiedBootHash is NULL");
+        if (att_ver >= 3 &&
+                desc->hardwareEnforced->rootOfTrust->verifiedBootHash == NULL)
+        {
+            s_log_error("rootOfTrust verifiedBootHash is NULL "
+                    "while attestation version is >= 3");
+            return 1;
+        } else if (att_ver < 3 &&
+                desc->hardwareEnforced->rootOfTrust->verifiedBootHash != NULL)
+        {
+            s_log_error("rootOfTrust verifiedBootHash is not NULL "
+                    "while attestation version is < 3");
             return 1;
         }
     }

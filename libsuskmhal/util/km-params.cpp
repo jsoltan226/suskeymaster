@@ -78,13 +78,15 @@ int parse_km_tag_params(const char *arg, hidl_vec<KeyParameter>& out)
 km_default::km_default(Tag t, Algorithm a) {
     KeyParameter kp;
     kp.tag = t;
+    kp.f.longInteger = UINT64_C(0);
     kp.f.algorithm = a;
     this->val = { kp };
 }
 km_default::km_default(Tag t, std::vector<BlockMode> const& bm) {
     for (BlockMode b : bm) {
         KeyParameter kp;
-    kp.tag = t;
+        kp.tag = t;
+        kp.f.longInteger = UINT64_C(0);
         kp.f.blockMode = b;
         this->val.push_back(kp);
     }
@@ -92,7 +94,8 @@ km_default::km_default(Tag t, std::vector<BlockMode> const& bm) {
 km_default::km_default(Tag t, std::vector<PaddingMode> const& pm) {
     for (PaddingMode p : pm) {
         KeyParameter kp;
-    kp.tag = t;
+        kp.tag = t;
+        kp.f.longInteger = UINT64_C(0);
         kp.f.paddingMode = p;
         this->val.push_back(kp);
     }
@@ -100,7 +103,8 @@ km_default::km_default(Tag t, std::vector<PaddingMode> const& pm) {
 km_default::km_default(Tag t, std::vector<Digest> const& ds) {
     for (Digest d : ds) {
         KeyParameter kp;
-    kp.tag = t;
+        kp.tag = t;
+        kp.f.longInteger = UINT64_C(0);
         kp.f.digest = d;
         this->val.push_back(kp);
     }
@@ -108,25 +112,29 @@ km_default::km_default(Tag t, std::vector<Digest> const& ds) {
 km_default::km_default(Tag t, EcCurve e) {
     KeyParameter kp;
     kp.tag = t;
+    kp.f.longInteger = UINT64_C(0);
     kp.f.ecCurve = e;
     this->val = { kp };
 }
 km_default::km_default(Tag t, KeyOrigin o) {
     KeyParameter kp;
     kp.tag = t;
+    kp.f.longInteger = UINT64_C(0);
     kp.f.origin = o;
     this->val = { kp };
 }
 km_default::km_default(Tag t, KeyBlobUsageRequirements ureq) {
     KeyParameter kp;
     kp.tag = t;
+    kp.f.longInteger = UINT64_C(0);
     kp.f.keyBlobUsageRequirements = ureq;
     this->val = { kp };
 }
 km_default::km_default(Tag t, std::vector<KeyPurpose> const& ps) {
     for (KeyPurpose p : ps) {
         KeyParameter kp;
-    kp.tag = t;
+        kp.tag = t;
+        kp.f.longInteger = UINT64_C(0);
         kp.f.purpose = p;
         this->val.push_back(kp);
     }
@@ -134,7 +142,8 @@ km_default::km_default(Tag t, std::vector<KeyPurpose> const& ps) {
 km_default::km_default(Tag t, std::vector<KeyDerivationFunction> const& kdfs) {
     for (KeyDerivationFunction kdf : kdfs) {
         KeyParameter kp;
-    kp.tag = t;
+        kp.tag = t;
+        kp.f.longInteger = UINT64_C(0);
         kp.f.keyDerivationFunction = kdf;
         this->val.push_back(kp);
     }
@@ -142,48 +151,56 @@ km_default::km_default(Tag t, std::vector<KeyDerivationFunction> const& kdfs) {
 km_default::km_default(Tag t, HardwareAuthenticatorType h) {
     KeyParameter kp;
     kp.tag = t;
+    kp.f.longInteger = UINT64_C(0);
     kp.f.hardwareAuthenticatorType = h;
     this->val = { kp };
 }
 km_default::km_default(Tag t, SecurityLevel s) {
     KeyParameter kp;
     kp.tag = t;
+    kp.f.longInteger = UINT64_C(0);
     kp.f.integer = static_cast<uint32_t>(s);
     this->val = { kp };
 }
 km_default::km_default(Tag t, bool b) {
     KeyParameter kp;
     kp.tag = t;
+    kp.f.longInteger = UINT64_C(0);
     kp.f.boolValue = b;
     this->val = { kp };
 }
 km_default::km_default(Tag t, uint32_t i) {
     KeyParameter kp;
     kp.tag = t;
+    kp.f.longInteger = UINT64_C(0);
     kp.f.integer = i;
     this->val = { kp };
 }
 km_default::km_default(Tag t, int i) {
     KeyParameter kp;
     kp.tag = t;
+    kp.f.longInteger = UINT64_C(0);
     kp.f.integer = i;
     this->val = { kp };
 }
 km_default::km_default(Tag t, long l) {
     KeyParameter kp;
     kp.tag = t;
+    kp.f.longInteger = UINT64_C(0);
     kp.f.longInteger = l;
     this->val = { kp };
 }
 km_default::km_default(Tag t, uint64_t l) {
     KeyParameter kp;
     kp.tag = t;
+    kp.f.longInteger = UINT64_C(0);
     kp.f.longInteger = l;
     this->val = { kp };
 }
 km_default::km_default(Tag t, std::vector<uint8_t> b) {
     KeyParameter kp;
     kp.tag = t;
+    kp.f.longInteger = UINT64_C(0);
     kp.blob = hidl_vec<uint8_t>(b);
     this->val = { kp };
 }

@@ -265,7 +265,7 @@ static const std::vector<cli_command> cmds = {
             "A space-separated list of key parameters "
                 "passed in as `attestParams` to the `attestKey` call"
         },
-        { "attestation", OUTPUT_FILE, OPTIONAL,
+        { "attestation", INPUT_STRING, OPTIONAL,
             "The file to which the serialized attestation certificate chain will be written"
         },
     },
@@ -276,7 +276,15 @@ static const std::vector<cli_command> cmds = {
             return 1;
         }
 
-        return cli::hal_ops::attest_key(*g_hal, keyblob, a["attest_params"].in_key_params());
+        hidl_vec<hidl_vec<uint8_t>> cert_chain;
+        if (cli::hal_ops::attest_key(*g_hal, keyblob, a["attest_params"].in_key_params(),
+                cert_chain))
+            return EXIT_FAILURE;
+
+        if (!a["attestation"].in_string().empty())
+            return serialize_and_write_cert_chain(a["attestation"].in_string(), cert_chain);
+        else
+            return EXIT_SUCCESS;
     }
 },
 {
@@ -291,19 +299,26 @@ static const std::vector<cli_command> cmds = {
         { "keyblob", INPUT_FILE, MANDATORY,
             "The KeyMaster key blob to attest"
         },
-        { "attest params", KEY_PARAMETERS, OPTIONAL,
+        { "attest_params", KEY_PARAMETERS, OPTIONAL,
             "A space-separated list of key parameters "
                 "passed in as `attestParams` to the `attestKey` call"
         },
-        { "attestation", OUTPUT_FILE, OPTIONAL,
+        { "attestation", INPUT_STRING, OPTIONAL,
             "The file to which the serialized attestation certificate chain will be written"
         },
     },
     [](arg_map_t& a) {
         const hidl_vec<uint8_t>& keyblob = a["keyblob"].in_bytes();
-        const hidl_vec<KeyParameter>& params = a["attest params"].in_key_params();
+        const hidl_vec<KeyParameter>& params = a["attest_params"].in_key_params();
 
-        return cli::hal_ops::attest_key(*g_hal, keyblob, params);
+        hidl_vec<hidl_vec<uint8_t>> cert_chain;
+        if (cli::hal_ops::attest_key(*g_hal, keyblob, params, cert_chain))
+            return EXIT_FAILURE;
+
+        if (!a["attestation"].in_string().empty())
+            return serialize_and_write_cert_chain(a["attestation"].in_string(), cert_chain);
+        else
+            return EXIT_SUCCESS;
     }
 },
 {
@@ -318,7 +333,7 @@ static const std::vector<cli_command> cmds = {
             "The private key to import - "
                 "DER-encoded PKCS#8 for asymmetric keys and raw bytes otherwise"
         },
-        { "in_key_blob", OUTPUT_FILE, MANDATORY,
+        { "out_key_blob", OUTPUT_FILE, MANDATORY,
             "The file to which the imported key blob will be written"
         },
         { "params", KEY_PARAMETERS, OPTIONAL,
@@ -327,7 +342,7 @@ static const std::vector<cli_command> cmds = {
     },
     [](arg_map_t& a) {
         return cli::hal_ops::import_key(*g_hal, a["in_private_key"].in_bytes(),
-                a["params"].in_key_params(), a["in_key_blob"].out_bytes());
+                a["params"].in_key_params(), a["out_key_blob"].out_bytes());
     }
 },
 {
@@ -353,7 +368,7 @@ static const std::vector<cli_command> cmds = {
     },
     [](arg_map_t& a) {
         return cli::hal_ops::export_key(*g_hal,
-                a["in_keyblob"].in_bytes(), a["out_public_x509"].out_bytes(),
+                a["in_keyblob"].in_bytes(), a["out_exported"].out_bytes(),
                 a["deserialization_params"].in_key_params());
     }
 },
@@ -1014,8 +1029,8 @@ static const std::vector<cli_cmd_example> cmd_examples = {
         "attest generated \"ALGORITHM=EC EC_CURVE=P_384\" \"ATTESTATION_CHALLENGE= \""
     },
     {
-        "generate an EC key with the ability to use it for encryption and decryption",
-        "generate \"ALGORITHM=EC PURPOSE=ENCRYPT PURPOSE=DECRYPT\" keyblob-ec.bin"
+        "generate an RSA key with the ability to use it for encryption and decryption",
+        "generate \"ALGORITHM=RSA PURPOSE=ENCRYPT PURPOSE=DECRYPT\" keyblob-ec.bin"
     },
     {
         "export the public part of an EC key",
@@ -1154,7 +1169,7 @@ static int init_g_hal(hal_version min_ver)
     (void) km_ver_env;
 
 #ifndef SUSKEYMASTER_HAL_DISABLE_4_1
-    if ((min_ver <= HAL_4_1 && !km_ver_env) || !strcmp(km_ver_env, "4.1")) {
+    if ((min_ver <= HAL_4_1 && !km_ver_env) || !strcmp(km_ver_env ? km_ver_env : "", "4.1")) {
         g_hal = std::make_unique<kmhal::hidl::HidlSusKeymaster4_1>();
         if (g_hal->isHALOk()) {
             print_inithal_ok_msg(HAL_4_1);
@@ -1167,7 +1182,7 @@ static int init_g_hal(hal_version min_ver)
 #endif /* SUSKEYMASTER_HAL_DISABLE_4_1 */
 
 #ifndef SUSKEYMASTER_HAL_DISABLE_4_0
-    if ((min_ver <= HAL_4_0 && !km_ver_env) || !strcmp(km_ver_env, "4.0")) {
+    if ((min_ver <= HAL_4_0 && !km_ver_env) || !strcmp(km_ver_env ? km_ver_env : "", "4.0")) {
         g_hal = std::make_unique<kmhal::hidl::HidlSusKeymaster4_0>();
         if (g_hal->isHALOk()) {
             print_inithal_ok_msg(HAL_4_0);
@@ -1180,7 +1195,7 @@ static int init_g_hal(hal_version min_ver)
 #endif /* SUSKEYMASTER_HAL_DISABLE_4_0 */
 
 #ifndef SUSKEYMASTER_HAL_DISABLE_3_0
-    if ((min_ver <= HAL_3_0 && !km_ver_env) || !strcmp(km_ver_env, "3.0")) {
+    if ((min_ver <= HAL_3_0 && !km_ver_env) || !strcmp(km_ver_env ? km_ver_env : "", "3.0")) {
         g_hal = std::make_unique<kmhal::hidl::HidlSusKeymaster3_0>();
         if (g_hal->isHALOk()) {
             print_inithal_ok_msg(HAL_3_0);
