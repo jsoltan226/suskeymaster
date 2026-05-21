@@ -9,7 +9,6 @@
 #include <core/vector.h>
 #include <cstdint>
 #include <hidl/HidlSupport.h>
-#include <android/hardware/keymaster/3.0/types.h>
 #include <android/hardware/keymaster/generic/types.h>
 #include <iostream>
 

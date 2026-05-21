@@ -1,4 +1,0 @@
-CompileFlags:
-  Add:
-    - "-I../../../../../../aosp-headers/include-base"
-    - "-I../../../../../../aosp-headers/include-keymaster"

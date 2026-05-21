@@ -2,8 +2,6 @@
 
 #define HIDL_DISABLE_INSTRUMENTATION
 #include <android/hidl/base/1.0/types.h>
-#include <android/hardware/keymaster/4.0/types.h>
-#include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
 
 namespace suskeymaster {
     int sus_keymaster_hack_cert_chain(

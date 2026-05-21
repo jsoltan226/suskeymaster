@@ -6,13 +6,13 @@
 #include <libsuscertmod/keybox.h>
 #include <libsuscertmod/certmod.h>
 #include <libsuscertmod/samsung-sus-indata.h>
-#include <android/hardware/keymaster/4.0/types.h>
+#include <android/hardware/keymaster/generic/types.h>
 #include <android/log.h>
 #include <cstdint>
 #include <cstring>
 
 using namespace ::android::hardware;
-using namespace ::android::hardware::keymaster::V4_0;
+using namespace ::android::hardware::keymaster::generic;
 
 namespace suskeymaster {
 
