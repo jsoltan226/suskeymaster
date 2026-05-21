@@ -48,7 +48,7 @@ int get_key_characteristics(HidlSusKeymaster& hal,
     }
 
     {
-        kmhal::util::KM_PARAM_LIST *sw_par = NULL, *hw_par = NULL;
+        KM_PARAM_LIST *sw_par = NULL, *hw_par = NULL;
 
         sw_par = kmhal::util::key_params_2_param_list(kc.softwareEnforced);
         if (sw_par == NULL) {
@@ -66,8 +66,8 @@ int get_key_characteristics(HidlSusKeymaster& hal,
 
         std::cout << "===== BEGIN KEY CHARACTERISTICS DUMP =====" << std::endl;
         std::cout << "KeyCharacteristics kc = {" << std::endl;
-        kmhal::util::KM_dump_param_list(pr_info, "softwareEnforced", sw_par, 1, false);
-        kmhal::util::KM_dump_param_list(pr_info, "hardwareEnforced", hw_par, 1, true);
+        KM_dump_param_list(pr_info, "softwareEnforced", sw_par, 1, false);
+        KM_dump_param_list(pr_info, "hardwareEnforced", hw_par, 1, true);
         std::cout << "};" << std::endl;
         std::cout << "=====  END KEY CHARACTERISTICS DUMP  =====" << std::endl;
     }

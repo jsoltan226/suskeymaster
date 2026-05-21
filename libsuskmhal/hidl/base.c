@@ -93,7 +93,7 @@ enum kmhal_hidl_android_status
 kmhal_hidl_base_get_descriptor(struct kmhal_hidl_binder_ctx *binder,
                                struct kmhal_hidl_binder_transaction **txn_p,
                                u32 handle,
-                               struct kmhal_hidl_string *out)
+                               const struct kmhal_hidl_string **out_p)
 {
     u_check_params(kmhal_hidl_binder_ctx_ok(binder) && txn_p != NULL);
 
@@ -116,16 +116,12 @@ kmhal_hidl_base_get_descriptor(struct kmhal_hidl_binder_ctx *binder,
     }
 
     {
-        struct kmhal_hidl_string hstr;
         size_t off = KMHAL_HIDL_PARCEL_DATA_START_OFFSET;
 
-        if (kmhal_hidl_string_read(&hstr, parcel, &off, NULL)) {
+        if (kmhal_hidl_string_read(out_p, parcel, &off, NULL)) {
             ret = BAD_VALUE;
             goto_error("Failed to read the returned HIDL string");
         }
-
-        if (out != NULL)
-            memcpy(out, &hstr, sizeof(hstr));
     }
     ret = OK;
 

@@ -8,19 +8,57 @@
 #ifndef SUSKEYMASTER_BUILD_HOST
 #include <android/hardware/keymaster/4.1/IKeymasterDevice.h>
 #endif /* SUSKEYMASTER_BUILD_HOST */
+#include <dlfcn.h>
 
 using namespace ::android::hardware::keymaster::generic;
-using ::android::hardware::hidl_vec;
 
 namespace suskeymaster {
 namespace kmhal {
 namespace hidl {
 
-#ifndef SUSKEYMASTER_BUILD_HOST
+#if 0 /*ndef SUSKEYMASTER_BUILD_HOST*/
+
+using ::android::hardware::hidl_vec;
+
+static const char *km4_1_tryGetService_symname = "_ZN7android8hardware9keymaster4V4_116IKeymasterDevice13tryGetServiceERKNSt3__112basic_stringIcNS4_11char_traitsIcEENS4_9allocatorIcEEEEb";
 
 HidlSusKeymaster4_1::HidlSusKeymaster4_1(void)
 {
-    this->hal = ::android::hardware::keymaster::V4_1::IKeymasterDevice::tryGetService();
+    this->lib_handle = nullptr;
+    this->hal = nullptr;
+
+    this->lib_handle = dlopen("android.hardware.keymaster@4.1", RTLD_NOW);
+    if (this->lib_handle == NULL) {
+        std::cerr << "Failed to dlopen the keymaster 4.1 library: " << dlerror() << std::endl;
+        return;
+    }
+
+    using tryGetService_fn_t =
+        ::android::sp<::android::hardware::keymaster::V4_1::IKeymasterDevice>
+            (*)(std::string, bool);
+
+    tryGetService_fn_t tryGetService = reinterpret_cast<tryGetService_fn_t>(
+            dlsym(this->lib_handle, km4_1_tryGetService_symname)
+    );
+    if (!tryGetService) {
+        std::cerr << "Failed to dlsym V4_1::IKeymasterDevice::tryGetService: " <<
+            dlerror() << std::endl;
+        return;
+    }
+
+    this->hal = tryGetService("default", false);
+    if (!this->hal) {
+        std::cerr << "Failed to get a handle to the keymaster 4.1 HAL" << std::endl;
+        return;
+    }
+}
+
+HidlSusKeymaster4_1::~HidlSusKeymaster4_1(void)
+{
+    if (this->lib_handle) {
+        dlclose(this->lib_handle);
+        this->lib_handle = nullptr;
+    }
 }
 
 bool HidlSusKeymaster4_1::isHALOk(void)
@@ -440,6 +478,10 @@ ErrorCode HidlSusKeymaster4_1::abort(uint64_t operationHandle)
 #else /* SUSKEYMASTER_BUILD_HOST */
 
 HidlSusKeymaster4_1::HidlSusKeymaster4_1(void)
+{
+}
+
+HidlSusKeymaster4_1::~HidlSusKeymaster4_1(void)
 {
 }
 

@@ -6,9 +6,7 @@
 
 #include <android/hardware/keymaster/generic/types.h>
 #ifndef SUSKEYMASTER_BUILD_HOST
-#include <android/hardware/keymaster/3.0/IKeymasterDevice.h>
-#include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
-#include <android/hardware/keymaster/4.1/IKeymasterDevice.h>
+#include "hal.h"
 #endif /* SUSKEYMASTER_BUILD_HOST */
 
 namespace suskeymaster {
@@ -167,12 +165,13 @@ public:
 class HidlSusKeymaster3_0 : public HidlSusKeymaster {
 public:
     HidlSusKeymaster3_0(void);
+    ~HidlSusKeymaster3_0(void);
 
     bool isHALOk(void) override;
 
 #ifndef SUSKEYMASTER_BUILD_HOST
 private:
-    ::android::sp<::android::hardware::keymaster::V3_0::IKeymasterDevice> hal;
+    struct kmhal_hidl_hal_sp *hal = nullptr;
 
 public:
 
@@ -236,12 +235,13 @@ public:
 class HidlSusKeymaster4_0 : public HidlSusKeymaster {
 public:
     HidlSusKeymaster4_0(void);
+    ~HidlSusKeymaster4_0(void);
 
     bool isHALOk(void) override;
 
 #ifndef SUSKEYMASTER_BUILD_HOST
 private:
-    ::android::sp<::android::hardware::keymaster::V4_0::IKeymasterDevice> hal;
+    struct kmhal_hidl_hal_sp *hal = nullptr;
 
 public:
 
@@ -320,12 +320,13 @@ public:
 class HidlSusKeymaster4_1 : public HidlSusKeymaster {
 public:
     HidlSusKeymaster4_1(void);
+    ~HidlSusKeymaster4_1(void);
 
     bool isHALOk(void) override;
 
 #ifndef SUSKEYMASTER_BUILD_HOST
 private:
-    ::android::sp<::android::hardware::keymaster::V4_1::IKeymasterDevice> hal;
+    struct kmhal_hidl_hal_sp *hal = nullptr;
 
 public:
 

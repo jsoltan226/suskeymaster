@@ -8,19 +8,57 @@
 #ifndef SUSKEYMASTER_BUILD_HOST
 #include <android/hardware/keymaster/4.0/IKeymasterDevice.h>
 #endif /* SUSKEYMASTER_BUILD_HOST */
+#include <dlfcn.h>
 
 using namespace ::android::hardware::keymaster::generic;
-using ::android::hardware::hidl_vec;
 
 namespace suskeymaster {
 namespace kmhal {
 namespace hidl {
 
-#ifndef SUSKEYMASTER_BUILD_HOST
+#if 0 /*ndef SUSKEYMASTER_BUILD_HOST*/
+
+using ::android::hardware::hidl_vec;
+
+static const char *km4_0_tryGetService_symname = "_ZN7android8hardware9keymaster4V4_016IKeymasterDevice13tryGetServiceERKNSt3__112basic_stringIcNS4_11char_traitsIcEENS4_9allocatorIcEEEEb";
 
 HidlSusKeymaster4_0::HidlSusKeymaster4_0(void)
 {
-    this->hal = ::android::hardware::keymaster::V4_0::IKeymasterDevice::tryGetService();
+    this->lib_handle = nullptr;
+    this->hal = nullptr;
+
+    this->lib_handle = dlopen("android.hardware.keymaster@4.0", RTLD_NOW);
+    if (this->lib_handle == NULL) {
+        std::cerr << "Failed to dlopen the keymaster 4.0 library: " << dlerror() << std::endl;
+        return;
+    }
+
+    using tryGetService_fn_t =
+        ::android::sp<::android::hardware::keymaster::V4_0::IKeymasterDevice>
+            (*)(std::string, bool);
+
+    tryGetService_fn_t tryGetService = reinterpret_cast<tryGetService_fn_t>(
+            dlsym(this->lib_handle, km4_0_tryGetService_symname)
+    );
+    if (!tryGetService) {
+        std::cerr << "Failed to dlsym V4_0::IKeymasterDevice::tryGetService: " <<
+            dlerror() << std::endl;
+        return;
+    }
+
+    this->hal = tryGetService("default", false);
+    if (!this->hal) {
+        std::cerr << "Failed to get a handle to the keymaster 4.0 HAL" << std::endl;
+        return;
+    }
+}
+
+HidlSusKeymaster4_0::~HidlSusKeymaster4_0(void)
+{
+    if (this->lib_handle) {
+        dlclose(this->lib_handle);
+        this->lib_handle = nullptr;
+    }
 }
 
 bool HidlSusKeymaster4_0::isHALOk(void)
@@ -30,6 +68,7 @@ bool HidlSusKeymaster4_0::isHALOk(void)
 
     return this->hal->ping().isOk();
 }
+
 
 using ErrorCode_4_0 = ::android::hardware::keymaster::V4_0::ErrorCode;
 using KeyFormat_4_0 = ::android::hardware::keymaster::V4_0::KeyFormat;
@@ -437,6 +476,10 @@ ErrorCode HidlSusKeymaster4_0::abort(uint64_t operationHandle)
 #else /* SUSKEYMASTER_BUILD_HOST */
 
 HidlSusKeymaster4_0::HidlSusKeymaster4_0(void)
+{
+}
+
+HidlSusKeymaster4_0::~HidlSusKeymaster4_0(void)
 {
 }
 

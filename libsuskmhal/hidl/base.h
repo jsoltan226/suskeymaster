@@ -79,7 +79,7 @@ enum kmhal_hidl_android_status
 kmhal_hidl_base_get_descriptor(struct kmhal_hidl_binder_ctx *binder,
                                struct kmhal_hidl_binder_transaction **txn_p,
                                u32 handle,
-                               struct kmhal_hidl_string *out);
+                               const struct kmhal_hidl_string **out_p);
 
 #ifdef __cplusplus
 } /* extern "C" */

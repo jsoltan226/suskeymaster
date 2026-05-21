@@ -179,6 +179,17 @@ skip_binder_refs:
 }
 
 enum kmhal_hidl_android_status
+kmhal_hidl_hal_ping(struct kmhal_hidl_hal_sp *hal)
+{
+    if (hal == NULL || !atomic_load(&hal->initialized_)) {
+        s_log_error("HAL is invalid or NULL");
+        return UNEXPECTED_NULL;
+    }
+
+    return kmhal_hidl_base_ping(hal->binder, &hal->txn, hal->handle);
+}
+
+enum kmhal_hidl_android_status
 kmhal_hidl_hal_call(struct kmhal_hidl_hal_sp *hal, u32 cmd,
                     const struct kmhal_hidl_hal_arg_write_desc *in_args,
                     u32 n_in_args,
@@ -213,7 +224,7 @@ kmhal_hidl_hal_call(struct kmhal_hidl_hal_sp *hal, u32 cmd,
     for (u32 i = 0; i < n_out_args; i++) {
         const struct kmhal_hidl_hal_arg_parse_desc *const arg = &out_args[i];
 
-        if (arg->parse_proc(p, &off, arg->out, arg->out_size)) {
+        if (arg->parse_proc(p, &off, arg->out_p, arg->out_size)) {
             ret = BAD_VALUE;
             goto_error("Failed to parse arg no %u \"%s\" from the reply",
                     i, arg->name);
@@ -339,7 +350,7 @@ validate_arg_descs(const struct kmhal_hidl_hal_arg_write_desc *in_args,
         } else if (arg->parse_proc == NULL) {
             s_log_error("Out arg %u: parse_proc is NULL", i);
             ret = UNEXPECTED_NULL;
-        } else if (arg->out == NULL && arg->out_size > 0) {
+        } else if (arg->out_p == NULL && arg->out_size > 0) {
             s_log_error("Out arg %u: out pointer is NULL but size > 0", i);
             ret = UNEXPECTED_NULL;
         }

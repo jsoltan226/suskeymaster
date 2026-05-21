@@ -97,7 +97,7 @@ enum kmhal_hidl_android_status kmhal_hidl_manager_list(
         struct kmhal_hidl_binder_ctx *binder,
         struct kmhal_hidl_binder_transaction **txn_p,
 
-        KMHAL_HIDL_VEC_OF_STRUCT(kmhal_hidl_string) *out_fqInstanceNames
+        const KMHAL_HIDL_VEC_OF_STRUCT(kmhal_hidl_string) **out_fqInstanceNames
 );
 
 /**
@@ -126,7 +126,7 @@ enum kmhal_hidl_android_status kmhal_hidl_manager_list_by_interface(
 
         const char *in_interface_name,
 
-        KMHAL_HIDL_VEC_OF_STRUCT(kmhal_hidl_string) *out_instanceNames
+        const KMHAL_HIDL_VEC_OF_STRUCT(kmhal_hidl_string) **out_instanceNames
 );
 
 #ifdef __cplusplus

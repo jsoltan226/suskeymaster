@@ -588,6 +588,7 @@ struct KM_HmacSharingParameters {
      */
     u8 nonce[32];
 };
+KMHAL_HIDL_VEC_OF_STRUCT_DECL(KM_HmacSharingParameters);
 
 /**
  * VerificationToken enables one Keymaster instance to validate authorizations for another.  See

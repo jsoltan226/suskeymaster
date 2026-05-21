@@ -77,7 +77,7 @@ i32 leaf_cert_parse(const VECTOR(u8) cert,
     i32 km_ext_index = 0;
     /* const */ X509_EXTENSION *km_ext = NULL;
     ASN1_OCTET_STRING *km_ext_str = NULL;
-    KM_KEY_DESC_V3 *km_desc = NULL;
+    KM_KEY_DESC *km_desc = NULL;
 
     i32 keyusage_ext_index = 0;
     /* const */ X509_EXTENSION *keyusage_ext = NULL;
@@ -281,7 +281,7 @@ err:
     if (out_km_desc != NULL && ok) {
         *out_km_desc = km_desc;
     } else if (out_km_desc != NULL) {
-        KM_KEY_DESC_V3_free(km_desc);
+        KM_KEY_DESC_free(km_desc);
         km_desc = NULL;
     }
 

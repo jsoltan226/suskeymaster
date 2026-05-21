@@ -82,7 +82,7 @@ kmhal_hidl_string_write_embedded(struct kmhal_hidl_parcel *parcel,
  * This function reads the HIDL string struct object
  * and looks for and validates its corresponding contents (child) object.
  *
- * @param out Output pointer. May be NULL.
+ * @param out_p Output pointer. May be NULL.
  *
  * @param parcel The parcel from which to read.
  *
@@ -94,7 +94,7 @@ kmhal_hidl_string_write_embedded(struct kmhal_hidl_parcel *parcel,
  *
  * @return 0 on success, non-zero on failure.
  */
-int kmhal_hidl_string_read(struct kmhal_hidl_string *out,
+int kmhal_hidl_string_read(const struct kmhal_hidl_string **out_p,
                            const struct kmhal_hidl_parcel *parcel,
                            size_t *offset_p,
                            kmhal_hidl_parcel_obj_t *out_child_ref);
@@ -187,7 +187,7 @@ KMHAL_HIDL_VEC_LAYOUT_ASSERTS(struct kmhal_hidl_vec);
 #define KMHAL_HIDL_VEC_OF_VEC_OF_STRUCT(T) \
     struct kmhal_hidl_vec_of_vec_of_struct_##T
 
-#define KMHAL_HIDL_VECP_TO_GENERIC(v_p) ((struct kmhal_hidl_vec *)(v_p))
+#define KMHAL_HIDL_VECP_TO_GENERIC(v_p) ((const struct kmhal_hidl_vec **)(v_p))
 
 KMHAL_HIDL_VEC_OF_DECL(uint8_t);
 KMHAL_HIDL_VEC_OF_STRUCT_DECL(kmhal_hidl_string);
@@ -262,7 +262,7 @@ kmhal_hidl_vec_write_embedded(struct kmhal_hidl_parcel *parcel,
  * This function reads the HIDL vec struct object
  * and looks for and validates its corresponding contents (child) object.
  *
- * @param out Output pointer. May be NULL.
+ * @param out_p Output pointer. May be NULL.
  *
  * @param parcel The parcel from which to read.
  *
@@ -274,7 +274,7 @@ kmhal_hidl_vec_write_embedded(struct kmhal_hidl_parcel *parcel,
  *
  * @return 0 on success, non-zero on failure.
  */
-int kmhal_hidl_vec_read(struct kmhal_hidl_vec *out, size_t elem_size,
+int kmhal_hidl_vec_read(const struct kmhal_hidl_vec **out_p, size_t elem_size,
                         const struct kmhal_hidl_parcel *parcel,
                         size_t *offset_p,
                         kmhal_hidl_parcel_obj_t *out_child_ref);

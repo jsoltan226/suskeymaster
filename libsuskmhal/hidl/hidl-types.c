@@ -52,7 +52,7 @@ kmhal_hidl_string_write_embedded(struct kmhal_hidl_parcel *parcel,
             parent_offset + offsetof(struct kmhal_hidl_string, buffer));
 }
 
-int kmhal_hidl_string_read(struct kmhal_hidl_string *out,
+int kmhal_hidl_string_read(const struct kmhal_hidl_string **out_p,
                            const struct kmhal_hidl_parcel *parcel,
                            size_t *offset_p,
                            kmhal_hidl_parcel_obj_t *out_child_ref)
@@ -77,8 +77,8 @@ int kmhal_hidl_string_read(struct kmhal_hidl_string *out,
         return 1;
     }
 
-    if (out != NULL)
-        memcpy(out, hstr_p, sizeof(struct kmhal_hidl_string));
+    if (out_p != NULL)
+        *out_p = hstr_p;
 
     return 0;
 }
@@ -163,7 +163,7 @@ kmhal_hidl_vec_write_embedded(struct kmhal_hidl_parcel *parcel,
     );
 }
 
-int kmhal_hidl_vec_read(struct kmhal_hidl_vec *out, size_t elem_size,
+int kmhal_hidl_vec_read(const struct kmhal_hidl_vec **out_p, size_t elem_size,
                         const struct kmhal_hidl_parcel *parcel,
                         size_t *offset_p,
                         kmhal_hidl_parcel_obj_t *out_child_ref)
@@ -188,8 +188,8 @@ int kmhal_hidl_vec_read(struct kmhal_hidl_vec *out, size_t elem_size,
         return 1;
     }
 
-    if (out != NULL)
-        memcpy(out, vec_p, sizeof(struct kmhal_hidl_vec));
+    if (out_p != NULL)
+        *out_p = vec_p;
 
     return 0;
 }

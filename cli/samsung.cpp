@@ -329,8 +329,8 @@ int send_indata(HidlSusKeymaster& hal,
         hidl_vec<KeyParameter> partmp(2);
         partmp[0].tag = Tag::ATTESTATION_CHALLENGE;
         partmp[0].blob = hidl_vec<uint8_t>(
-            certmod::g_send_indata_att_challenge,
-            certmod::g_send_indata_att_challenge + certmod::g_send_indata_att_challenge_len
+            g_send_indata_att_challenge,
+            g_send_indata_att_challenge + g_send_indata_att_challenge_len
         );
         partmp[1].tag = Tag::ATTESTATION_APPLICATION_ID;
         partmp[1].blob = indata_der;

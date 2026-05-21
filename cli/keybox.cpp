@@ -35,7 +35,7 @@ int make_kb(
     VECTOR(VECTOR(uint8_t)) rsa_cert_chain = NULL;
     VECTOR(uint8_t) ec_key = NULL;
     VECTOR(uint8_t) rsa_key = NULL;
-    struct certmod::keybox *new_kb = NULL;
+    struct keybox *new_kb = NULL;
     VECTOR(uint8_t) out_data = NULL;
 
     int ret = 1;
@@ -78,14 +78,14 @@ int make_kb(
         goto out;
     }
 
-    new_kb = certmod::keybox_init(ec_cert_chain, ec_key, rsa_cert_chain, rsa_key, false);
+    new_kb = keybox_init(ec_cert_chain, ec_key, rsa_cert_chain, rsa_key, false);
     if (new_kb == NULL) {
         std::cerr << "Couldn't initialize a keybox structure " <<
             "with the provided cert chains & keys" << std::endl;
         goto out;
     }
 
-    out_data = certmod::keybox_store((const struct certmod::keybox *)new_kb);
+    out_data = keybox_store((const struct keybox *)new_kb);
     if (out_data == NULL) {
         std::cerr << "Failed to serialize the new keybox" << std::endl;
         goto out;
@@ -117,9 +117,9 @@ out:
     return ret;
 }
 
-const std::array<std::pair<enum certmod::sus_key_variant, const char *>, 2> algs({
-        std::pair(certmod::SUS_KEY_EC, "ec"),
-        std::pair(certmod::SUS_KEY_RSA, "rsa")
+const std::array<std::pair<enum sus_key_variant, const char *>, 2> algs({
+        std::pair(SUS_KEY_EC, "ec"),
+        std::pair(SUS_KEY_RSA, "rsa")
 });
 int dump_kb(
     std::string const& keybox_path,
@@ -128,7 +128,7 @@ int dump_kb(
 )
 {
     VECTOR(u8) keybox_data = NULL;
-    struct certmod::keybox *kb = NULL;
+    struct keybox *kb = NULL;
     char path_buf[128] = { 0 };
     VECTOR(char) tmp_str = NULL;
     int ret = EXIT_FAILURE;
@@ -139,7 +139,7 @@ int dump_kb(
         goto fail;
     }
 
-    kb = certmod::keybox_load(keybox_data);
+    kb = keybox_load(keybox_data);
     if (kb == NULL) {
         std::cerr << "Failed to deserialize the keybox file" << std::endl;
         goto fail;
@@ -149,7 +149,7 @@ int dump_kb(
         VECTOR(u8 const) tmp_blob = NULL;
         VECTOR(VECTOR(u8 const) const) tmp_cert_chain = NULL;
 
-        const enum certmod::sus_key_variant variant = a.first;
+        const enum sus_key_variant variant = a.first;
         const char *name = a.second;
 
         tmp_cert_chain = keybox_get_cert_chain(kb, variant);

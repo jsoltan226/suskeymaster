@@ -1,7 +1,7 @@
 cc_defaults {
     name: "suskeymaster_cli_defaults",
     cflags: ["-Wall", "-Wextra", "-pipe", "-fPIC" ],
-    cppflags: ["-Wno-c11-extensions", "-std=c++20", "-fPIC", "-pipe" ],
+    cppflags: ["-Wno-c11-extensions", "-std=c++20", "-fPIC", "-pipe", "-fno-exceptions", "-fno-rtti" ],
     include_dirs: [ "." ],
     local_include_dirs: [ "." ],
 }
@@ -10,6 +10,7 @@ cc_binary {
     name: "suskeymaster",
     host_supported: true,
     compile_multilib: "64",
+    stl: "libc++_static",
 
     defaults: [ "suskeymaster_cli_defaults" ],
     srcs: [
@@ -17,6 +18,8 @@ cc_binary {
     ],
     cflags: [ "-g", "-O0" ],
     cppflags: [ "-g", "-O0" ],
+
+    min_sdk_version: "28",
 
     static_libs: [
         "libcgdcore",
@@ -45,28 +48,28 @@ cc_binary {
                 "-USUSKEYMASTER_HAL_ENABLE_4_1", "-DSUSKEYMASTER_HAL_DISABLE_4_1",
             ],
             static_libs: [
+                "liblog",
+                "libcutils",
+                "libbase",
                 "libcrypto",
             ],
         },
         android_arm64: {
+            static_executable: false,
+            stl: "c++_static",
+
             cflags: [
                 "-USUSKEYMASTER_BUILD_HOST", "-DSUSKEYMASTER_BUILD_ANDROID",
                 "-DSUSKEYMASTER_HAL_ENABLE_3_0", "-USUSKEYMASTER_HAL_DISABLE_3_0",
                 "-DSUSKEYMASTER_HAL_ENABLE_4_0", "-USUSKEYMASTER_HAL_DISABLE_4_0",
                 "-DSUSKEYMASTER_HAL_ENABLE_4_1", "-USUSKEYMASTER_HAL_DISABLE_4_1",
             ],
+
             shared_libs: [
-                "liblog",
-                "libutils",
-                "libhidltransport",
-                "libhidlbase",
+                "libdl",
             ],
             static_libs: [
                 "libcrypto_sus_prebuilt",
-                "libcutils",
-                "android.hardware.keymaster@3.0",
-                "android.hardware.keymaster@4.0",
-                "android.hardware.keymaster@4.1",
             ],
         },
         android_arm: { enabled: false },

@@ -6,8 +6,8 @@ TERMUX := 1
 endif
 
 # Compiler and flags
-CC ?= clang
-CXX ?= clang++
+CC ?= false
+CXX ?= false
 LD = $(CXX)
 CPP = $(CXX) -E
 AR = ar rcs
@@ -21,8 +21,8 @@ INCLUDES += -I$(PWD)/cgd
 INCLUDES += -I$(PWD)/libsuscertmod/include
 INCLUDES += -I$(PWD)/libsuskmhal/include
 
-COMMON_CFLAGS := -std=c11 -Wall -Wextra -pipe -fPIC -DSUSKEYMASTER_BUILD_HOST -USUSKEYMASTER_BUILD_ANDROID $(INCLUDES)
-COMMON_CXXFLAGS := -std=c++17 -Wall -Wno-switch -Wno-unknown-pragmas -pipe -fPIC -fno-exceptions -fno-rtti -DSUSKEYMASTER_BUILD_HOST -USUSKEYMASTER_BUILD_ANDROID $(INCLUDES)
+COMMON_CFLAGS := -std=c11 -Wall -Wextra -pipe -fPIC -USUSKEYMASTER_BUILD_HOST -DSUSKEYMASTER_BUILD_ANDROID -DSUSKEYMASTER_DISABLE_4_0 -DSUSKEYMASTER_DISABLE_4_1 -DSUSKEYMASTER_ENABLE_3_0 $(INCLUDES)
+COMMON_CXXFLAGS := -std=c++17 -Wall -Wno-switch -Wno-unknown-pragmas -pipe -fPIC -fno-exceptions -fno-rtti -USUSKEYMASTER_BUILD_HOST -DSUSKEYMASTER_BUILD_ANDROID -DSUSKEYMASTER_HAL_DISABLE_4_0 -DSUSKEYMASTER_HAL_DISABLE_4_1 -DSUSKEYMASTER_ENABLE_3_0 $(INCLUDES)
 DEPFLAGS ?= -MMD -MP
 
 LDFLAGS ?= -pie
@@ -39,7 +39,7 @@ ifeq ($(PLATFORM), windows)
 ASAN_FLAGS :=
 endif
 
-LIBS ?= -lm -lcrypto
+LIBS ?= -static-libstdc++ -llog libsuscertmod/external/prefix/lib/libcrypto.a
 ifeq ($(TERMUX), 1)
 LIBS += $(PREFIX)/lib/libandroid-shmem.a -llog
 endif
@@ -123,7 +123,7 @@ br: all run
 # Output executable rules
 $(EXE): $(_all_objs)
 	@$(PRINTF) "LD 	%-30s %-30s\n" "$(EXE)" "<= $^"
-	@$(LD) $(LDFLAGS) -o $(EXE) $(_all_objs) $(LIBS)
+	@$(LD) $(LDFLAGS) -o $(EXE) $^ $(LIBS)
 
 # Output directory rules
 $(OBJDIR):
