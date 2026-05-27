@@ -223,7 +223,7 @@ int wrap_key(hidl_vec<uint8_t> const& in_private_key,
     hidl_vec<uint8_t> transport_tag;
     hidl_vec<uint8_t> encrypted_key(in_private_key);
 
-    pkey_alg = determine_algorithm_from_params_and_pkey(params, in_private_key);
+    pkey_alg = util::determine_algorithm_from_params_and_pkey(params, in_private_key);
     if (pkey_alg == static_cast<Algorithm>(-1)) {
         std::cerr << "Failed to determine the algorithm of the key to be securely imported"
             << std::endl;
@@ -244,8 +244,8 @@ int wrap_key(hidl_vec<uint8_t> const& in_private_key,
     std::cout << "Private key algorithm is " << toString(pkey_alg) <<
         " (inferred format: " << toString(format) << ")" << std::endl;
 
-    init_default_params_for_alg_and_purposes(params, pkey_alg,
-        find_rep_tag<KeyPurpose>(Tag::PURPOSE, params), false);
+    util::init_default_params_for_alg_and_purposes(params, pkey_alg,
+        util::find_rep_tag<KeyPurpose>(Tag::PURPOSE, params), false);
 
     if (encode_iwk_key_desc_der(iwk_key_desc_der, iwk_key_desc, params, format)) {
         std::cerr << "Failed to serialize the importWrappedKey keyDescription" << std::endl;

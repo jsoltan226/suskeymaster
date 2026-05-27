@@ -197,20 +197,20 @@ namespace gatekeeper {
 
     constexpr const u8 DEFAULT_PASSWORD[] = "default-password";
     static constexpr u32 STRETCHED_LSKF_LENGTH = 32;
-    int stretch_lskf(hidl_vec<u8> const& credential, sp_pwd_data const& pwd, hidl_vec<u8>& out);
+    int stretch_lskf(hidl_vec<u8> const& credential, sp_pwd_data const& pwd,
+                     hidl_vec<u8>& out, bool warn_if_default_password = true);
 
-    int unwrap_sp_blob(HidlSusKeymaster& kmhal, u32 uid, hidl_vec<u8> const& km_key_blob,
-                       hidl_vec<u8> const& stretched_cred, hidl_vec<u8> const& handle,
-                       hidl_vec<u8> const& secdiscardable, hidl_vec<u8> const& sp_blob,
-                       hidl_vec<u8>& out, u8& out_blob_version);
+    int unwrap_sp_blob(HidlSusKeymaster& kmhal, u32 uid, hidl_vec<u8> const& keystore_key_blob,
+                       hidl_vec<u8> const& stretched_cred, hidl_vec<u8> const& secdiscardable,
+                       hidl_vec<u8> const& sp_blob, hidl_vec<u8>& out, u8& out_blob_version,
+                       hidl_vec<u8> const& gk_pwd_handle = {});
 
     int validate_synthetic_password(HidlSusKeymaster& kmhal, u32 uid,
                                     hidl_vec<u8> const& synthetic_password, u8 sp_blob_ver,
                                     hidl_vec<u8> const& null_pwd_handle);
 
     int derive_synthetic_password_subkey(hidl_vec<u8> const& synthetic_password, u8 sp_blob_ver,
-                                         const char *personalization, size_t personalization_size,
-                                         hidl_vec<u8>& out);
+                                         const char *personalization, hidl_vec<u8>& out);
 }; /* namespace gatekeeper */
 
 namespace samsung {
@@ -307,8 +307,7 @@ int aes256gcm_software_decrypt(hidl_vec<u8> const& key, hidl_vec<u8> const& iv,
                                hidl_vec<u8> const& ciphertext, hidl_vec<u8> const& tag,
                                hidl_vec<u8>& out_plaintext);
 
-int personalized_hash(hidl_vec<uint8_t> const& in_data,
-                      const char *personalization, size_t personalization_size,
+int personalized_hash(hidl_vec<uint8_t> const& in_data, const char *personalization,
                       hidl_vec<uint8_t>& out_hash);
 
 int sp800_derive_with_context(hidl_vec<uint8_t> const& in_key,

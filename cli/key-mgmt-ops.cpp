@@ -37,7 +37,7 @@ int get_key_characteristics(HidlSusKeymaster& hal,
 {
     hidl_vec<uint8_t> app_id;
     hidl_vec<uint8_t> app_data;
-    extract_application_id_and_data(in_application_id_data, app_id, app_data);
+    util::extract_application_id_and_data(in_application_id_data, app_id, app_data);
 
     KeyCharacteristics kc;
     ErrorCode e = hal.getKeyCharacteristics(key, app_id, app_data, kc);
@@ -79,15 +79,15 @@ int generate_key(HidlSusKeymaster& hal,
     hidl_vec<KeyParameter> const& in_gen_params,
     hidl_vec<uint8_t>& out_key_blob)
 {
-    Algorithm alg = find_algorithm(in_gen_params,
+    Algorithm alg = util::find_algorithm(in_gen_params,
         { Algorithm::EC, Algorithm::RSA, Algorithm::AES, Algorithm::TRIPLE_DES, Algorithm::HMAC }
     );
     if (alg == static_cast<Algorithm>(-1))
         return EXIT_FAILURE;
 
     hidl_vec<KeyParameter> params(in_gen_params);
-    init_default_params_for_alg_and_purposes(params, alg,
-            find_rep_tag<KeyPurpose>(Tag::PURPOSE, params), true);
+    util::init_default_params_for_alg_and_purposes(params, alg,
+            util::find_rep_tag<KeyPurpose>(Tag::PURPOSE, params), true);
 
     KeyCharacteristics dummy;
     ErrorCode e = hal.generateKey(params, out_key_blob, dummy);
@@ -136,7 +136,7 @@ int import_key(HidlSusKeymaster& hal,
     hidl_vec<KeyParameter> const& in_import_params,
     hidl_vec<uint8_t>& out_key_blob)
 {
-    Algorithm alg = determine_algorithm_from_params_and_pkey(in_import_params, in_private_key);
+    Algorithm alg = util::determine_algorithm_from_params_and_pkey(in_import_params, in_private_key);
     if (alg == static_cast<Algorithm>(-1)) {
         std::cerr << "Failed to determine the algorithm of the key to be imported" << std::endl;
         return 1;
@@ -158,8 +158,8 @@ int import_key(HidlSusKeymaster& hal,
         " (inferred format: " << toString(format) << ")" << std::endl;
 
     hidl_vec<KeyParameter> params(in_import_params);
-    init_default_params_for_alg_and_purposes(params, alg,
-            find_rep_tag<KeyPurpose>(Tag::PURPOSE, params), false);
+    util::init_default_params_for_alg_and_purposes(params, alg,
+            util::find_rep_tag<KeyPurpose>(Tag::PURPOSE, params), false);
 
     KeyCharacteristics c;
     ErrorCode e = hal.importKey(params, format, in_private_key, out_key_blob, c);
@@ -181,7 +181,7 @@ int export_key(HidlSusKeymaster& hal,
 {
     hidl_vec<uint8_t> app_id;
     hidl_vec<uint8_t> app_data;
-    extract_application_id_and_data(in_application_id_data, app_id, app_data);
+    util::extract_application_id_and_data(in_application_id_data, app_id, app_data);
 
     /* Normally, `exportKey` always expects the format to be KeyFormat::X509,
      * because only asymmetric keys are exportable.
@@ -196,7 +196,7 @@ int export_key(HidlSusKeymaster& hal,
                 << static_cast<int32_t>(e) << " (" << toString(e) << ")" << std::endl;
             return 1;
         }
-        Algorithm alg = find_algorithm(kc.hardwareEnforced, {
+        Algorithm alg = util::find_algorithm(kc.hardwareEnforced, {
                 Algorithm::EC, Algorithm::RSA,
                 Algorithm::AES, Algorithm::TRIPLE_DES, Algorithm::HMAC
         });

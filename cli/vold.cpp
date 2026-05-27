@@ -58,10 +58,7 @@ int generate_app_id(hidl_vec<u8> const& in_secdiscardable,
     static constexpr const char HASH_PREFIX_SECDISCARDABLE[] = "Android secdiscardable SHA512";
 
     if (in_secdiscardable.size() > 0) {
-        if (util::personalized_hash(in_secdiscardable,
-                    HASH_PREFIX_SECDISCARDABLE, sizeof(HASH_PREFIX_SECDISCARDABLE),
-                    out_app_id))
-        {
+        if (util::personalized_hash(in_secdiscardable, HASH_PREFIX_SECDISCARDABLE, out_app_id)) {
             std::cerr << "Failed to hash secdiscardable" << std::endl;
             return 1;
         }
@@ -90,12 +87,14 @@ int decrypt_de_key(HidlSusKeymaster& hal,
         std::cerr << "Failed to generate Tag::APPLICATION_ID from secdiscardable" << std::endl;
         return 1;
     }
+    /*
     std::puts("===== BEGIN APPLICATION ID HEX DUMP =====");
     for (u8 b : app_id) {
         std::printf("%02x", (unsigned)b);
     }
     std::putchar('\n');
     std::puts("=====  END APPLICATION ID HEX DUMP  =====");
+    */
 
     hidl_vec<u8> enc_key_iv, enc_key_ciphertext_with_tag;
     if (util::extract_gcm_data(in_encrypted_key, enc_key_iv, enc_key_ciphertext_with_tag)) {
@@ -135,7 +134,7 @@ int decrypt_ce_key(
     hidl_vec<u8> key;
     static constexpr const char HASH_PREFIX_KEYGEN[] =
         "Android key wrapping key generation SHA512";
-    if (util::personalized_hash(app_id, HASH_PREFIX_KEYGEN, sizeof(HASH_PREFIX_KEYGEN), key)) {
+    if (util::personalized_hash(app_id, HASH_PREFIX_KEYGEN, key)) {
         std::cerr << "Failed to derive CE key encryption key from generated app ID" << std::endl;
         return 1;
     }
@@ -174,7 +173,8 @@ int fscrypt_legacy_install_key(hidl_vec<u8> const& key)
     key_serial_t fscrypt_device_keyring =
         keyctl_search(KEY_SPEC_SESSION_KEYRING, "keyring", "fscrypt", 0);
     if (fscrypt_device_keyring == -1) {
-        std::cerr << "Couldn't find device fscrypt keyring" << std::endl;
+        std::cerr << "Couldn't find device fscrypt keyring: "
+            << errno << " (" << strerror(errno) << ")" << std::endl;
         return EXIT_FAILURE;
     }
 

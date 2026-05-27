@@ -348,7 +348,7 @@ int read_pwd_data(hidl_vec<u8> const& pwd_data, sp_pwd_data& out, bool log)
 }
 
 int stretch_lskf(hidl_vec<u8> const& credential, sp_pwd_data const& pwd,
-                 hidl_vec<u8>& out)
+                 hidl_vec<u8>& out, bool warn_if_default_password)
 {
     if (pwd.salt.size() == 0) {
         std::cerr << "Invalid pwd data salt" << std::endl;
@@ -359,7 +359,8 @@ int stretch_lskf(hidl_vec<u8> const& credential, sp_pwd_data const& pwd,
     if (credential.size() == 0) {
         password.resize(sizeof(DEFAULT_PASSWORD));
         memcpy(password.data(), DEFAULT_PASSWORD, sizeof(DEFAULT_PASSWORD));
-        std::cerr << "WARNING: Using default-password" << std::endl;
+        if (warn_if_default_password)
+            std::cerr << "WARNING: Using default-password" << std::endl;
     } else {
         password = credential;
     }
@@ -377,31 +378,10 @@ int stretch_lskf(hidl_vec<u8> const& credential, sp_pwd_data const& pwd,
 }
 
 int unwrap_sp_blob(HidlSusKeymaster& kmhal, u32 uid, hidl_vec<u8> const& keystore_key_blob,
-        hidl_vec<u8> const& stretched_cred, hidl_vec<u8> const& handle,
-        hidl_vec<u8> const& secdiscardable, hidl_vec<u8> const& sp_blob,
-        hidl_vec<u8>& out, u8& out_blob_version)
+                   hidl_vec<u8> const& stretched_cred, hidl_vec<u8> const& secdiscardable,
+                   hidl_vec<u8> const& sp_blob, hidl_vec<u8>& out, u8& out_blob_version,
+                   hidl_vec<u8> const& gk_pwd_handle)
 {
-    hidl_vec<u8> km_blob = util::keystore_blob_to_km_blob(keystore_key_blob);
-
-    gk_hal gk_hal(kmhal);
-    if (!gk_hal.is_ok()) {
-        std::cerr << "Failed to initialize the Gatekeeper HAL" << std::endl;
-        return EXIT_FAILURE;
-    }
-
-    if (handle.size() < sizeof(password_handle_t)) {
-/* invalid_handle: */
-        std::cerr << "Invalid password handle" << std::endl;
-        return EXIT_FAILURE;
-    }
-    password_handle_t pwd_handle;
-    memcpy(&pwd_handle, handle.data(), sizeof(pwd_handle));
-    if (pwd_handle.version != HANDLE_VERSION)
-        std::cerr << "WARNING: Unexpected password handle version: "
-            << static_cast<int>(pwd_handle.version) << std::endl;
-
-    std::cout << "userSecureId: " << pwd_handle.user_id << std::endl;
-
     if (sp_blob.size() < 2) {
         std::cerr << "Invalid SP blob" << std::endl;
         return EXIT_FAILURE;
@@ -429,7 +409,7 @@ int unwrap_sp_blob(HidlSusKeymaster& kmhal, u32 uid, hidl_vec<u8> const& keystor
     static constexpr const char PERSONALIZATION_SECDISCARDABLE[] = "secdiscardable-transform";
     hidl_vec<u8> secdiscardable_hash;
     if (util::personalized_hash(secdiscardable, PERSONALIZATION_SECDISCARDABLE,
-                sizeof(PERSONALIZATION_SECDISCARDABLE), secdiscardable_hash))
+                secdiscardable_hash))
     {
         std::cerr << "Failed to hash secdiscardable" << std::endl;
         return EXIT_FAILURE;
@@ -441,25 +421,43 @@ int unwrap_sp_blob(HidlSusKeymaster& kmhal, u32 uid, hidl_vec<u8> const& keystor
     memcpy(protector_secret.data() + stretched_cred.size(), secdiscardable_hash.data(),
             secdiscardable_hash.size());
 
-    static constexpr const char PERSONALIZATION_USER_GK_AUTH[] = "user-gk-authentication";
-    hidl_vec<u8> gk_password;
-    if (util::personalized_hash(stretched_cred,
-                PERSONALIZATION_USER_GK_AUTH, sizeof(PERSONALIZATION_USER_GK_AUTH),
-                gk_password))
-    {
-        std::cerr << "Failed to derive Gatekeeper password from stretched LSKF" << std::endl;
-        return 1;
+    hidl_vec<u8> auth_token{};
+    if (gk_pwd_handle.size() > 0) {
+        if (gk_pwd_handle.size() < sizeof(password_handle_t)) {
+            std::cerr << "Invalid password handle" << std::endl;
+            return EXIT_FAILURE;
+        }
+        password_handle_t pwd_handle;
+        memcpy(&pwd_handle, gk_pwd_handle.data(), sizeof(pwd_handle));
+        if (pwd_handle.version != HANDLE_VERSION)
+            std::cerr << "WARNING: Unexpected password handle version: "
+                << static_cast<int>(pwd_handle.version) << std::endl;
+
+        std::cout << "userSecureId: " << pwd_handle.user_id << std::endl;
+
+        static constexpr const char PERSONALIZATION_USER_GK_AUTH[] = "user-gk-authentication";
+        hidl_vec<u8> gk_password;
+        if (util::personalized_hash(stretched_cred, PERSONALIZATION_USER_GK_AUTH, gk_password)) {
+            std::cerr << "Failed to derive Gatekeeper password from stretched LSKF" << std::endl;
+            return 1;
+        }
+
+        gk_hal gk_hal(kmhal);
+        if (!gk_hal.is_ok()) {
+            std::cerr << "Failed to initialize the Gatekeeper HAL" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        std::cout << std::endl << "Authenticating with Gatekeeper..." << std::endl;
+        if (verify(kmhal, uid + 100000 /* `fakeUserId` */, UINT64_C(0), gk_password,
+                    gk_pwd_handle, auth_token, &gk_hal))
+        {
+            std::cerr << "Gatekeeper credential verification failed" << std::endl;
+            return EXIT_FAILURE;
+        }
     }
 
-    std::cout << std::endl << "Authenticating with Gatekeeper..." << std::endl;
-    hidl_vec<u8> auth_token;
-    if (verify(kmhal, uid + 100000 /* `fakeUserId` */, UINT64_C(0), gk_password,
-                handle, auth_token, &gk_hal))
-    {
-        std::cerr << "Gatekeeper credential verification failed" << std::endl;
-        return EXIT_FAILURE;
-    }
-
+    hidl_vec<u8> km_blob = util::keystore_blob_to_km_blob(keystore_key_blob);
     if (spblob_ver == SYNTHETIC_PASSWORD_VERSION_V1)
         return decrypt_v1_blob(kmhal, auth_token,
                 km_blob, protector_secret, spblob_content, out);
@@ -469,7 +467,6 @@ int unwrap_sp_blob(HidlSusKeymaster& kmhal, u32 uid, hidl_vec<u8> const& keystor
 
     return EXIT_SUCCESS;
 }
-
 
 int validate_synthetic_password(HidlSusKeymaster& kmhal, u32 uid,
                                 hidl_vec<u8> const& synthetic_password, u8 sp_blob_ver,
@@ -486,8 +483,7 @@ int validate_synthetic_password(HidlSusKeymaster& kmhal, u32 uid,
     hidl_vec<u8> gk_password;
     static constexpr const char PERSONALIZATION_SP_GK_AUTH[] = "sp-gk-authentication";
     if (derive_synthetic_password_subkey(synthetic_password, sp_blob_ver,
-                PERSONALIZATION_SP_GK_AUTH, sizeof(PERSONALIZATION_SP_GK_AUTH),
-                gk_password))
+                PERSONALIZATION_SP_GK_AUTH, gk_password))
     {
         std::cerr << "Failed to derive gatekeeper password from synthetic password" << std::endl;
         return EXIT_FAILURE;
@@ -505,15 +501,14 @@ int validate_synthetic_password(HidlSusKeymaster& kmhal, u32 uid,
 }
 
 int derive_synthetic_password_subkey(hidl_vec<u8> const& synthetic_password, u8 sp_blob_ver,
-                                     const char *personalization, size_t personalization_size,
-                                     hidl_vec<u8>& out)
+                                     const char *personalization, hidl_vec<u8>& out)
 {
     if (sp_blob_ver == SYNTHETIC_PASSWORD_VERSION_V3) {
         static constexpr const char PERSONALIZATION_CONTEXT[] =
             "android-synthetic-password-personalization-context";
         if (util::sp800_derive_with_context(synthetic_password,
-                    personalization, personalization_size,
-                    PERSONALIZATION_CONTEXT, sizeof(PERSONALIZATION_CONTEXT),
+                    personalization, strlen(personalization),
+                    PERSONALIZATION_CONTEXT, sizeof(PERSONALIZATION_CONTEXT) - 1,
                     out))
         {
             std::cerr << "Failed to derive key from synthetic password using SP800" << std::endl;
@@ -522,9 +517,7 @@ int derive_synthetic_password_subkey(hidl_vec<u8> const& synthetic_password, u8 
     } else if (sp_blob_ver == SYNTHETIC_PASSWORD_VERSION_V2 ||
                sp_blob_ver == SYNTHETIC_PASSWORD_VERSION_V1)
     {
-        if (util::personalized_hash(synthetic_password,
-                                    personalization, personalization_size, out))
-        {
+        if (util::personalized_hash(synthetic_password, personalization, out)) {
             std::cerr << "Failed to derive key from synthetic password using personalized hash"
                 << std::endl;
             return EXIT_FAILURE;
@@ -560,9 +553,7 @@ static int decrypt_software(hidl_vec<u8> const& secret, hidl_vec<u8> const& blob
                             hidl_vec<u8>& out)
 {
     hidl_vec<u8> derived_key;
-    if (util::personalized_hash(secret, PROTECTOR_SECRET_PERSONALIZATION,
-                sizeof(PROTECTOR_SECRET_PERSONALIZATION), derived_key))
-    {
+    if (util::personalized_hash(secret, PROTECTOR_SECRET_PERSONALIZATION, derived_key)) {
         std::cerr << "Failed to hash the protector secret" << std::endl;
         return 1;
     }

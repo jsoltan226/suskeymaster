@@ -39,7 +39,7 @@ int encrypt(HidlSusKeymaster& hal, hidl_vec<uint8_t> const& plaintext,
     hidl_vec<KeyParameter> params(encrypt_params);
 
     hidl_vec<uint8_t> app_id, app_data;
-    extract_application_id_and_data(params, app_id, app_data);
+    util::extract_application_id_and_data(params, app_id, app_data);
     KeyCharacteristics kc;
     ErrorCode e = ErrorCode::UNKNOWN_ERROR;
 
@@ -74,7 +74,7 @@ int decrypt(HidlSusKeymaster& hal, hidl_vec<uint8_t> const& ciphertext,
     hidl_vec<KeyParameter> params(decrypt_params);
 
     hidl_vec<uint8_t> app_id, app_data;
-    extract_application_id_and_data(params, app_id, app_data);
+    util::extract_application_id_and_data(params, app_id, app_data);
     KeyCharacteristics kc;
     ErrorCode e = ErrorCode::UNKNOWN_ERROR;
     if ((e = hal.getKeyCharacteristics(key, app_id, app_data, kc)) != ErrorCode::OK) {
@@ -103,7 +103,7 @@ int sign(HidlSusKeymaster& hal, hidl_vec<uint8_t> const& message,
     hidl_vec<KeyParameter> params(in_sign_params), verify_params;
 
     hidl_vec<uint8_t> app_id, app_data;
-    extract_application_id_and_data(params, app_id, app_data);
+    util::extract_application_id_and_data(params, app_id, app_data);
     KeyCharacteristics kc;
     ErrorCode e = ErrorCode::UNKNOWN_ERROR;
     if ((e = hal.getKeyCharacteristics(key, app_id, app_data, kc)) != ErrorCode::OK) {
@@ -138,7 +138,7 @@ int verify(HidlSusKeymaster& hal,
     hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_verify_params)
 {
     hidl_vec<uint8_t> app_id, app_data;
-    extract_application_id_and_data(in_verify_params, app_id, app_data);
+    util::extract_application_id_and_data(in_verify_params, app_id, app_data);
     KeyCharacteristics kc;
     ErrorCode e = ErrorCode::UNKNOWN_ERROR;
     if ((e = hal.getKeyCharacteristics(key, app_id, app_data, kc)) != ErrorCode::OK) {
@@ -255,7 +255,7 @@ static void init_encrypt_params_from_user_and_characteristics(
         bool* is_aes_gcm
 )
 {
-    Algorithm alg = find_algorithm(kc.hardwareEnforced,
+    Algorithm alg = util::find_algorithm(kc.hardwareEnforced,
             { Algorithm::RSA, Algorithm::AES, Algorithm::TRIPLE_DES });
     if (alg == static_cast<Algorithm>(-1))
         std::cerr << "WARNING: Encryption might not be supported for this key!" << std::endl;
@@ -452,7 +452,7 @@ static void init_sign_params_from_user_and_characteristics(
         hidl_vec<KeyParameter>& out_verify_params
 )
 {
-    Algorithm alg = find_algorithm(kc.hardwareEnforced,
+    Algorithm alg = util::find_algorithm(kc.hardwareEnforced,
             { Algorithm::EC, Algorithm::RSA, Algorithm::HMAC });
     if (alg == static_cast<Algorithm>(-1))
         std::cerr << "WARNING: Signing is not supported for this key!" << std::endl;
@@ -563,7 +563,7 @@ static void init_sign_params_from_user_and_characteristics(
     }
 
     for (const Tag t : { Tag::APPLICATION_ID, Tag::APPLICATION_DATA }) {
-        const hidl_vec<uint8_t> *blob = find_blob_tag(t, params);
+        const hidl_vec<uint8_t> *blob = util::find_blob_tag(t, params);
         if (blob == nullptr)
             continue;
 

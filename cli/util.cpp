@@ -2,7 +2,9 @@
 #define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
 #include <hidl/HidlSupport.h>
+#include <cstdio>
 #include <cstring>
+#include <endian.h>
 #ifdef SUSKEYMASTER_BUILD_ANDROID
 #include <sys/system_properties.h>
 #endif /* SUSKEYMASTER_BUILD_ANDROID */
@@ -15,7 +17,10 @@ namespace suskeymaster {
 namespace cli {
 namespace util {
 
+static constexpr u8 SUPPORTED_LEGACY_KEYSTORE_BLOB_VER = 0x3;
+
 static hidl_vec<u8> remove_keystore2_prefix_if_exists(const hidl_vec<u8>& blob);
+static hidl_vec<u8> extract_keystore1_blob(const hidl_vec<u8>& blob);
 static bool is_samsung(void);
 static void append_sha256_sum(hidl_vec<u8>& blob);
 
@@ -270,7 +275,14 @@ void init_default_params_for_alg_and_purposes(hidl_vec<KeyParameter>& params,
 
 hidl_vec<u8> keystore_blob_to_km_blob(hidl_vec<u8> const& keystore_blob)
 {
-    hidl_vec<u8> ret = remove_keystore2_prefix_if_exists(keystore_blob);
+    hidl_vec<u8> ret;
+
+    if (keystore_blob.size() < 1)
+        return {};
+    else if (keystore_blob[0] == SUPPORTED_LEGACY_KEYSTORE_BLOB_VER)
+        ret = extract_keystore1_blob(keystore_blob);
+    else
+        ret = remove_keystore2_prefix_if_exists(keystore_blob);
 
     if (is_samsung())
         append_sha256_sum(ret);
@@ -483,8 +495,7 @@ err:
     return ok ? 0 : 1;
 }
 
-int personalized_hash(hidl_vec<uint8_t> const& in_data,
-                      const char *personalization, size_t personalization_size,
+int personalized_hash(hidl_vec<uint8_t> const& in_data, const char *personalization,
                       hidl_vec<uint8_t>& out_hash)
 {
     /* AOSP constants */
@@ -500,8 +511,9 @@ int personalized_hash(hidl_vec<uint8_t> const& in_data,
     uint8_t prefix[SHA512_BLOCK_SIZE];
     std::memset(prefix, 0, sizeof(prefix));
 
-    if (personalization_size > sizeof(prefix)) {
-        std::cerr << "Prefix too long" << std::endl;
+    const int personalization_size = strlen(personalization);
+    if (personalization_size > sizeof(prefix) || personalization_size < 0) {
+        std::cerr << "Personalization string invalid or too long" << std::endl;
         return 1;
     }
 
@@ -596,6 +608,89 @@ static hidl_vec<u8> remove_keystore2_prefix_if_exists(const hidl_vec<u8>& blob) 
     }
 
     return hidl_vec<u8>(blob.begin() + PREFIX_SIZE, blob.end());
+}
+
+/* See "system/security/keystore2/src/legacy_blob.rs" */
+
+static hidl_vec<u8> extract_keystore1_blob(const hidl_vec<u8>& blob)
+{
+    struct legacy_blob_header {
+        u8 version;
+        u8 blob_type;
+        u8 flags;
+        u8 info;
+        u8 iv[16] /* 12 bytes + 4 bytes of padding */;
+        u8 tag[16];
+        u32 blob_size;
+    } __attribute__((packed));
+    if (blob.size() < sizeof(legacy_blob_header)) {
+        std::cerr << "Keystore v1 blob too small" << std::endl;
+        return {};
+    }
+
+    legacy_blob_header hdr;
+    memcpy(&hdr, blob.data(), sizeof(hdr));
+
+    if (hdr.version != SUPPORTED_LEGACY_KEYSTORE_BLOB_VER) {
+        std::cerr << "Unexpected/unsupported keystore v1 blob version: "
+            << static_cast<int>(hdr.version) << std::endl;
+        return {};
+    }
+
+    enum class blob_types : u8 {
+        GENERIC = 1,
+        SUPER_KEY = 2,
+        _RESERVED = 3,
+        KM_BLOB = 4,
+        KEY_CHARACTERISTICS = 5,
+        KEY_CHARACTERISTICS_CACHE = 6,
+        SUPER_KEY_AES256 = 7
+    };
+    if (hdr.blob_type != static_cast<u8>(blob_types::KM_BLOB)) {
+        std::cerr << "Unexpected blob type: " << static_cast<int>(hdr.blob_type) << std::endl;
+        return {};
+    }
+
+    enum class blob_flags : u8 {
+        ENCRYPTED = 1 << 0,
+        FALLBACK = 1 << 1,
+        SUPER_ENCRYPTED = 1 << 2,
+        CRITICAL_TO_DEVICE_ENCRYPTION = 1 << 3,
+        STRONGBOX = 1 << 4
+    };
+    if (!(hdr.flags & static_cast<u8>(blob_flags::CRITICAL_TO_DEVICE_ENCRYPTION))) {
+        std::cerr << "WARNING: Blob doesn't have the CRITICAL_TO_DEVICE_ENCRYPTION flag"
+            << std::endl;
+    } else if (hdr.flags & static_cast<u8>(blob_flags::STRONGBOX)) {
+        std::cerr << "WARNING: Blob has the STRONGBOX flag" << std::endl;
+    } else if (hdr.flags & static_cast<u8>(blob_flags::SUPER_ENCRYPTED)) {
+        std::cerr << "Blob is SUPER_ENCRYPTED, which shouldn't happen" << std::endl;
+        return {};
+    }
+
+    if (hdr.info != 0) {
+        std::cerr << "WARNING: `info` field is not `0`" << std::endl;
+        return {};
+    }
+
+    u8 empty_iv[sizeof(hdr.iv)] = { 0 };
+    if (memcmp(hdr.iv, empty_iv, sizeof(hdr.iv)))
+        std::cerr << "WARNING: AES-GCM IV is not zeroed out" << std::endl;
+
+    u8 empty_tag[sizeof(hdr.tag)] = { 0 };
+    if (memcmp(hdr.tag, empty_tag, sizeof(hdr.tag)))
+        std::cerr << "WARNING: AES-GCM tag is not zeroed out" << std::endl;
+
+    hdr.blob_size = be32toh(hdr.blob_size);
+    if (hdr.blob_size > 1000000) {
+        std::cerr << "Bogus blob size" << std::endl;
+        return {};
+    } else if (blob.size() != hdr.blob_size + sizeof(hdr)) {
+        std::cerr << "Invalid blob size; trailing or truncated data" << std::endl;
+        return {};
+    }
+
+    return hidl_vec<u8>(blob.begin() + sizeof(hdr), blob.end());
 }
 
 static bool is_samsung(void)

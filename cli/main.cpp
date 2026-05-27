@@ -833,7 +833,7 @@ static const std::vector<cli_command> cmds = {
 {
     { "vold", "decrypt-de-key" },
     {
-        "Decrypts the <in_vold_encrypted_key> using <in_keystore_key> and <in_secdiscardable>.",
+        "Decrypts the <in_vold_encrypted_key> using <in_keyblob> and <in_secdiscardable>.",
         "Examples include: /data/unencrypted/key/*, /metadata/vold/metadata_encryption/key/*"
     },
     HAL_NEEDED_3_0,
@@ -843,8 +843,8 @@ static const std::vector<cli_command> cmds = {
             "The vold DE key to decrypt"
         },
         {
-            "in_keystore_key", INPUT_FILE, MANDATORY,
-            "The keystore key used to encrypt <in_vold_encrypted_key>"
+            "in_keyblob", INPUT_FILE, MANDATORY,
+            "The keystore/keymaster key used to encrypt <in_vold_encrypted_key>"
         },
         {
             "in_secdiscardable", INPUT_FILE, MANDATORY,
@@ -857,7 +857,7 @@ static const std::vector<cli_command> cmds = {
     },
     [](arg_map_t& a) {
         return cli::vold::decrypt_de_key(*g_hal,
-                a["in_keystore_key"].in_bytes(), a["in_secdiscardable"].in_bytes(),
+                a["in_keyblob"].in_bytes(), a["in_secdiscardable"].in_bytes(),
                 a["in_vold_encrypted_key"].in_bytes(), a["out_decrypted_key"].out_bytes());
     }
 },
@@ -923,9 +923,7 @@ static const std::vector<cli_command> cmds = {
 
         static constexpr char PERSONALIZATION[] = "user-gk-authentication";
         hidl_vec<uint8_t> gk_password;
-        if (cli::util::personalized_hash(stretched, PERSONALIZATION, sizeof(PERSONALIZATION),
-                                         gk_password))
-        {
+        if (cli::util::personalized_hash(stretched, PERSONALIZATION, gk_password)) {
             std::cerr << "Failed to derive Gatekeeper password from stretched LSKF" << std::endl;
             return EXIT_FAILURE;
         }
@@ -950,10 +948,10 @@ static const std::vector<cli_command> cmds = {
         "Replace <user_id> with the appropriate value.",
         "",
         "Then *CONVERT THE PROTECTOR ID TO HEX* e.g. by running",
-        "   python -c 'print(hex(<retrieved int value>))'",
+        "   python -c 'import ctypes; print(hex(ctypes.c_ulong(<retrieved int value>).value))'",
         "",
         "For keystore 1, the key blob is stored under:",
-        "   /data/misc/keystore/user_<User ID>/"
+        "   /data/misc/keystore/user_0/"
                 "1000_USRPKEY_synthetic_password_handle_<protector_id_hex>",
         "",
         "For keystore 2, you will have to extract it from the keystore database",
@@ -1015,11 +1013,9 @@ static const std::vector<cli_command> cmds = {
 
         hidl_vec<u8> decrypted_spblob; u8 spblob_ver;
         if (cli::gatekeeper::unwrap_sp_blob(*g_hal, user_id,
-                a["in_keystore_key_blob"].in_bytes(),
-                stretched, pwd.handle,
-                a["in_secdiscardable"].in_bytes(),
-                a["in_spblob"].in_bytes(),
-                decrypted_spblob, spblob_ver))
+                a["in_keystore_key_blob"].in_bytes(), stretched,
+                a["in_secdiscardable"].in_bytes(), a["in_spblob"].in_bytes(),
+                decrypted_spblob, spblob_ver, pwd.handle))
         {
             std::cerr << "Failed to unwrap the synthetic password" << std::endl;
             return EXIT_FAILURE;
@@ -1038,10 +1034,42 @@ static const std::vector<cli_command> cmds = {
     }
 },
 {
+    { "noauth", "unwrap-sp-blob" },
+    {
+        "Unwraps a Synthetic Password blob using only a Keystore key;",
+        "without involving any user authentication.",
+        "Used for users who don't have any lockscreen set."
+    },
+    HAL_NEEDED_3_0,
+    {
+        { "in_keystore_key_blob", INPUT_FILE, MANDATORY,
+            "Wrapping keystore key blob. See `gatekeeper unwrap-sp-blob`." },
+        { "in_secdiscardable", INPUT_FILE, MANDATORY, "The secdiscardable (\"*.secdis\") file" },
+        { "in_spblob", INPUT_FILE, MANDATORY,
+            "The Synthetic Password blob (\"*.spblob\") to unwrap" },
+        { "out_decrypted_blob", OUTPUT_FILE, MANDATORY,
+            "The output file in which to store the decrypted SP blob. "
+                "The content should be a 32- or 64-byte uppercase hex string." },
+    },
+    [](arg_map_t& a) {
+        u8 dummy;
+        hidl_vec<u8> default_password(std::begin(cli::gatekeeper::DEFAULT_PASSWORD),
+                                      std::end(cli::gatekeeper::DEFAULT_PASSWORD) - 1);
+        default_password.resize(cli::gatekeeper::STRETCHED_LSKF_LENGTH);
+
+        return cli::gatekeeper::unwrap_sp_blob(*g_hal, 0,
+                a["in_keystore_key_blob"].in_bytes(), default_password,
+                a["in_secdiscardable"].in_bytes(), a["in_spblob"].in_bytes(),
+                a["out_decrypted_blob"].out_bytes(), dummy);
+    }
+},
+{
     { "vold", "decrypt-ce-key" },
     {
         "Decrypts a CE key using a secret derived from a user's synthetic password.",
         "See `gatekeeper validate-derive-vold-secret`.",
+        "Note: The secdiscardable parameter is optional because on some systems",
+        "the encrypted CE key in /data/misc/vold/user_keys/ce/* doesn't use a secdiscardable."
     },
     HAL_NOT_NEEDED,
     {
@@ -1049,11 +1077,11 @@ static const std::vector<cli_command> cmds = {
             "File containing the decrypted synthetic password blob" },
         { "sp_blob_ver", INPUT_STRING, MANDATORY,
             "Synthetic password blob version, printed out by `unwrap-sp-blob`." },
-        { "in_secdiscardable", INPUT_FILE, MANDATORY,
-            "File containing the secdiscardable file of the CE key" },
         { "in_encrypted_key", INPUT_FILE, MANDATORY, "File containing the encrypted CE key" },
         { "out_decrypted_key", OUTPUT_FILE, MANDATORY,
-            "Path to the file to which to write the decrypted CE key" }
+            "Path to the file to which to write the decrypted CE key" },
+        { "in_secdiscardable", INPUT_FILE, OPTIONAL,
+            "File containing the secdiscardable file of the CE key" },
     },
     [](arg_map_t& a) {
         u8 sp_blob_ver = 0;
@@ -1067,7 +1095,7 @@ static const std::vector<cli_command> cmds = {
         if (cli::gatekeeper::derive_synthetic_password_subkey(
                     a["in_synthetic_password"].in_bytes(),
                     sp_blob_ver,
-                    PERSONALIZATION_FBE_KEY, sizeof(PERSONALIZATION_FBE_KEY),
+                    PERSONALIZATION_FBE_KEY,
                     vold_secret))
         {
             std::cerr << "Failed to derive vold FBE secret from synthetic password" << std::endl;
