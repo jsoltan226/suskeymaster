@@ -117,12 +117,11 @@ namespace vold {
             hidl_vec<u8> const& in_keystore_key, hidl_vec<u8> const& in_secdiscardable,
             hidl_vec<u8> const& in_encrypted_key, hidl_vec<u8>& out_decrypted_key);
 
-    int decrypt_ce_key(HidlSusKeymaster& hal,
+    int decrypt_ce_key(
             hidl_vec<u8> const& in_secret, hidl_vec<u8> const& in_secdiscardable,
             hidl_vec<u8> const& in_encrypted_key, hidl_vec<u8>& out_decrypted_key);
 
-    /* utility */
-    hidl_vec<u8> keystore_blob_to_km_blob(hidl_vec<u8> const& keystore_blob);
+    int fscrypt_legacy_install_key(hidl_vec<u8> const& key);
 };
 
 namespace gatekeeper {
@@ -205,10 +204,13 @@ namespace gatekeeper {
                        hidl_vec<u8> const& secdiscardable, hidl_vec<u8> const& sp_blob,
                        hidl_vec<u8>& out, u8& out_blob_version);
 
-    int validate_synthetic_password(HidlSusKeymaster& kmhal, u32 uid, u8 sp_blob_ver,
-                                    hidl_vec<u8> const& synthetic_password,
+    int validate_synthetic_password(HidlSusKeymaster& kmhal, u32 uid,
+                                    hidl_vec<u8> const& synthetic_password, u8 sp_blob_ver,
                                     hidl_vec<u8> const& null_pwd_handle);
 
+    int derive_synthetic_password_subkey(hidl_vec<u8> const& synthetic_password, u8 sp_blob_ver,
+                                         const char *personalization, size_t personalization_size,
+                                         hidl_vec<u8>& out);
 }; /* namespace gatekeeper */
 
 namespace samsung {
@@ -281,6 +283,8 @@ void init_default_params_for_alg_and_purposes(hidl_vec<KeyParameter>& params,
                                               bool is_generate_key);
 
 /* Gatekeeper/vold crypto utilities */
+
+hidl_vec<u8> keystore_blob_to_km_blob(hidl_vec<u8> const& keystore_blob);
 
 hidl_vec<uint8_t> to_uppercase_hex_string(hidl_vec<uint8_t> const& data);
 

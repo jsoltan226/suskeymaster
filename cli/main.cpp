@@ -1027,7 +1027,7 @@ static const std::vector<cli_command> cmds = {
 
         std::cout << "Sanity synthetic password verification..." << std::endl;
         if (cli::gatekeeper::validate_synthetic_password(*g_hal, user_id,
-                    spblob_ver, decrypted_spblob, a["in_null_handle"].in_bytes()))
+                    decrypted_spblob, spblob_ver, a["in_null_handle"].in_bytes()))
         {
             std::cerr << "Synthetic password verification failed" << std::endl;
             return EXIT_FAILURE;
@@ -1043,9 +1043,12 @@ static const std::vector<cli_command> cmds = {
         "Decrypts a CE key using a secret derived from a user's synthetic password.",
         "See `gatekeeper validate-derive-vold-secret`.",
     },
-    HAL_NEEDED_3_0,
+    HAL_NOT_NEEDED,
     {
-        { "in_secret", INPUT_FILE, MANDATORY, "File containing the SP-derived secret" },
+        { "in_synthetic_password", INPUT_FILE, MANDATORY,
+            "File containing the decrypted synthetic password blob" },
+        { "sp_blob_ver", INPUT_STRING, MANDATORY,
+            "Synthetic password blob version, printed out by `unwrap-sp-blob`." },
         { "in_secdiscardable", INPUT_FILE, MANDATORY,
             "File containing the secdiscardable file of the CE key" },
         { "in_encrypted_key", INPUT_FILE, MANDATORY, "File containing the encrypted CE key" },
@@ -1053,12 +1056,43 @@ static const std::vector<cli_command> cmds = {
             "Path to the file to which to write the decrypted CE key" }
     },
     [](arg_map_t& a) {
-        return cli::vold::decrypt_ce_key(*g_hal,
-                a["in_secret"].in_bytes(), a["in_secdiscardable"].in_bytes(),
+        u8 sp_blob_ver = 0;
+        if (str_to_int<u8>(a["sp_blob_ver"].in_string(), sp_blob_ver)) {
+            std::cerr << "Invalid sp_blob_ver value" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        hidl_vec<u8> vold_secret;
+        static constexpr char PERSONALIZATION_FBE_KEY[] = "fbe-key";
+        if (cli::gatekeeper::derive_synthetic_password_subkey(
+                    a["in_synthetic_password"].in_bytes(),
+                    sp_blob_ver,
+                    PERSONALIZATION_FBE_KEY, sizeof(PERSONALIZATION_FBE_KEY),
+                    vold_secret))
+        {
+            std::cerr << "Failed to derive vold FBE secret from synthetic password" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        return cli::vold::decrypt_ce_key(vold_secret, a["in_secdiscardable"].in_bytes(),
                 a["in_encrypted_key"].in_bytes(), a["out_decrypted_key"].out_bytes());
     }
 },
 #endif /* SUSKEYMASTER_BUILD_HOST */
+{
+    { "vold", "fscrypt-legacy", "install-key" },
+    {
+        "Installs a decrypted 64-byte fscrypt key into the system keyring.",
+        "Used with older devices that don't support FS_IOC_ADD_ENCRYPTION_KEY."
+    },
+    HAL_NOT_NEEDED,
+    {
+        { "in_fscrypt_key", INPUT_FILE, MANDATORY, "The 64-byte raw fscrypt key to install" }
+    },
+    [](arg_map_t& a) {
+        return cli::vold::fscrypt_legacy_install_key(a["in_fscrypt_key"].in_bytes());
+    }
+},
 {
     { "__line_break__" }, {}, HAL_NOT_NEEDED, {}, {}
 },

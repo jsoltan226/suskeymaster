@@ -3,6 +3,9 @@
 #include "cli.hpp"
 #include <hidl/HidlSupport.h>
 #include <cstring>
+#ifdef SUSKEYMASTER_BUILD_ANDROID
+#include <sys/system_properties.h>
+#endif /* SUSKEYMASTER_BUILD_ANDROID */
 #include <openssl/err.h>
 #include <openssl/sha.h>
 #include <openssl/evp.h>
@@ -11,6 +14,10 @@
 namespace suskeymaster {
 namespace cli {
 namespace util {
+
+static hidl_vec<u8> remove_keystore2_prefix_if_exists(const hidl_vec<u8>& blob);
+static bool is_samsung(void);
+static void append_sha256_sum(hidl_vec<u8>& blob);
 
 static int openssl_err_print_cb(const char *msg, size_t size, void *userdata);
 static void print_openssl_errors(void);
@@ -259,6 +266,16 @@ void init_default_params_for_alg_and_purposes(hidl_vec<KeyParameter>& params,
     }
 
     kmhal::util::init_default_params(params, defaults);
+}
+
+hidl_vec<u8> keystore_blob_to_km_blob(hidl_vec<u8> const& keystore_blob)
+{
+    hidl_vec<u8> ret = remove_keystore2_prefix_if_exists(keystore_blob);
+
+    if (is_samsung())
+        append_sha256_sum(ret);
+
+    return ret;
 }
 
 /* See "framewords/base/core/java/com/android/internal/util/HexDump.java" */
@@ -562,6 +579,60 @@ err:
     if (ret != 0)
         print_openssl_errors();
     return ret;
+}
+
+static hidl_vec<u8> remove_keystore2_prefix_if_exists(const hidl_vec<u8>& blob) {
+    constexpr size_t PREFIX_SIZE = 8;
+    constexpr u8 PREFIX_MAGIC[7] = { 'p', 'K', 'M', 'b', 'l', 'o', 'b' };
+
+    /* Check if the blob is properly prefixed, and if not,
+     * treat it as though it was just a normal un-prefixed blob
+     * (according to AOSP, earlier versions of keystore didn't prefix the blobs at all) */
+    if (blob.size() < PREFIX_SIZE ||
+        std::memcmp(blob.data(), PREFIX_MAGIC, sizeof(PREFIX_MAGIC)) ||
+        blob[PREFIX_SIZE - 1] != 0 /* isSoftKeyMint byte */
+    ) {
+        return hidl_vec<u8>(blob);
+    }
+
+    return hidl_vec<u8>(blob.begin() + PREFIX_SIZE, blob.end());
+}
+
+static bool is_samsung(void)
+{
+#ifndef SUSKEYMASTER_BUILD_ANDROID
+    return false;
+#else
+    const struct prop_info *pi = __system_property_find("ro.build.fingerprint");
+    if (pi == nullptr)
+        return false;
+
+    bool ret = false;
+    __system_property_read_callback(pi,
+            [](void *cookie, const char *, const char *value, uint32_t) {
+                if (!strncmp(value, "samsung", sizeof("samsung") - 1)) {
+                    *(bool *)cookie = true;
+                }
+            },
+            &ret
+    );
+
+    /*
+    if (ret)
+        std::cout << "samsung detected" << std::endl;
+        */
+    return ret;
+#endif /* SUSKEYMASTER_BUILD_HOST */
+}
+
+static void append_sha256_sum(hidl_vec<u8>& blob)
+{
+    u8 digest[SHA256_DIGEST_LENGTH] = { 0 };
+    (void) SHA256(blob.data(), blob.size(), digest);
+
+    blob.resize(blob.size() + SHA256_DIGEST_LENGTH);
+    std::memcpy(blob.data() + (blob.size() - SHA256_DIGEST_LENGTH),
+            digest, SHA256_DIGEST_LENGTH);
 }
 
 static int openssl_err_print_cb(const char *msg, size_t size, void *userdata)

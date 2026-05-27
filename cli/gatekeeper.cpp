@@ -51,10 +51,6 @@ static int decrypt_v2_v3_blob(HidlSusKeymaster& hal, hidl_vec<u8> const& auth_to
                               hidl_vec<u8> const& keyblob, hidl_vec<u8> const& protector_secret,
                               hidl_vec<u8> const& blob, hidl_vec<u8>& out);
 
-static int sp_derive_subkey(hidl_vec<u8> const& in_synthetic_password, u8 sp_blob_ver,
-                            const char *personalization, size_t personalization_size,
-                            hidl_vec<u8>& out);
-
 /** See "hardware/interfaces/gatekeeper/1.0/types.hal"
  ** and "hardware/interfaces/gatekeeper/1.0/IGatekeeper.hal" **/
 
@@ -385,7 +381,7 @@ int unwrap_sp_blob(HidlSusKeymaster& kmhal, u32 uid, hidl_vec<u8> const& keystor
         hidl_vec<u8> const& secdiscardable, hidl_vec<u8> const& sp_blob,
         hidl_vec<u8>& out, u8& out_blob_version)
 {
-    hidl_vec<u8> km_blob = vold::keystore_blob_to_km_blob(keystore_key_blob);
+    hidl_vec<u8> km_blob = util::keystore_blob_to_km_blob(keystore_key_blob);
 
     gk_hal gk_hal(kmhal);
     if (!gk_hal.is_ok()) {
@@ -475,8 +471,8 @@ int unwrap_sp_blob(HidlSusKeymaster& kmhal, u32 uid, hidl_vec<u8> const& keystor
 }
 
 
-int validate_synthetic_password(HidlSusKeymaster& kmhal, u32 uid, u8 sp_blob_ver,
-                                hidl_vec<u8> const& synthetic_password,
+int validate_synthetic_password(HidlSusKeymaster& kmhal, u32 uid,
+                                hidl_vec<u8> const& synthetic_password, u8 sp_blob_ver,
                                 hidl_vec<u8> const& null_pwd_handle)
 {
     if (sp_blob_ver != SYNTHETIC_PASSWORD_VERSION_V1 &&
@@ -489,7 +485,7 @@ int validate_synthetic_password(HidlSusKeymaster& kmhal, u32 uid, u8 sp_blob_ver
 
     hidl_vec<u8> gk_password;
     static constexpr const char PERSONALIZATION_SP_GK_AUTH[] = "sp-gk-authentication";
-    if (sp_derive_subkey(synthetic_password, sp_blob_ver,
+    if (derive_synthetic_password_subkey(synthetic_password, sp_blob_ver,
                 PERSONALIZATION_SP_GK_AUTH, sizeof(PERSONALIZATION_SP_GK_AUTH),
                 gk_password))
     {
@@ -505,19 +501,39 @@ int validate_synthetic_password(HidlSusKeymaster& kmhal, u32 uid, u8 sp_blob_ver
         return EXIT_FAILURE;
     }
 
-    /*
-    hidl_vec<u8> vold_secret;
-    static constexpr char PERSONALIZATION_FBE_KEY[] = "fbe-key";
-    if (sp_derive_subkey(synthetic_password, sp_blob_ver,
-                PERSONALIZATION_FBE_KEY, sizeof(PERSONALIZATION_FBE_KEY),
-                vold_secret))
+    return EXIT_SUCCESS;
+}
+
+int derive_synthetic_password_subkey(hidl_vec<u8> const& synthetic_password, u8 sp_blob_ver,
+                                     const char *personalization, size_t personalization_size,
+                                     hidl_vec<u8>& out)
+{
+    if (sp_blob_ver == SYNTHETIC_PASSWORD_VERSION_V3) {
+        static constexpr const char PERSONALIZATION_CONTEXT[] =
+            "android-synthetic-password-personalization-context";
+        if (util::sp800_derive_with_context(synthetic_password,
+                    personalization, personalization_size,
+                    PERSONALIZATION_CONTEXT, sizeof(PERSONALIZATION_CONTEXT),
+                    out))
+        {
+            std::cerr << "Failed to derive key from synthetic password using SP800" << std::endl;
+            return EXIT_FAILURE;
+        }
+    } else if (sp_blob_ver == SYNTHETIC_PASSWORD_VERSION_V2 ||
+               sp_blob_ver == SYNTHETIC_PASSWORD_VERSION_V1)
     {
-        std::cerr << "Failed to derive FBE key from synthetic password" << std::endl;
+        if (util::personalized_hash(synthetic_password,
+                                    personalization, personalization_size, out))
+        {
+            std::cerr << "Failed to derive key from synthetic password using personalized hash"
+                << std::endl;
+            return EXIT_FAILURE;
+        }
+    } else {
+        std::cerr << "Invalid or unsupported SP blob version: " << static_cast<int>(sp_blob_ver)
+            << std::endl;
         return EXIT_FAILURE;
     }
-
-    out = util::to_uppercase_hex_string(vold_secret);
-    */
 
     return EXIT_SUCCESS;
 }
@@ -600,34 +616,6 @@ static int decrypt_v2_v3_blob(HidlSusKeymaster& hal, hidl_vec<u8> const& auth_to
     std::cout << "Final decryption OK" << std::endl << std::endl;
 
     std::cout << "Successfully decrypted SP blob" << std::endl;
-    return 0;
-}
-
-static int sp_derive_subkey(hidl_vec<u8> const& in_synthetic_password, u8 sp_blob_ver,
-                            const char *personalization, size_t personalization_size,
-                            hidl_vec<u8>& out)
-{
-    if (sp_blob_ver == SYNTHETIC_PASSWORD_VERSION_V3) {
-        static constexpr const char PERSONALIZATION_CONTEXT[] =
-            "android-synthetic-password-personalization-context";
-        if (util::sp800_derive_with_context(in_synthetic_password,
-                    personalization, personalization_size,
-                    PERSONALIZATION_CONTEXT, sizeof(PERSONALIZATION_CONTEXT),
-                    out))
-        {
-            std::cerr << "Failed to derive key from synthetic password using SP800" << std::endl;
-            return EXIT_FAILURE;
-        }
-    } else {
-        if (util::personalized_hash(in_synthetic_password,
-                                    personalization, personalization_size, out))
-        {
-            std::cerr << "Failed to derive key from synthetic password using personalized hash"
-                << std::endl;
-            return EXIT_FAILURE;
-        }
-    }
-
     return 0;
 }
 
