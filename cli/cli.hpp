@@ -2,6 +2,7 @@
 #define CLI_SUSKEYMASTER_HPP_
 
 #include <core/log.h>
+#include <libsuskmhal/hidl/base.h>
 #include <libsuskmhal/hidl/hidl-hal.hpp>
 #include <libsuskmhal/util/km-params.hpp>
 #include <libsuscertmod/samsung-sus-indata.h>
@@ -25,47 +26,47 @@ using ::android::hardware::hidl_vec;
 namespace hal_ops {
 
 int get_key_characteristics(HidlSusKeymaster& hal,
-    hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_application_id_data);
+    hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& in_application_id_data);
 
 int generate_key(HidlSusKeymaster& hal,
     hidl_vec<KeyParameter> const& in_gen_params,
-    hidl_vec<uint8_t>& out_wrapped_blob);
+    hidl_vec<u8>& out_wrapped_blob);
 
 int attest_key(HidlSusKeymaster& hal,
-    hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_attest_params,
-    hidl_vec<hidl_vec<uint8_t>>& out_cert_chain);
+    hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& in_attest_params,
+    hidl_vec<hidl_vec<u8>>& out_cert_chain);
 
 int import_key(HidlSusKeymaster& hal,
-    hidl_vec<uint8_t> const& priv_pkcs8,
+    hidl_vec<u8> const& priv_pkcs8,
     hidl_vec<KeyParameter> const& in_import_params,
-    hidl_vec<uint8_t>& out_wrapped_blob);
+    hidl_vec<u8>& out_wrapped_blob);
 
 int export_key(HidlSusKeymaster& hal,
-    hidl_vec<uint8_t> const& key,
-    hidl_vec<uint8_t>& out_public_key_x509,
+    hidl_vec<u8> const& key,
+    hidl_vec<u8>& out_public_key_x509,
     hidl_vec<KeyParameter> const& in_application_id_data);
 
 int upgrade_key(HidlSusKeymaster& hal,
-    hidl_vec<uint8_t> const& in_keyblob_to_upgrade,
+    hidl_vec<u8> const& in_keyblob_to_upgrade,
     hidl_vec<KeyParameter> const& in_upgrade_params,
-    hidl_vec<uint8_t>& out_upgraded_keyblob);
+    hidl_vec<u8>& out_upgraded_keyblob);
 
 namespace crypto {
-    int encrypt(HidlSusKeymaster& hal, hidl_vec<uint8_t> const& plaintext,
-            hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& encrypt_params,
-            hidl_vec<uint8_t>& out_ciphertext, hidl_vec<uint8_t>& out_aes_gcm_iv);
+    int encrypt(HidlSusKeymaster& hal, hidl_vec<u8> const& plaintext,
+            hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& encrypt_params,
+            hidl_vec<u8>& out_ciphertext, hidl_vec<u8>& out_aes_gcm_iv);
 
-    int decrypt(HidlSusKeymaster& hal, hidl_vec<uint8_t> const& ciphertext,
-            hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& decrypt_params,
-            hidl_vec<uint8_t>& out_plaintext);
+    int decrypt(HidlSusKeymaster& hal, hidl_vec<u8> const& ciphertext,
+            hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& decrypt_params,
+            hidl_vec<u8>& out_plaintext);
 
-    int sign(HidlSusKeymaster& hal, hidl_vec<uint8_t> const& message,
-        hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_sign_params,
-        hidl_vec<uint8_t>& out_signature);
+    int sign(HidlSusKeymaster& hal, hidl_vec<u8> const& message,
+        hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& in_sign_params,
+        hidl_vec<u8>& out_signature);
 
     int verify(HidlSusKeymaster& hal,
-        hidl_vec<uint8_t> const& message, hidl_vec<uint8_t> const& signature,
-        hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_verify_params);
+        hidl_vec<u8> const& message, hidl_vec<u8> const& signature,
+        hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& in_verify_params);
 } /* namespace crypto */
 
 } /* namespace hal_ops */
@@ -84,101 +85,165 @@ namespace keybox {
 namespace transact {
     namespace client {
         int generate_and_attest_wrapping_key(HidlSusKeymaster& hal,
-            hidl_vec<uint8_t>& out_wrapping_blob, hidl_vec<uint8_t>& out_wrapping_pubkey,
-            hidl_vec<hidl_vec<uint8_t>> * out_opt_cert_chain,
+            hidl_vec<u8>& out_wrapping_blob, hidl_vec<u8>& out_wrapping_pubkey,
+            hidl_vec<hidl_vec<u8>> * out_opt_cert_chain,
             hidl_vec<KeyParameter> const& in_gen_params
         );
     }
 
     namespace server {
-        int verify_attestation(hidl_vec<hidl_vec<uint8_t>> const& cert_chain);
+        int verify_attestation(hidl_vec<hidl_vec<u8>> const& cert_chain);
 
-        int wrap_key(hidl_vec<uint8_t> const& in_private_key,
-            hidl_vec<uint8_t> const& in_wrapping_key, hidl_vec<KeyParameter> const& in_key_params,
-            hidl_vec<uint8_t>& out_wrapped_data, hidl_vec<uint8_t>& out_masking_key);
+        int wrap_key(hidl_vec<u8> const& in_private_key,
+            hidl_vec<u8> const& in_wrapping_key, hidl_vec<KeyParameter> const& in_key_params,
+            hidl_vec<u8>& out_wrapped_data, hidl_vec<u8>& out_masking_key);
     }
 
     namespace client {
-        int import_wrapped_key(HidlSusKeymaster& hal, hidl_vec<uint8_t> const& in_wrapped_data,
-            hidl_vec<uint8_t> const& in_masking_key, hidl_vec<uint8_t> const& in_wrapping_blob,
+        int import_wrapped_key(HidlSusKeymaster& hal, hidl_vec<u8> const& in_wrapped_data,
+            hidl_vec<u8> const& in_masking_key, hidl_vec<u8> const& in_wrapping_blob,
             hidl_vec<KeyParameter> const& in_unwrapping_params,
-            hidl_vec<uint8_t>& out_key_blob);
+            hidl_vec<u8>& out_key_blob);
     };
 
 } /* namespace transact */
 
 namespace vold {
-    int generate_app_id(hidl_vec<uint8_t> const& in_secdiscardable,
-            hidl_vec<uint8_t>& out_app_id);
+    int generate_app_id(hidl_vec<u8> const& in_secdiscardable,
+            hidl_vec<u8> const& in_secret,
+            hidl_vec<u8>& out_app_id);
 
-    int decrypt_vold_key_with_keystore_key(HidlSusKeymaster& hal,
-            hidl_vec<uint8_t> const& in_keystore_key, hidl_vec<uint8_t> const& in_secdiscardable,
-            hidl_vec<uint8_t> const& in_encrypted_key, hidl_vec<uint8_t>& out_decrypted_key);
+    int decrypt_de_key(HidlSusKeymaster& hal,
+            hidl_vec<u8> const& in_keystore_key, hidl_vec<u8> const& in_secdiscardable,
+            hidl_vec<u8> const& in_encrypted_key, hidl_vec<u8>& out_decrypted_key);
+
+    int decrypt_ce_key(HidlSusKeymaster& hal,
+            hidl_vec<u8> const& in_secret, hidl_vec<u8> const& in_secdiscardable,
+            hidl_vec<u8> const& in_encrypted_key, hidl_vec<u8>& out_decrypted_key);
+
+    /* utility */
+    hidl_vec<u8> keystore_blob_to_km_blob(hidl_vec<u8> const& keystore_blob);
 };
+
+namespace gatekeeper {
+    struct gk_hal {
+    private:
+        struct kmhal_hidl_hal_sp *hal_sp;
+        bool owns;
+    public:
+
+        /* Implemented in `gatekeeper.cpp` */
+        gk_hal();
+        gk_hal(HidlSusKeymaster&);
+        ~gk_hal();
+
+        gk_hal(const gk_hal& other) {
+            this->hal_sp = other.hal_sp;
+            this->owns = false;
+        }
+        gk_hal& operator=(const gk_hal& other) {
+            this->hal_sp = other.hal_sp;
+            this->owns = false;
+            return *this;
+        }
+
+        bool is_ok() const { return this->hal_sp != nullptr; }
+
+        struct kmhal_hidl_hal_sp * get_hal_sp() const { return this->hal_sp; }
+    };
+
+    int verify(HidlSusKeymaster& kmhal, u32 uid, u64 challenge, hidl_vec<uint8_t> const& cred,
+               hidl_vec<uint8_t> const& handle, hidl_vec<uint8_t>& out,
+               struct gk_hal *opt_gk_hal = nullptr);
+
+    /* See "frameworks/base/core/java/com/android/internal/widget/LockPatternUtils.java"
+     * and "frameworks/base/services/core/java/com/android/server/locksettings/SyntheticPasswordManager.java"*/
+    struct sp_pwd_data {
+        enum class credential_type : u32 {
+            NONE = static_cast<u32>(-1),
+            PATTERN = 1,
+            PASSWORD_OR_PIN = 2,
+            PIN = 3,
+            PASSWORD = 4
+        } type = credential_type::NONE;
+        static const char * credential_type_toString(u32 ct) {
+            switch (static_cast<credential_type>(ct)) {
+                case credential_type::NONE: return "CREDENTIAL_TYPE_NONE";
+                case credential_type::PATTERN: return "CREDENTIAL_TYPE_PATTERN";
+                case credential_type::PASSWORD_OR_PIN: return "CREDENTIAL_TYPE_PASSWORD_OR_PIN";
+                case credential_type::PIN: return "CREDENTIAL_TYPE_PIN";
+                case credential_type::PASSWORD: return "CREDENTIAL_TYPE_PASSWORD";
+                default: return "(unknown)";
+            }
+        }
+
+        static constexpr u8 PASSWORD_SCRYPT_LOG_N = 11;
+        static constexpr u8 PASSWORD_SCRYPT_LOG_R = 3;
+        static constexpr u8 PASSWORD_SCRYPT_LOG_P = 1;
+        u8 N = PASSWORD_SCRYPT_LOG_N,
+           R = PASSWORD_SCRYPT_LOG_R,
+           P = PASSWORD_SCRYPT_LOG_P;
+
+        static constexpr u8 PASSWORD_SALT_LENGTH = 16;
+        hidl_vec<u8> salt = hidl_vec<u8>(PASSWORD_SALT_LENGTH);
+
+        hidl_vec<u8> handle;
+
+        static constexpr i32 PIN_LENGTH_UNAVAILABLE = -1;
+        static constexpr i32 MIN_AUTO_PIN_REQUIREMENT_LENGTH = 6;
+        i32 pin_length = PIN_LENGTH_UNAVAILABLE;
+    };
+
+    int read_pwd_data(hidl_vec<u8> const& pwd_data, sp_pwd_data& out, bool log);
+
+    constexpr const u8 DEFAULT_PASSWORD[] = "default-password";
+    static constexpr u32 STRETCHED_LSKF_LENGTH = 32;
+    int stretch_lskf(hidl_vec<u8> const& credential, sp_pwd_data const& pwd, hidl_vec<u8>& out);
+
+    int unwrap_sp_blob(HidlSusKeymaster& kmhal, u32 uid, hidl_vec<u8> const& km_key_blob,
+                       hidl_vec<u8> const& stretched_cred, hidl_vec<u8> const& handle,
+                       hidl_vec<u8> const& secdiscardable, hidl_vec<u8> const& sp_blob,
+                       hidl_vec<u8>& out, u8& out_blob_version);
+
+    int validate_synthetic_password(HidlSusKeymaster& kmhal, u32 uid, u8 sp_blob_ver,
+                                    hidl_vec<u8> const& synthetic_password,
+                                    hidl_vec<u8> const& null_pwd_handle);
+
+}; /* namespace gatekeeper */
 
 namespace samsung {
     namespace ekey {
-        int list_tags(hidl_vec<uint8_t> const& in_keyblob);
+        int list_tags(hidl_vec<u8> const& in_keyblob);
 
-        int add_tags(hidl_vec<uint8_t> const& in_keyblob,
-                hidl_vec<KeyParameter> const& in_tags_to_add, hidl_vec<uint8_t>& out_keyblob);
+        int add_tags(hidl_vec<u8> const& in_keyblob,
+                     hidl_vec<KeyParameter> const& in_tags_to_add, hidl_vec<u8>& out_keyblob);
 
-        int del_tags(hidl_vec<uint8_t> const& in_keyblob,
-                hidl_vec<KeyParameter> const& in_tags_to_del, hidl_vec<uint8_t>& out_keyblob);
+        int del_tags(hidl_vec<u8> const& in_keyblob,
+                     hidl_vec<KeyParameter> const& in_tags_to_del, hidl_vec<u8>& out_keyblob);
     } /* namespace ekey */
 
 #ifdef SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA
     int send_indata(HidlSusKeymaster& hal,
-            uint32_t *ver, uint32_t *km_ver, uint32_t cmd, uint32_t *pid,
-            uint32_t *int0, uint64_t *long0, uint64_t *long1, const hidl_vec<uint8_t> *bin0,
-            const hidl_vec<uint8_t> *bin1, const hidl_vec<uint8_t> *bin2,
-            const hidl_vec<uint8_t> *key, const hidl_vec<KeyParameter> *par);
+                    u32 *ver, u32 *km_ver, u32 cmd, u32 *pid,
+                    u32 *int0, u64 *long0, u64 *long1, const hidl_vec<u8> *bin0,
+                    const hidl_vec<u8> *bin1, const hidl_vec<u8> *bin2,
+                    const hidl_vec<u8> *key, const hidl_vec<KeyParameter> *par);
 #endif /* SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA */
 } /* namespace samsung */
 
+namespace util {
 
-static inline void extract_application_id_and_data(hidl_vec<KeyParameter> const& params,
-        hidl_vec<uint8_t>& out_application_id, hidl_vec<uint8_t>& out_application_data)
-{
-    for (const auto& kp : params) {
-        if (kp.tag == Tag::APPLICATION_ID)
-            out_application_id = kp.blob;
-        else if (kp.tag == Tag::APPLICATION_DATA)
-            out_application_data = kp.blob;
-    }
-}
+/* Key parameter utilities */
 
-static inline Algorithm find_algorithm(hidl_vec<KeyParameter> const& params,
-        const std::vector<Algorithm>& allowed_algs)
-{
-    for (const auto& kp : params) {
-        if (kp.tag == Tag::ALGORITHM) {
-            for (const auto& a : allowed_algs) {
-                if (kp.f.algorithm == a)
-                    return kp.f.algorithm;
-            }
+void extract_application_id_and_data(hidl_vec<KeyParameter> const& params,
+                                     hidl_vec<u8>& out_application_id,
+                                     hidl_vec<u8>& out_application_data);
 
-            std::cerr << "Unsupported algorithm: " << toString(kp.f.algorithm) << std::endl;
-            return static_cast<Algorithm>(-1);
-        }
-    }
+Algorithm find_algorithm(hidl_vec<KeyParameter> const& params,
+                         const std::vector<Algorithm>& allowed_algs);
 
-    std::cerr << "No ALGORITHM provided in key parameters" << std::endl;
-    return static_cast<Algorithm>(-1);
-}
-
-static inline std::vector<hidl_vec<uint8_t>>
-find_rep_blob_tag(Tag t, hidl_vec<KeyParameter> const& params)
-{
-    std::vector<hidl_vec<uint8_t>> ret;
-
-    for (const auto& kp : params) {
-        if (kp.tag == t)
-            ret.push_back(kp.blob);
-    }
-
-    return ret;
-}
+const hidl_vec<u8> * find_blob_tag(Tag t, hidl_vec<KeyParameter> const& params);
+std::vector<hidl_vec<u8>> find_rep_blob_tag(Tag t, hidl_vec<KeyParameter> const& params);
 
 template<typename R>
 static inline std::vector<R>
@@ -194,16 +259,6 @@ find_rep_tag(Tag t, hidl_vec<KeyParameter> const& params)
     return ret;
 }
 
-static inline const hidl_vec<uint8_t>*
-find_blob_tag(Tag t, hidl_vec<KeyParameter> const& params)
-{
-    for (const auto& kp : params) {
-        if (kp.tag == t)
-            return &kp.blob;
-    }
-    return nullptr;
-}
-
 template<typename R>
 static inline R find_tag(Tag t, hidl_vec<KeyParameter> const& params)
 {
@@ -215,193 +270,49 @@ static inline R find_tag(Tag t, hidl_vec<KeyParameter> const& params)
     return static_cast<R>(-1);
 }
 
-static inline Algorithm determine_pkey_algorithm(hidl_vec<uint8_t> const& priv_pkcs8)
-{
-    EVP_PKEY *pkey = NULL;
-    const unsigned char *p = NULL;
+Algorithm determine_pkey_algorithm(hidl_vec<u8> const& priv_pkcs8);
 
-    p = priv_pkcs8.data();
-    pkey = d2i_PrivateKey(EVP_PKEY_EC, NULL, &p, priv_pkcs8.size());
-    if (pkey != NULL) {
-        EVP_PKEY_free(pkey);
-        return Algorithm::EC;
-    }
+Algorithm determine_algorithm_from_params_and_pkey(hidl_vec<KeyParameter> const& params,
+                                                   hidl_vec<u8> const& pkey);
 
-    p = priv_pkcs8.data();
-    pkey = d2i_PrivateKey(EVP_PKEY_RSA, NULL, &p, priv_pkcs8.size());
-    if (pkey != NULL) {
-        EVP_PKEY_free(pkey);
-        return Algorithm::RSA;
-    }
+void init_default_params_for_alg_and_purposes(hidl_vec<KeyParameter>& params,
+                                              Algorithm alg,
+                                              const std::vector<KeyPurpose>& purposes,
+                                              bool is_generate_key);
 
-    return static_cast<Algorithm>(-1);
-}
+/* Gatekeeper/vold crypto utilities */
 
-static inline Algorithm determine_algorithm_from_params_and_pkey(
-        hidl_vec<KeyParameter> const& params, hidl_vec<uint8_t> const& pkey
-)
-{
-    Algorithm ret = find_tag<Algorithm>(Tag::ALGORITHM, params);
-    if (ret == static_cast<Algorithm>(-1)) {
-        std::cerr << "WARNING: No ALGORITHM tag specified in parameters; "
-            "attempting to guess from key binary..." << std::endl;
+hidl_vec<uint8_t> to_uppercase_hex_string(hidl_vec<uint8_t> const& data);
 
-        ret = determine_pkey_algorithm(pkey);
-        if (ret == static_cast<Algorithm>(-1)) {
-            std::cerr << "The key blob is not a valid EC or RSA PKCS#8 private key"
-                << std::endl;
-            std::cerr << "Can't guess which algorithm is wanted from just raw bytes" << std::endl;
-            return ret;
-        }
-    }
+int parse_hex_string(const hidl_vec<uint8_t>& hex, hidl_vec<uint8_t>& out);
 
-    return ret;
-}
+static constexpr u32 AES_GCM_KEY_SIZE = 32;
+static constexpr u32 AES_GCM_IV_SIZE = 12;
+static constexpr u32 AES_GCM_TAG_SIZE = 16;
 
-static inline void init_default_params_for_alg_and_purposes(hidl_vec<KeyParameter>& params,
-        Algorithm alg, const std::vector<KeyPurpose>& purposes, bool gen)
-{
-    bool sign_verify = false, enc_dec = false, wrap_key = false;
-    bool private_ops = false;
-    for (KeyPurpose p : purposes) {
-        if (p == KeyPurpose::SIGN || p == KeyPurpose::VERIFY)
-            sign_verify = true;
-        else if (p == KeyPurpose::ENCRYPT || p == KeyPurpose::DECRYPT)
-            enc_dec = true;
-        else if (p == KeyPurpose::WRAP_KEY)
-            wrap_key = true;
+int extract_gcm_data(hidl_vec<u8> const& blob,
+                     hidl_vec<u8>& out_iv, hidl_vec<u8>& out_ciphertext_with_tag);
 
-        if (p == KeyPurpose::SIGN || p == KeyPurpose::DECRYPT)
-            private_ops = true;
-    }
+int extract_gcm_data(hidl_vec<u8> const& blob,
+                     hidl_vec<u8>& out_iv, hidl_vec<u8>& out_ciphertext, hidl_vec<u8>& out_tag);
 
-    switch (alg) {
-    case Algorithm::RSA:
-        break;
-    case Algorithm::EC:
-    case Algorithm::HMAC:
-        if (enc_dec) {
-            enc_dec = false;
-            std::cerr << "WARNING: Encryption and decryption "
-                "is not be supported for EC and HMAC keys!" << std::endl;
-        }
-        if (wrap_key) {
-            wrap_key = false;
-            std::cerr << "WARNING: EC and HMAC keys cannot be used "
-                "as the wrapping key for a secure import!" << std::endl;
-        }
-        break;
-    case Algorithm::TRIPLE_DES:
-        if (wrap_key) {
-            wrap_key = false;
-            std::cerr << "WARNING: Triple-DES key cannot be used "
-                "as the wrapping key for a secure import!" << std::endl;
-        }
+int aes256gcm_software_decrypt(hidl_vec<u8> const& key, hidl_vec<u8> const& blob,
+                               hidl_vec<u8>& out_plaintext);
 
-    [[fallthrough]];
-    case Algorithm::AES:
-        if (sign_verify) {
-            sign_verify = false;
-            std::cerr << "WARNING: AES and Triple-DES keys cannot "
-                "be used for signing and verification!" << std::endl;
-        }
-    }
+int aes256gcm_software_decrypt(hidl_vec<u8> const& key, hidl_vec<u8> const& iv,
+                               hidl_vec<u8> const& ciphertext, hidl_vec<u8> const& tag,
+                               hidl_vec<u8>& out_plaintext);
 
-    std::vector<kmhal::util::km_default> defaults;
-    std::vector<PaddingMode> padding_modes;
-    std::vector<BlockMode> block_modes;
-    bool has_gcm = false, has_ctr_gcm = false, has_ecb_cbc = false;
+int personalized_hash(hidl_vec<uint8_t> const& in_data,
+                      const char *personalization, size_t personalization_size,
+                      hidl_vec<uint8_t>& out_hash);
 
-    /* Universal defaults for all algorithms */
-    defaults = {
-        { Tag::ALGORITHM, alg },
-        { Tag::NO_AUTH_REQUIRED, true }
-    };
+int sp800_derive_with_context(hidl_vec<uint8_t> const& in_key,
+                              const char *label, size_t label_size,
+                              const char *context, size_t context_size,
+                              hidl_vec<uint8_t>& out);
 
-    switch (alg) {
-    case Algorithm::RSA:
-        if (gen) {
-            /* Only 2048-bit RSA keys are guaranteed to be supported
-             * by both TEE and STRONGBOX devices */
-            defaults.emplace_back(Tag::KEY_SIZE, 2048);
-
-            defaults.emplace_back(Tag::RSA_PUBLIC_EXPONENT, UINT64_C(65537));
-        }
-
-        /* All RSA private operations require an authorized digest */
-        if (private_ops)
-            defaults.push_back({ Tag::DIGEST, { Digest::SHA_2_256 } });
-
-        if (sign_verify) padding_modes.push_back(PaddingMode::RSA_PKCS1_1_5_SIGN);
-        if (enc_dec) padding_modes.push_back(PaddingMode::RSA_PKCS1_1_5_ENCRYPT);
-        if (wrap_key) padding_modes.push_back(PaddingMode::RSA_OAEP);
-
-        defaults.emplace_back(Tag::PADDING, padding_modes);
-        break;
-    case Algorithm::EC:
-        /* Only P-256 EC keys are guaranteed to be supported
-         * by both TEE and STRONGBOX devices */
-        /* Don't initialize Tag::EC_CURVE if the user has already provided Tag::KEY_SIZE */
-        if (gen && find_tag<int64_t>(Tag::KEY_SIZE, params) == -1)
-            defaults.emplace_back(Tag::EC_CURVE, EcCurve::P_256);
-
-        if (sign_verify && private_ops)
-            defaults.push_back({ Tag::DIGEST, { Digest::SHA_2_256 } });
-
-        break;
-    case Algorithm::AES:
-        if (gen)
-            defaults.emplace_back(Tag::KEY_SIZE, 256);
-
-        if (!enc_dec || !private_ops)
-            break;
-
-        block_modes = find_rep_tag<BlockMode>(Tag::BLOCK_MODE, params);
-        if (!block_modes.size()) {
-            defaults.push_back({ Tag::BLOCK_MODE, { BlockMode::GCM } });
-            defaults.push_back({ Tag::PADDING, { PaddingMode::NONE } });
-            defaults.push_back({ Tag::MIN_MAC_LENGTH, 128 });
-        } else {
-            for (BlockMode b : block_modes) {
-                if (b == BlockMode::GCM)
-                    has_gcm = true;
-                if (b == BlockMode::GCM || b == BlockMode::CTR)
-                    has_ctr_gcm = true;
-                if (b == BlockMode::ECB || b == BlockMode::CBC)
-                    has_ecb_cbc = true;
-            }
-
-            if (has_gcm) defaults.push_back({ Tag::MIN_MAC_LENGTH, 128 });
-
-            if (has_ctr_gcm) defaults.push_back({ Tag::PADDING, { PaddingMode::NONE } });
-            else if (has_ecb_cbc) defaults.push_back({ Tag::PADDING, { PaddingMode::PKCS7 } });
-        }
-
-        break;
-    case Algorithm::TRIPLE_DES:
-        if (gen)
-            defaults.push_back({ Tag::KEY_SIZE, 168 });
-
-        if (enc_dec && private_ops) {
-            defaults.push_back({ Tag::BLOCK_MODE, { BlockMode::CBC } });
-            defaults.push_back({ Tag::PADDING, { PaddingMode::PKCS7 } });
-        }
-        break;
-    case Algorithm::HMAC:
-        if (gen) {
-            defaults.push_back({ Tag::KEY_SIZE, 256 });
-            defaults.push_back({ Tag::MIN_MAC_LENGTH, 256 });
-        }
-
-        /* SHA_2_256 is the only digest (for HMAC keys) guaranteed to be supported
-         * by both TRUSTED_ENVIRONMENT and STRONGBOX keymasters */
-        if (sign_verify && private_ops)
-            defaults.push_back({ Tag::DIGEST, { Digest::SHA_2_256 } });
-        break;
-    }
-
-    kmhal::util::init_default_params(params, defaults);
-}
+} /* namespace util */
 
 } /* namespace cli */
 } /* namespace suskeymaster */

@@ -21,6 +21,8 @@ public:
     HidlSusKeymaster(void) = default;
     virtual ~HidlSusKeymaster(void) = default;
 
+    virtual struct kmhal_hidl_hal_sp * getHalSp(void) { return nullptr; }
+
     virtual bool isHALOk(void) { return false; };
 
     virtual void getHardwareInfo(SecurityLevel& out_securityLevel,
@@ -167,6 +169,7 @@ public:
     HidlSusKeymaster3_0(void);
     ~HidlSusKeymaster3_0(void);
 
+    struct kmhal_hidl_hal_sp * getHalSp(void) override;
     bool isHALOk(void) override;
 
 #ifndef SUSKEYMASTER_BUILD_HOST
@@ -238,6 +241,7 @@ public:
     ~HidlSusKeymaster4_0(void);
 
     bool isHALOk(void) override;
+    struct kmhal_hidl_hal_sp * getHalSp(void) override;
 
 #ifndef SUSKEYMASTER_BUILD_HOST
 private:
@@ -323,6 +327,7 @@ public:
     ~HidlSusKeymaster4_1(void);
 
     bool isHALOk(void) override;
+    struct kmhal_hidl_hal_sp * getHalSp(void) override;
 
 #ifndef SUSKEYMASTER_BUILD_HOST
 private:

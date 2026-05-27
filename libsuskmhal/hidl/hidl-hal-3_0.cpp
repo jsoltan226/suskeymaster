@@ -41,6 +41,10 @@ HidlSusKeymaster3_0::~HidlSusKeymaster3_0(void)
         kmhal_hidl_hal_sp_destroy(&this->hal);
 }
 
+struct kmhal_hidl_hal_sp * HidlSusKeymaster3_0::getHalSp(void) {
+    return this->hal;
+};
+
 bool HidlSusKeymaster3_0::isHALOk(void)
 {
     if (!this->hal)
@@ -640,6 +644,10 @@ bool HidlSusKeymaster3_0::isHALOk(void)
     std::cerr << "Keymaster 3.0 HIDL HAL not available in host build!" << std::endl;
     return false;
 }
+
+struct kmhal_hidl_hal_sp * HidlSusKeymaster3_0::getHalSp(void) {
+    return nullptr;
+};
 
 #endif /* SUSKEYMASTER_BUILD_HOST */
 

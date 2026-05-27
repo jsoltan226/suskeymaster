@@ -83,8 +83,8 @@ err:
     return ret;
 }
 
-int add_tags(const hidl_vec<uint8_t> &in_keyblob,
-        const hidl_vec<KeyParameter> &in_tags_to_add, hidl_vec<uint8_t> &out_keyblob)
+int add_tags(hidl_vec<u8> const& in_keyblob,
+             hidl_vec<KeyParameter> const& in_tags_to_add, hidl_vec<u8>& out_keyblob)
 {
     int ret = 1;
     KM_SAMSUNG_PARAM * curr = NULL;
@@ -219,7 +219,7 @@ err:
 }
 
 int del_tags(const hidl_vec<uint8_t> &in_keyblob,
-        const hidl_vec<KeyParameter> &in_tags_to_del, hidl_vec<uint8_t> &out_keyblob)
+             const hidl_vec<KeyParameter> &in_tags_to_del, hidl_vec<uint8_t> &out_keyblob)
 {
     KM_SAMSUNG_EKEY_BLOB *ekey = NULL;
     int ret = 1;
@@ -297,10 +297,10 @@ err:
 } /* namespace ekey */
 
 int send_indata(HidlSusKeymaster& hal,
-        uint32_t *ver, uint32_t *km_ver, uint32_t cmd, uint32_t *pid,
-        uint32_t *int0, uint64_t *long0, uint64_t *long1, const hidl_vec<uint8_t> *bin0,
-        const hidl_vec<uint8_t> *bin1, const hidl_vec<uint8_t> *bin2,
-        const hidl_vec<uint8_t> *key, const hidl_vec<KeyParameter> *par)
+                u32 *ver, u32 *km_ver, u32 cmd, u32 *pid,
+                u32 *int0, u64 *long0, u64 *long1, const hidl_vec<u8> *bin0,
+                const hidl_vec<u8> *bin1, const hidl_vec<u8> *bin2,
+                const hidl_vec<u8> *key, const hidl_vec<KeyParameter> *par)
 {
     hidl_vec<uint8_t> tmp_keyblob;
     {

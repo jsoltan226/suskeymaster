@@ -55,6 +55,11 @@ bool HidlSusKeymaster4_1::isHALOk(void)
     return kmhal_hidl_hal_ping(this->hal) == OK;
 }
 
+struct kmhal_hidl_hal_sp * HidlSusKeymaster4_1::getHalSp(void)
+{
+    return this->hal;
+}
+
 enum kmhal_hidl_KM_4_0_cmd {
     KM_4_0_GET_HARDWARE_INFO = 1,
     KM_4_0_GET_HMAC_SHARING_PARAMETERS = 2,
@@ -773,6 +778,11 @@ bool HidlSusKeymaster4_1::isHALOk(void)
 {
     std::cerr << "Keymaster 4.1 HIDL HAL not available in host build!" << std::endl;
     return false;
+}
+
+struct kmhal_hidl_hal_sp * HidlSusKeymaster4_1::getHalSp(void)
+{
+    return nullptr;
 }
 
 #endif /* SUSKEYMASTER_BUILD_HOST */

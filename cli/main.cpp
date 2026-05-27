@@ -159,6 +159,9 @@ static int scan_keybox_arg(const char *cmdline,
         std::vector<std::string>& out_cert_chain,
         std::string& out_key_path);
 
+template<typename T>
+static int str_to_int(const std::string &str_, T& out);
+
 #ifdef SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA
 static int scan_indata_arg(const char *cmdline, uint32_t *& out_cmd,
         uint32_t *& out_ver, uint32_t *& out_km_ver, uint32_t *& out_pid,
@@ -799,11 +802,18 @@ static const std::vector<cli_command> cmds = {
         {
             "out_appid", OUTPUT_FILE, OPTIONAL,
             "The file to which the binary value of the generated APPLICATION_ID will be written"
+        },
+        {
+            "in_auth_secret", INPUT_FILE, OPTIONAL,
+            "Optional file containing a vold auth secret used to derive the app ID"
         }
     },
     [](arg_map_t& a) {
         hidl_vec<uint8_t> app_id;
-        if (cli::vold::generate_app_id(a["in_secdiscardable"].in_bytes(), app_id)) {
+        if (cli::vold::generate_app_id(a["in_secdiscardable"].in_bytes(),
+                                       a["in_auth_secret"].in_bytes(),
+                                       app_id))
+        {
             std::cerr << "Failed to generate app_id" << std::endl;
             return EXIT_FAILURE;
         }
@@ -821,15 +831,16 @@ static const std::vector<cli_command> cmds = {
 },
 #ifndef SUSKEYMASTER_BUILD_HOST
 {
-    { "vold", "decrypt-with-keystore-key" },
+    { "vold", "decrypt-de-key" },
     {
-        "Decrypts the <in_vold_encrypted_key> using <in_keystore_key> and <in_secdiscardable>."
+        "Decrypts the <in_vold_encrypted_key> using <in_keystore_key> and <in_secdiscardable>.",
+        "Examples include: /data/unencrypted/key/*, /metadata/vold/metadata_encryption/key/*"
     },
     HAL_NEEDED_3_0,
     {
         {
             "in_vold_encrypted_key", INPUT_FILE, MANDATORY,
-            "The vold key to decrypt"
+            "The vold DE key to decrypt"
         },
         {
             "in_keystore_key", INPUT_FILE, MANDATORY,
@@ -845,9 +856,206 @@ static const std::vector<cli_command> cmds = {
         }
     },
     [](arg_map_t& a) {
-        return cli::vold::decrypt_vold_key_with_keystore_key(*g_hal,
+        return cli::vold::decrypt_de_key(*g_hal,
                 a["in_keystore_key"].in_bytes(), a["in_secdiscardable"].in_bytes(),
                 a["in_vold_encrypted_key"].in_bytes(), a["out_decrypted_key"].out_bytes());
+    }
+},
+#endif /* SUSKEYMASTER_BUILD_HOST */
+{
+    { "gatekeeper", "dump-pwd-data" },
+    {
+        "Dumps the *.pwd Synthetic Password Data file."
+    },
+    HAL_NOT_NEEDED,
+    {
+        { "in_pwd_file", INPUT_FILE, MANDATORY, "The SP data file to dump" }
+    },
+    [](arg_map_t& a) {
+        cli::gatekeeper::sp_pwd_data dummy;
+        return cli::gatekeeper::read_pwd_data(a["in_pwd_file"].in_bytes(), dummy, true);
+    }
+},
+#ifndef SUSKEYMASTER_BUILD_HOST
+{
+    { "gatekeeper", "verify" },
+    {
+        "Verify a password (or other) user credential using Gatekeeper."
+    },
+    HAL_NEEDED_3_0,
+    {
+        { "user_id", INPUT_STRING, MANDATORY, "ID of the user who owns the given credentials" },
+        { "in_pwd_file", INPUT_FILE, MANDATORY, "The SP data file" },
+        { "credential", INPUT_STRING, OPTIONAL,
+            "Lockscreen credentials to verify, in base64. "
+                "If not provided or empty, the string \"default-password\" is used instead."
+        },
+    },
+    [](arg_map_t& a) {
+        u32 user_id = 0;
+        if (str_to_int<u32>(a["user_id"].in_string(), user_id)) {
+            std::cerr << "Invalid user_id value" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        cli::gatekeeper::sp_pwd_data pwd;
+        if (cli::gatekeeper::read_pwd_data(a["in_pwd_file"].in_bytes(), pwd, false)) {
+            std::cerr << "Failed to deserialize the SP data blob" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        hidl_vec<uint8_t> credential(0);
+        if (a["credential"].in_string().size() > 0) {
+            std::vector<uint8_t> tmp;
+            if (kmhal::util::b64decode(a["credential"].in_string(), tmp)) {
+                std::cerr << "Failed to decode credential base64" << std::endl;
+                return EXIT_FAILURE;
+            }
+
+            credential = tmp;
+        }
+
+        hidl_vec<uint8_t> stretched;
+        if (cli::gatekeeper::stretch_lskf(credential, pwd, stretched)) {
+            std::cerr << "Failed to stretch the lock screen knowledge factor" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        static constexpr char PERSONALIZATION[] = "user-gk-authentication";
+        hidl_vec<uint8_t> gk_password;
+        if (cli::util::personalized_hash(stretched, PERSONALIZATION, sizeof(PERSONALIZATION),
+                                         gk_password))
+        {
+            std::cerr << "Failed to derive Gatekeeper password from stretched LSKF" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        hidl_vec<uint8_t> dummy;
+        const u32 uid_ = user_id + 100000; /* `fakeUserId` */
+        const u64 challenge = UINT64_C(0);
+
+        return cli::gatekeeper::verify(*g_hal, uid_, challenge, gk_password, pwd.handle, dummy);
+    }
+},
+{
+    { "gatekeeper", "unwrap-sp-blob" },
+    {
+        "Unwrap a synthetic password blob using the provided Lock Screen Knowledge Factor.",
+        "",
+        "Note: A KeyStore key blob is required for this process.",
+        "",
+        "For the protector_id value, you can retrieve it using sqlite3",
+        "by running the following query on `/data/system/locksettings.db`:",
+        "   SELECT value FROM locksettings WHERE name='sp-handle' AND user=<user_id>",
+        "Replace <user_id> with the appropriate value.",
+        "",
+        "Then *CONVERT THE PROTECTOR ID TO HEX* e.g. by running",
+        "   python -c 'print(hex(<retrieved int value>))'",
+        "",
+        "For keystore 1, the key blob is stored under:",
+        "   /data/misc/keystore/user_<User ID>/"
+                "1000_USRPKEY_synthetic_password_handle_<protector_id_hex>",
+        "",
+        "For keystore 2, you will have to extract it from the keystore database",
+        "by running the following sqlite3 query on /data/misc/keystore/persistent.sqlite:",
+        "   \"SELECT writeFile(<out_file>, b.blob) FROM ",
+        "       keyentry AS k INNER JOIN blobentry AS b ON k.id = b.keyentryid ",
+        "       WHERE alias LIKE 'synthetic_password_<protector_id_hex>';\"",
+        "",
+        "Replace <out_file> and <protector_id_hex> with the correct values.",
+    },
+    HAL_NEEDED_3_0,
+    {
+        { "user_id", INPUT_STRING, MANDATORY, "ID of the user who owns the given credentials" },
+        { "in_keystore_key_blob", INPUT_FILE, MANDATORY,
+            "Wrapping keystore key blob. See above." },
+        { "in_pwd_file", INPUT_FILE, MANDATORY, "The SP data (\"*.pwd\") file" },
+        { "in_secdiscardable", INPUT_FILE, MANDATORY, "The secdiscardable (\"*.secdis\") file" },
+        { "in_spblob", INPUT_FILE, MANDATORY,
+            "The Synthetic Password blob (\"*.spblob\") to unwrap" },
+        { "in_null_handle", INPUT_FILE, MANDATORY,
+            "The null handle file (0000000000000000.handle)" },
+        { "out_decrypted_blob", OUTPUT_FILE, MANDATORY,
+            "The output file in which to store the decrypted SP blob. "
+                "The content should be a 32- or 64-byte uppercase hex string." },
+        { "credential", INPUT_STRING, OPTIONAL,
+            "Lockscreen credentials to verify, in base64. "
+                "If not provided or empty, the string \"default-password\" is used instead."
+        },
+    },
+    [](arg_map_t& a) {
+        u32 user_id = 0;
+        if (str_to_int<u32>(a["user_id"].in_string(), user_id)) {
+            std::cerr << "Invalid user_id value" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        cli::gatekeeper::sp_pwd_data pwd;
+        if (cli::gatekeeper::read_pwd_data(a["in_pwd_file"].in_bytes(), pwd, false)) {
+            std::cerr << "Failed to deserialize the SP data blob" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        hidl_vec<uint8_t> credential(0);
+        if (a["credential"].in_string().size() > 0) {
+            std::vector<uint8_t> tmp;
+            if (kmhal::util::b64decode(a["credential"].in_string(), tmp)) {
+                std::cerr << "Failed to decode credential base64" << std::endl;
+                return EXIT_FAILURE;
+            }
+
+            credential = tmp;
+        }
+
+        hidl_vec<uint8_t> stretched;
+        if (cli::gatekeeper::stretch_lskf(credential, pwd, stretched)) {
+            std::cerr << "Failed to stretch the lock screen knowledge factor" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        hidl_vec<u8> decrypted_spblob; u8 spblob_ver;
+        if (cli::gatekeeper::unwrap_sp_blob(*g_hal, user_id,
+                a["in_keystore_key_blob"].in_bytes(),
+                stretched, pwd.handle,
+                a["in_secdiscardable"].in_bytes(),
+                a["in_spblob"].in_bytes(),
+                decrypted_spblob, spblob_ver))
+        {
+            std::cerr << "Failed to unwrap the synthetic password" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        std::cout << "Sanity synthetic password verification..." << std::endl;
+        if (cli::gatekeeper::validate_synthetic_password(*g_hal, user_id,
+                    spblob_ver, decrypted_spblob, a["in_null_handle"].in_bytes()))
+        {
+            std::cerr << "Synthetic password verification failed" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        a["out_decrypted_blob"].out_bytes() = decrypted_spblob;
+        return EXIT_SUCCESS;
+    }
+},
+{
+    { "vold", "decrypt-ce-key" },
+    {
+        "Decrypts a CE key using a secret derived from a user's synthetic password.",
+        "See `gatekeeper validate-derive-vold-secret`.",
+    },
+    HAL_NEEDED_3_0,
+    {
+        { "in_secret", INPUT_FILE, MANDATORY, "File containing the SP-derived secret" },
+        { "in_secdiscardable", INPUT_FILE, MANDATORY,
+            "File containing the secdiscardable file of the CE key" },
+        { "in_encrypted_key", INPUT_FILE, MANDATORY, "File containing the encrypted CE key" },
+        { "out_decrypted_key", OUTPUT_FILE, MANDATORY,
+            "Path to the file to which to write the decrypted CE key" }
+    },
+    [](arg_map_t& a) {
+        return cli::vold::decrypt_ce_key(*g_hal,
+                a["in_secret"].in_bytes(), a["in_secdiscardable"].in_bytes(),
+                a["in_encrypted_key"].in_bytes(), a["out_decrypted_key"].out_bytes());
     }
 },
 #endif /* SUSKEYMASTER_BUILD_HOST */
@@ -1424,7 +1632,6 @@ static int scan_keybox_arg(const char *cmdline,
     return 0;
 }
 
-#ifdef SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA
 template<typename T>
 static int str_to_int(const std::string &str_, T& out)
 {
@@ -1452,6 +1659,8 @@ static int str_to_int(const std::string &str_, T& out)
 
     return 0;
 }
+
+#ifdef SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA
 static int scan_indata_arg(const char *cmdline, uint32_t *& out_cmd,
         uint32_t *& out_ver, uint32_t *& out_km_ver, uint32_t *& out_pid,
         uint32_t *& out_int0, uint64_t *& out_long0, uint64_t *& out_long1,
