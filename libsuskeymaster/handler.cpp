@@ -1,6 +1,6 @@
 #define HIDL_DISABLE_INSTRUMENTATION
 #include "handler.hpp"
-#include "run-sus-samsung-indata.hpp"
+#include "sus-samsung-indata.hpp"
 #include <core/int.h>
 #include <core/vector.h>
 #include <libsuscertmod/keybox.h>

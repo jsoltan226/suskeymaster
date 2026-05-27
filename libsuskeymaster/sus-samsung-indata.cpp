@@ -1,5 +1,5 @@
 #define HIDL_DISABLE_INSTRUMENTATION
-#include "run-sus-samsung-indata.hpp"
+#include "sus-samsung-indata.hpp"
 #include <core/int.h>
 #include <core/log.h>
 #include <core/util.h>

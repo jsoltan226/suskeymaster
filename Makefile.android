@@ -23,15 +23,15 @@ INCLUDES += -I$(PWD)/libsuskmhal/include
 
 COMMON_DEFINES := -USUSKEYMASTER_BUILD_HOST -DSUSKEYMASTER_BUILD_ANDROID -DSUSKEYMASTER_ENABLE_3_0 -DSUSKEYMASTER_ENABLE_4_0 -DSUSKEYMASTER_ENABLE_4_1
 
-COMMON_CFLAGS := -std=c11 -Wall -Wextra -pipe -fPIC $(COMMON_DEFINES) $(INCLUDES)
+COMMON_CFLAGS := -std=c11 -Wall -Wextra -pipe -fPIC -fvisibility=hidden $(COMMON_DEFINES) $(INCLUDES)
 COMMON_CXXFLAGS := -std=c++17 -Wall -Wno-switch -Wno-unknown-pragmas -pipe -fPIC -fno-exceptions -fno-rtti $(COMMON_DEFINES) $(INCLUDES)
 DEPFLAGS ?= -MMD -MP
 
-LDFLAGS ?= -pie
+LDFLAGS ?=
 ifeq ($(PLATFORM), windows)
 LDFLAGS += -mconsole
 endif
-SO_LDFLAGS := -shared
+SO_LDFLAGS := -shared -fvisibility=hidden -Wl,-Bsymbolic, -Wl,--exclude-libs,ALL
 ifeq ($(PLATFORM), linux)
 ASAN_FLAGS :=
 #-fsanitize=address
@@ -85,47 +85,78 @@ BINDIR := bin
 # Test sources and objects
 
 # Sources and objects
-_sus_hook_handler := libsuskeymaster/handler.cpp libsuskeymaster/run-sus-samsung-indata.cpp
+_sus_hook_handler := libsuskeymaster/handler.cpp libsuskeymaster/sus-samsung-indata.cpp
+_cli_srcs := $(wildcard ./cli/*.c) $(wildcard ./cli/*.cpp)
 
 C_SRCS := $(wildcard */*/*.c) $(wildcard */*.c) $(wildcard *.c)
-CXX_SRCS := $(filter-out $(_sus_hook_handler), $(wildcard */*/*/*.cpp) $(wildcard */*/*.cpp) $(wildcard */*.cpp) $(wildcard *.cpp))
-_all_srcs := $(C_SRCS) $(CXX_SRCS)
-
+CXX_SRCS := $(wildcard */*/*/*.cpp) $(wildcard */*/*.cpp) $(wildcard */*.cpp) $(wildcard *.cpp)
 C_OBJS := $(patsubst %.c,$(OBJDIR)/%.c.o,$(shell basename -a $(C_SRCS)))
 CXX_OBJS := $(patsubst %.cpp,$(OBJDIR)/%.cpp.o,$(shell basename -a $(CXX_SRCS)))
-_all_objs := $(C_OBJS) $(CXX_OBJS)
+OBJS := $(C_OBJS) $(CXX_OBJS)
+_all_objs := $(OBJS)
+
+EXE_C_SRCS := $(C_SRCS)
+EXE_CXX_SRCS := $(filter-out $(_sus_hook_handler), $(CXX_SRCS))
+_exe_all_srcs := $(EXE_C_SRCS) $(EXE_CXX_SRCS)
+
+EXE_C_OBJS := $(patsubst %.c,$(OBJDIR)/%.c.o,$(shell basename -a $(EXE_C_SRCS)))
+EXE_CXX_OBJS := $(patsubst %.cpp,$(OBJDIR)/%.cpp.o,$(shell basename -a $(EXE_CXX_SRCS)))
+_exe_all_objs := $(EXE_C_OBJS) $(EXE_CXX_OBJS)
+
+LIB_C_SRCS := $(filter-out $(_cli_srcs), $(C_SRCS))
+LIB_CXX_SRCS := $(filter-out $(_cli_srcs), $(CXX_SRCS))
+_lib_all_srcs := $(LIB_C_SRCS) $(LIB_CXX_SRCS)
+
+LIB_C_OBJS := $(patsubst %.c,$(OBJDIR)/%.c.o,$(shell basename -a $(LIB_C_SRCS)))
+LIB_CXX_OBJS := $(patsubst %.cpp,$(OBJDIR)/%.cpp.o,$(shell basename -a $(LIB_CXX_SRCS)))
+_lib_all_objs := $(LIB_C_OBJS) $(LIB_CXX_OBJS)
 
 DEPS := $(patsubst %.o,%.d,$(_all_objs))
 
 # Executables
 EXE := $(BINDIR)/$(EXEPREFIX)suskeymaster$(EXESUFFIX)
+SO_LIB := $(BINDIR)/$(SO_PREFIX)libsuskeymaster$(SO_SUFFIX)
 EXEARGS :=
 
-.PHONY: all trace release strip clean mostlyclean update run br tests tests-release build-tests compile-tests build-tests-release compile-tests-release run-tests debug-run bdr test-hooks
+.PHONY: all trace release strip clean mostlyclean update run br tests tests-release build-tests compile-tests build-tests-release compile-tests-release run-tests debug-run bdr test-hooks cli lib
 .NOTPARALLEL: all trace release br bdr build-tests build-tests-release
 
 # Build targets
+cli: CFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
+cli: CXXFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
+cli: LDFLAGS += $(ASAN_FLAGS)
+cli: $(OBJDIR) $(BINDIR) $(EXE)
+
+lib: CFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
+lib: CXXFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
+lib: LDFLAGS += $(ASAN_FLAGS)
+lib: $(OBJDIR) $(BINDIR) $(SO_LIB)
+
 all: CFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
 all: CXXFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
 all: LDFLAGS += $(ASAN_FLAGS)
-all: $(OBJDIR) $(BINDIR) $(EXE)
+all: $(OBJDIR) $(BINDIR) $(EXE) $(SO_LIB)
 
 trace: CFLAGS = -g -O0 -Wall -DCGD_ENABLE_TRACE $(ASAN_FLAGS)
 trace: CXXFLAGS = -g -O0 -Wall -DCGD_ENABLE_TRACE $(ASAN_FLAGS)
 trace: LDFLAGS += $(ASAN_FLAGS)
-trace: $(OBJDIR) $(BINDIR) $(EXE)
+trace: $(OBJDIR) $(BINDIR) $(EXE) $(SO_LIB)
 
 release: CFLAGS = -O3 -Werror -flto -DNDEBUG -DCGD_BUILDTYPE_RELEASE
 release: CXXFLAGS = -O3 -Werror -flto -DNDEBUG -DCGD_BUILDTYPE_RELEASE
 release: LDFLAGS += -flto
-release: clean $(OBJDIR) $(BINDIR) $(EXE) tests-release mostlyclean strip
+release: clean $(OBJDIR) $(BINDIR) $(EXE) $(SO_LIB) tests-release mostlyclean strip
 
 br: all run
 
 # Output executable rules
-$(EXE): $(_all_objs)
+$(EXE): $(_exe_all_objs)
 	@$(PRINTF) "LD 	%-30s %-30s\n" "$(EXE)" "<= $^"
 	@$(LD) $(LDFLAGS) -o $(EXE) $^ $(LIBS)
+
+$(SO_LIB): $(_lib_all_objs)
+	@$(PRINTF) "LD 	%-30s %-30s\n" "$(SO_LIB)" "<= $^"
+	@$(LD) $(SO_LDFLAGS) $(LDFLAGS) -o $(SO_LIB) $^ $(LIBS)
 
 # Output directory rules
 $(OBJDIR):
@@ -137,35 +168,35 @@ $(BINDIR):
 	@$(MKDIR) $(BINDIR)
 
 # Generic compilation targets
-$(OBJDIR)/%.c.o: %.c Makefile.host
+$(OBJDIR)/%.c.o: %.c Makefile.android
 	@$(PRINTF) "CC	%-30s %-30s\n" "$@" "<= $<"
 	@$(CC) $(DEPFLAGS) $(COMMON_CFLAGS) $(CFLAGS) -c -o $@ $<
 
-$(OBJDIR)/%.c.o: */%.c Makefile.host
+$(OBJDIR)/%.c.o: */%.c Makefile.android
 	@$(PRINTF) "CC	%-30s %-30s\n" "$@" "<= $<"
 	@$(CC) $(DEPFLAGS) $(COMMON_CFLAGS) $(CFLAGS) -c -o $@ $<
 
-$(OBJDIR)/%.c.o: */*/%.c Makefile.host
+$(OBJDIR)/%.c.o: */*/%.c Makefile.android
 	@$(PRINTF) "CC	%-30s %-30s\n" "$@" "<= $<"
 	@$(CC) $(DEPFLAGS) $(COMMON_CFLAGS) $(CFLAGS) -c -o $@ $<
 
-$(OBJDIR)/%.c.o: */*/*/%.c Makefile.host
+$(OBJDIR)/%.c.o: */*/*/%.c Makefile.android
 	@$(PRINTF) "CC	%-30s %-30s\n" "$@" "<= $<"
 	@$(CC) $(DEPFLAGS) $(COMMON_CFLAGS) $(CFLAGS) -c -o $@ $<
 
-$(OBJDIR)/%.cpp.o: %.cpp Makefile.host
+$(OBJDIR)/%.cpp.o: %.cpp Makefile.android
 	@$(PRINTF) "CXX	%-30s %-30s\n" "$@" "<= $<"
 	@$(CXX) $(DEPFLAGS) $(COMMON_CXXFLAGS) $(CXXFLAGS) -c -o $@ $<
 
-$(OBJDIR)/%.cpp.o: */%.cpp Makefile.host
+$(OBJDIR)/%.cpp.o: */%.cpp Makefile.android
 	@$(PRINTF) "CXX	%-30s %-30s\n" "$@" "<= $<"
 	@$(CXX) $(DEPFLAGS) $(COMMON_CXXFLAGS) $(CXXFLAGS) -c -o $@ $<
 
-$(OBJDIR)/%.cpp.o: */*/%.cpp Makefile.host
+$(OBJDIR)/%.cpp.o: */*/%.cpp Makefile.android
 	@$(PRINTF) "CXX	%-30s %-30s\n" "$@" "<= $<"
 	@$(CXX) $(DEPFLAGS) $(COMMON_CXXFLAGS) $(CXXFLAGS) -c -o $@ $<
 
-$(OBJDIR)/%.cpp.o: */*/*/%.cpp Makefile.host
+$(OBJDIR)/%.cpp.o: */*/*/%.cpp Makefile.android
 	@$(PRINTF) "CXX	%-30s %-30s\n" "$@" "<= $<"
 	@$(CXX) $(DEPFLAGS) $(COMMON_CXXFLAGS) $(CXXFLAGS) -c -o $@ $<
 
@@ -188,8 +219,8 @@ mostlyclean:
 	@$(RM) $(OBJS) $(DEPS)
 
 clean:
-	@$(ECHO) "RM	$(OBJS) $(DEPS) $(EXE) $(BINDIR) $(OBJDIR)"
-	@$(RM) $(OBJS) $(DEPS) $(EXE)
+	@$(ECHO) "RM	$(OBJS) $(DEPS) $(EXE) $(SO_LIB) $(BINDIR) $(OBJDIR)"
+	@$(RM) $(OBJS) $(DEPS) $(EXE) $(SO_LIB)
 	@$(RMRF) $(OBJDIR) $(BINDIR)
 
 # Output execution targets
@@ -207,6 +238,8 @@ bdr: all debug-run
 strip:
 	@$(ECHO) "STRIP	$(EXE)"
 	@$(STRIP) $(STRIPFLAGS) $(EXE)
+	@$(ECHO) "STRIP	$(SO_LIB)"
+	@$(STRIP) $(STRIPFLAGS) $(SO_LIB)
 
 update:
 	@$(ECHO) "TOUCH	$(SRCS)"
