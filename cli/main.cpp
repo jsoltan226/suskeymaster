@@ -1,9 +1,10 @@
 #define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
+#include "endian.h"
 #include <core/log.h>
 #include <libsuscertmod/certmod.h>
-#include <libsuskmhal/hidl/hidl-hal.hpp>
 #include <libsuskmhal/util/km-params.hpp>
+#include <libsuskmhal/transport/km-hidl-hal.hpp>
 #include <android/hardware/keymaster/generic/types.h>
 #include <strings.h>
 #include <cstdio>
@@ -60,13 +61,13 @@ enum cli_arg_type {
     INPUT_STRING,
 };
 enum cli_arg_mandatory {
-    OPTIONAL,
-    MANDATORY,
+    ARG_OPTIONAL,
+    ARG_MANDATORY,
 };
 struct cli_arg {
     const char *name;
     cli_arg_type type;
-    cli_arg_mandatory mandatory = MANDATORY;
+    cli_arg_mandatory mandatory = ARG_MANDATORY;
     const char *description;
 };
 
@@ -180,13 +181,6 @@ static int match_and_run_handler(int argc, const char **argv);
 
 } /* namespace suskeymaster */
 
-namespace _ {
-    static uint32_t ntohl_(uint32_t);
-#ifndef SUSKEYMASTER_BUILD_HOST
-    static uint32_t htonl_(uint32_t);
-#endif /* SUSKEYMASTER_BUILD_HOST */
-};
-
 int main(int argc, char **argv)
 {
     using namespace suskeymaster;
@@ -217,10 +211,10 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NEEDED_3_0,
     {
-        { "key_blob", INPUT_FILE, MANDATORY,
+        { "key_blob", INPUT_FILE, ARG_MANDATORY,
             "The key blob whose characteristics are to be read"
         },
-        { "deserialization_params", KEY_PARAMETERS, OPTIONAL,
+        { "deserialization_params", KEY_PARAMETERS, ARG_OPTIONAL,
             "Key parameters containing the `APPLICATION_ID` and/or `APPLICATION_DATA` "
                 "required to use the key. Any other tags are ignored."
         }
@@ -240,10 +234,10 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NEEDED_3_0,
     {
-        { "params", KEY_PARAMETERS, MANDATORY,
+        { "params", KEY_PARAMETERS, ARG_MANDATORY,
             "Key generation parameters, such as ALGORITHM and PURPOSE"
         },
-        { "out_key_blob", OUTPUT_FILE, MANDATORY,
+        { "out_key_blob", OUTPUT_FILE, ARG_MANDATORY,
             "The file to which the keymaster keyblob will be written"
         },
     },
@@ -261,14 +255,14 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NEEDED_3_0,
     {
-        { "generate_params", KEY_PARAMETERS, OPTIONAL,
+        { "generate_params", KEY_PARAMETERS, ARG_OPTIONAL,
             "A space-separated list of key parameters used to generate the ephemeral attested key"
         },
-        { "attest_params", KEY_PARAMETERS, OPTIONAL,
+        { "attest_params", KEY_PARAMETERS, ARG_OPTIONAL,
             "A space-separated list of key parameters "
                 "passed in as `attestParams` to the `attestKey` call"
         },
-        { "attestation", INPUT_STRING, OPTIONAL,
+        { "attestation", INPUT_STRING, ARG_OPTIONAL,
             "The file to which the serialized attestation certificate chain will be written"
         },
     },
@@ -299,14 +293,14 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NEEDED_3_0,
     {
-        { "keyblob", INPUT_FILE, MANDATORY,
+        { "keyblob", INPUT_FILE, ARG_MANDATORY,
             "The KeyMaster key blob to attest"
         },
-        { "attest_params", KEY_PARAMETERS, OPTIONAL,
+        { "attest_params", KEY_PARAMETERS, ARG_OPTIONAL,
             "A space-separated list of key parameters "
                 "passed in as `attestParams` to the `attestKey` call"
         },
-        { "attestation", INPUT_STRING, OPTIONAL,
+        { "attestation", INPUT_STRING, ARG_OPTIONAL,
             "The file to which the serialized attestation certificate chain will be written"
         },
     },
@@ -332,14 +326,14 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NEEDED_3_0,
     {
-        { "in_private_key", INPUT_FILE, MANDATORY,
+        { "in_private_key", INPUT_FILE, ARG_MANDATORY,
             "The private key to import - "
                 "DER-encoded PKCS#8 for asymmetric keys and raw bytes otherwise"
         },
-        { "out_key_blob", OUTPUT_FILE, MANDATORY,
+        { "out_key_blob", OUTPUT_FILE, ARG_MANDATORY,
             "The file to which the imported key blob will be written"
         },
-        { "params", KEY_PARAMETERS, OPTIONAL,
+        { "params", KEY_PARAMETERS, ARG_OPTIONAL,
             "A space-separated list of key parameters that the imported key blob should have"
         },
     },
@@ -358,13 +352,13 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NEEDED_3_0,
     {
-        { "in_keyblob", INPUT_FILE, MANDATORY,
+        { "in_keyblob", INPUT_FILE, ARG_MANDATORY,
             "The key blob whose public key is to be exported"
         },
-        { "out_exported", OUTPUT_FILE, MANDATORY,
+        { "out_exported", OUTPUT_FILE, ARG_MANDATORY,
             "The file to which the exported key material will be written",
         },
-        { "deserialization_params", KEY_PARAMETERS, OPTIONAL,
+        { "deserialization_params", KEY_PARAMETERS, ARG_OPTIONAL,
             "Key parameters containing the `APPLICATION_ID` and/or `APPLICATION_DATA` "
                 "required to use the key. Any other tags are ignored."
         },
@@ -383,13 +377,13 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NEEDED_3_0,
     {
-        { "in_keyblob_to_upgrade", INPUT_FILE, MANDATORY,
+        { "in_keyblob_to_upgrade", INPUT_FILE, ARG_MANDATORY,
             "The key blob to be upgraded"
         },
-        { "out_upgraded_keyblob", OUTPUT_FILE, MANDATORY,
+        { "out_upgraded_keyblob", OUTPUT_FILE, ARG_MANDATORY,
             "The file to which the new (upgraded) keyblob will be written"
         },
-        { "upgrade_params", KEY_PARAMETERS, OPTIONAL,
+        { "upgrade_params", KEY_PARAMETERS, ARG_OPTIONAL,
             "Any parameters required to complete the `upgradeKey` operation, "
                 "including APPLICATION_ID and/or APPLICATION_DATA, if applicable."
         }
@@ -413,19 +407,19 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NEEDED_3_0,
     {
-        { "in_key_blob", INPUT_FILE, MANDATORY,
+        { "in_key_blob", INPUT_FILE, ARG_MANDATORY,
             "The encryption key blob"
         },
-        { "in_plaintext", INPUT_FILE, MANDATORY,
+        { "in_plaintext", INPUT_FILE, ARG_MANDATORY,
             "The data to be encrypted"
         },
-        { "out_ciphertext", OUTPUT_FILE, MANDATORY,
+        { "out_ciphertext", OUTPUT_FILE, ARG_MANDATORY,
             "The file to which the encrypted data will be written"
         },
-        { "params", KEY_PARAMETERS, OPTIONAL,
+        { "params", KEY_PARAMETERS, ARG_OPTIONAL,
             "A space-separated list of key parameters used in the call to `begin`"
         },
-        { "out_aes_gcm_iv", OUTPUT_FILE, OPTIONAL,
+        { "out_aes_gcm_iv", OUTPUT_FILE, ARG_OPTIONAL,
             "If performing AES encryption in GCM mode without a custom IV, "
                 "the file to which the keymaster-generated IV will be written"
         },
@@ -454,16 +448,16 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NEEDED_3_0,
     {
-        { "in_key_blob", INPUT_FILE, MANDATORY,
+        { "in_key_blob", INPUT_FILE, ARG_MANDATORY,
             "The decryption key blob"
         },
-        { "in_ciphertext", INPUT_FILE, MANDATORY,
+        { "in_ciphertext", INPUT_FILE, ARG_MANDATORY,
             "The data to be decrypted"
         },
-        { "out_plaintext", OUTPUT_FILE, MANDATORY,
+        { "out_plaintext", OUTPUT_FILE, ARG_MANDATORY,
             "The file to which the decrypted data will be written"
         },
-        { "params", KEY_PARAMETERS, OPTIONAL,
+        { "params", KEY_PARAMETERS, ARG_OPTIONAL,
             "A space-separated list of key parameters used in the call to `begin`"
         },
     },
@@ -481,16 +475,16 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NEEDED_3_0,
     {
-        { "in_key_blob", INPUT_FILE, MANDATORY,
+        { "in_key_blob", INPUT_FILE, ARG_MANDATORY,
             "The signing key blob"
         },
-        { "in_message", INPUT_FILE, MANDATORY,
+        { "in_message", INPUT_FILE, ARG_MANDATORY,
             "The data to be signed"
         },
-        { "out_signature", OUTPUT_FILE, MANDATORY,
+        { "out_signature", OUTPUT_FILE, ARG_MANDATORY,
             "The file to which the signature will be written"
         },
-        { "params", KEY_PARAMETERS, OPTIONAL,
+        { "params", KEY_PARAMETERS, ARG_OPTIONAL,
             "A space-separated list of key parameters used in the call to `begin`"
         },
     },
@@ -508,16 +502,16 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NEEDED_3_0,
     {
-        { "in_key_blob", INPUT_FILE, MANDATORY,
+        { "in_key_blob", INPUT_FILE, ARG_MANDATORY,
             "The key blob with which the signature was generated"
         },
-        { "in_message", INPUT_FILE, MANDATORY,
+        { "in_message", INPUT_FILE, ARG_MANDATORY,
             "The data that the signature applies to"
         },
-        { "in_signature", INPUT_FILE, MANDATORY,
+        { "in_signature", INPUT_FILE, ARG_MANDATORY,
             "The signature to be verified"
         },
-        { "params", KEY_PARAMETERS, OPTIONAL,
+        { "params", KEY_PARAMETERS, ARG_OPTIONAL,
             "A space-separated list of key parameters used in the call to `begin`"
         },
     },
@@ -550,9 +544,9 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NOT_NEEDED,
     {
-        { "out_keybox", INPUT_STRING, MANDATORY, nullptr },
-        { "cmdline1", INPUT_STRING, MANDATORY, nullptr },
-        { "cmdline2", INPUT_STRING, MANDATORY, nullptr },
+        { "out_keybox", INPUT_STRING, ARG_MANDATORY, nullptr },
+        { "cmdline1", INPUT_STRING, ARG_MANDATORY, nullptr },
+        { "cmdline2", INPUT_STRING, ARG_MANDATORY, nullptr },
     },
     [](arg_map_t& a) {
         const char *const cmdline1 = a["cmdline1"].in_string().c_str();
@@ -604,11 +598,11 @@ static const std::vector<cli_command> cmds = {
     HAL_NOT_NEEDED,
     {
         {
-            "in_keybox", INPUT_STRING, MANDATORY,
+            "in_keybox", INPUT_STRING, ARG_MANDATORY,
             "The keybox file to be dumped"
         },
         {
-            "out_dir", INPUT_STRING, MANDATORY,
+            "out_dir", INPUT_STRING, ARG_MANDATORY,
             "The directory to which the keybox will be dumped. "
                 "Note: the directory has to already exist!"
         }
@@ -634,19 +628,19 @@ static const std::vector<cli_command> cmds = {
     HAL_NEEDED_4_0,
     {
         {
-            "out_keyblob", OUTPUT_FILE, MANDATORY,
+            "out_keyblob", OUTPUT_FILE, ARG_MANDATORY,
             "The file to which the wrapping keyblob will be written"
         },
         {
-            "out_pubkey", OUTPUT_FILE, MANDATORY,
+            "out_pubkey", OUTPUT_FILE, ARG_MANDATORY,
             "The file to which the public part of the wrapping key will be written"
         },
         {
-            "key_params", KEY_PARAMETERS, OPTIONAL,
+            "key_params", KEY_PARAMETERS, ARG_OPTIONAL,
             "Optional key generation parameters for the wrapping keyblob"
         },
         {
-            "out_attestation", INPUT_STRING, OPTIONAL,
+            "out_attestation", INPUT_STRING, ARG_OPTIONAL,
             "The path to which the serialized attestation of the wrapping keyblob will be written"
         }
     },
@@ -686,7 +680,7 @@ static const std::vector<cli_command> cmds = {
     HAL_NOT_NEEDED,
     {
         {
-            "attestation", INPUT_STRING, MANDATORY,
+            "attestation", INPUT_STRING, ARG_MANDATORY,
             "The serialized attestation certificate chain to be verified"
         }
     },
@@ -710,23 +704,23 @@ static const std::vector<cli_command> cmds = {
     HAL_NOT_NEEDED,
     {
         {
-            "in_private_key", INPUT_FILE, MANDATORY,
+            "in_private_key", INPUT_FILE, ARG_MANDATORY,
             "The private key to be wrapped for a secure import"
         },
         {
-            "in_wrapping_pubkey", INPUT_FILE, MANDATORY,
+            "in_wrapping_pubkey", INPUT_FILE, ARG_MANDATORY,
             "The DER-encoded X.509 certificate containing the public part of the wrapping key"
         },
         {
-            "out_wrapped_data", OUTPUT_FILE, MANDATORY,
+            "out_wrapped_data", OUTPUT_FILE, ARG_MANDATORY,
             "The path to which the wrapped key data will be written"
         },
         {
-            "out_masking_key", OUTPUT_FILE, MANDATORY,
+            "out_masking_key", OUTPUT_FILE, ARG_MANDATORY,
             "The path to which the masking key will be written"
         },
         {
-            "key_params", KEY_PARAMETERS, OPTIONAL,
+            "key_params", KEY_PARAMETERS, ARG_OPTIONAL,
             "A space-separated list of key parameters that the key should be given "
                 "after a successful secure import"
         }
@@ -754,23 +748,23 @@ static const std::vector<cli_command> cmds = {
     HAL_NEEDED_4_0,
     {
         {
-            "in_wrapped_data", INPUT_FILE, MANDATORY,
+            "in_wrapped_data", INPUT_FILE, ARG_MANDATORY,
             "The wrapped key data to be imported"
         },
         {
-            "in_masking_key", INPUT_FILE, MANDATORY,
+            "in_masking_key", INPUT_FILE, ARG_MANDATORY,
             "The masking key generated during the wrapping process"
         },
         {
-            "in_wrapping_keyblob", INPUT_FILE, MANDATORY,
+            "in_wrapping_keyblob", INPUT_FILE, ARG_MANDATORY,
             "The wrapping key blob file"
         },
         {
-            "out_keyblob", OUTPUT_FILE, MANDATORY,
+            "out_keyblob", OUTPUT_FILE, ARG_MANDATORY,
             "The file to which the securely imported key blob will be written"
         },
         {
-            "unwrapping_params", KEY_PARAMETERS, OPTIONAL,
+            "unwrapping_params", KEY_PARAMETERS, ARG_OPTIONAL,
             "A space-separated list of key parameters needed by the TEE to unwrap the key data"
         }
     },
@@ -796,15 +790,15 @@ static const std::vector<cli_command> cmds = {
     HAL_NOT_NEEDED,
     {
         {
-            "in_secdiscardable", INPUT_FILE, MANDATORY,
+            "in_secdiscardable", INPUT_FILE, ARG_MANDATORY,
             "The `secdiscardable` file in the given vold `key` directory"
         },
         {
-            "out_appid", OUTPUT_FILE, OPTIONAL,
+            "out_appid", OUTPUT_FILE, ARG_OPTIONAL,
             "The file to which the binary value of the generated APPLICATION_ID will be written"
         },
         {
-            "in_auth_secret", INPUT_FILE, OPTIONAL,
+            "in_auth_secret", INPUT_FILE, ARG_OPTIONAL,
             "Optional file containing a vold auth secret used to derive the app ID"
         }
     },
@@ -839,19 +833,19 @@ static const std::vector<cli_command> cmds = {
     HAL_NEEDED_3_0,
     {
         {
-            "in_vold_encrypted_key", INPUT_FILE, MANDATORY,
+            "in_vold_encrypted_key", INPUT_FILE, ARG_MANDATORY,
             "The vold DE key to decrypt"
         },
         {
-            "in_keyblob", INPUT_FILE, MANDATORY,
+            "in_keyblob", INPUT_FILE, ARG_MANDATORY,
             "The keystore/keymaster key used to encrypt <in_vold_encrypted_key>"
         },
         {
-            "in_secdiscardable", INPUT_FILE, MANDATORY,
+            "in_secdiscardable", INPUT_FILE, ARG_MANDATORY,
             "The secdiscardable file used to encrypt <in_vold_encrypted_key>"
         },
         {
-            "out_decrypted_key", OUTPUT_FILE, MANDATORY,
+            "out_decrypted_key", OUTPUT_FILE, ARG_MANDATORY,
             "The file to which the decrypted vold key will be written"
         }
     },
@@ -869,7 +863,7 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NOT_NEEDED,
     {
-        { "in_pwd_file", INPUT_FILE, MANDATORY, "The SP data file to dump" }
+        { "in_pwd_file", INPUT_FILE, ARG_MANDATORY, "The SP data file to dump" }
     },
     [](arg_map_t& a) {
         cli::gatekeeper::sp_pwd_data dummy;
@@ -884,9 +878,10 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NEEDED_3_0,
     {
-        { "user_id", INPUT_STRING, MANDATORY, "ID of the user who owns the given credentials" },
-        { "in_pwd_file", INPUT_FILE, MANDATORY, "The SP data file" },
-        { "credential", INPUT_STRING, OPTIONAL,
+        { "user_id", INPUT_STRING, ARG_MANDATORY,
+            "ID of the user who owns the given credentials" },
+        { "in_pwd_file", INPUT_FILE, ARG_MANDATORY, "The SP data file" },
+        { "credential", INPUT_STRING, ARG_OPTIONAL,
             "Lockscreen credentials to verify, in base64. "
                 "If not provided or empty, the string \"default-password\" is used instead."
         },
@@ -964,19 +959,21 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NEEDED_3_0,
     {
-        { "user_id", INPUT_STRING, MANDATORY, "ID of the user who owns the given credentials" },
-        { "in_keystore_key_blob", INPUT_FILE, MANDATORY,
+        { "user_id", INPUT_STRING, ARG_MANDATORY,
+            "ID of the user who owns the given credentials" },
+        { "in_keystore_key_blob", INPUT_FILE, ARG_MANDATORY,
             "Wrapping keystore key blob. See above." },
-        { "in_pwd_file", INPUT_FILE, MANDATORY, "The SP data (\"*.pwd\") file" },
-        { "in_secdiscardable", INPUT_FILE, MANDATORY, "The secdiscardable (\"*.secdis\") file" },
-        { "in_spblob", INPUT_FILE, MANDATORY,
+        { "in_pwd_file", INPUT_FILE, ARG_MANDATORY, "The SP data (\"*.pwd\") file" },
+        { "in_secdiscardable", INPUT_FILE, ARG_MANDATORY,
+            "The secdiscardable (\"*.secdis\") file" },
+        { "in_spblob", INPUT_FILE, ARG_MANDATORY,
             "The Synthetic Password blob (\"*.spblob\") to unwrap" },
-        { "in_null_handle", INPUT_FILE, MANDATORY,
+        { "in_null_handle", INPUT_FILE, ARG_MANDATORY,
             "The null handle file (0000000000000000.handle)" },
-        { "out_decrypted_blob", OUTPUT_FILE, MANDATORY,
+        { "out_decrypted_blob", OUTPUT_FILE, ARG_MANDATORY,
             "The output file in which to store the decrypted SP blob. "
                 "The content should be a 32- or 64-byte uppercase hex string." },
-        { "credential", INPUT_STRING, OPTIONAL,
+        { "credential", INPUT_STRING, ARG_OPTIONAL,
             "Lockscreen credentials to verify, in base64. "
                 "If not provided or empty, the string \"default-password\" is used instead."
         },
@@ -1042,12 +1039,13 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NEEDED_3_0,
     {
-        { "in_keystore_key_blob", INPUT_FILE, MANDATORY,
+        { "in_keystore_key_blob", INPUT_FILE, ARG_MANDATORY,
             "Wrapping keystore key blob. See `gatekeeper unwrap-sp-blob`." },
-        { "in_secdiscardable", INPUT_FILE, MANDATORY, "The secdiscardable (\"*.secdis\") file" },
-        { "in_spblob", INPUT_FILE, MANDATORY,
+        { "in_secdiscardable", INPUT_FILE, ARG_MANDATORY,
+            "The secdiscardable (\"*.secdis\") file" },
+        { "in_spblob", INPUT_FILE, ARG_MANDATORY,
             "The Synthetic Password blob (\"*.spblob\") to unwrap" },
-        { "out_decrypted_blob", OUTPUT_FILE, MANDATORY,
+        { "out_decrypted_blob", OUTPUT_FILE, ARG_MANDATORY,
             "The output file in which to store the decrypted SP blob. "
                 "The content should be a 32- or 64-byte uppercase hex string." },
     },
@@ -1073,14 +1071,14 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NOT_NEEDED,
     {
-        { "in_synthetic_password", INPUT_FILE, MANDATORY,
+        { "in_synthetic_password", INPUT_FILE, ARG_MANDATORY,
             "File containing the decrypted synthetic password blob" },
-        { "sp_blob_ver", INPUT_STRING, MANDATORY,
+        { "sp_blob_ver", INPUT_STRING, ARG_MANDATORY,
             "Synthetic password blob version, printed out by `unwrap-sp-blob`." },
-        { "in_encrypted_key", INPUT_FILE, MANDATORY, "File containing the encrypted CE key" },
-        { "out_decrypted_key", OUTPUT_FILE, MANDATORY,
+        { "in_encrypted_key", INPUT_FILE, ARG_MANDATORY, "File containing the encrypted CE key" },
+        { "out_decrypted_key", OUTPUT_FILE, ARG_MANDATORY,
             "Path to the file to which to write the decrypted CE key" },
-        { "in_secdiscardable", INPUT_FILE, OPTIONAL,
+        { "in_secdiscardable", INPUT_FILE, ARG_OPTIONAL,
             "File containing the secdiscardable file of the CE key" },
     },
     [](arg_map_t& a) {
@@ -1107,6 +1105,7 @@ static const std::vector<cli_command> cmds = {
     }
 },
 #endif /* SUSKEYMASTER_BUILD_HOST */
+#ifndef SUSKEYMASTER_BUILD_WINDOWS
 {
     { "vold", "fscrypt-legacy", "install-key" },
     {
@@ -1115,12 +1114,13 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NOT_NEEDED,
     {
-        { "in_fscrypt_key", INPUT_FILE, MANDATORY, "The 64-byte raw fscrypt key to install" }
+        { "in_fscrypt_key", INPUT_FILE, ARG_MANDATORY, "The 64-byte raw fscrypt key to install" }
     },
     [](arg_map_t& a) {
         return cli::vold::fscrypt_legacy_install_key(a["in_fscrypt_key"].in_bytes());
     }
 },
+#endif /* SUSKEYMASTER_BUILD_WINDOWS */
 {
     { "__line_break__" }, {}, HAL_NOT_NEEDED, {}, {}
 },
@@ -1132,7 +1132,7 @@ static const std::vector<cli_command> cmds = {
     HAL_NOT_NEEDED,
     {
         {
-            "in_keyblob", INPUT_FILE, MANDATORY,
+            "in_keyblob", INPUT_FILE, ARG_MANDATORY,
             "The key blob whose tags are to be listed"
         }
     },
@@ -1148,15 +1148,15 @@ static const std::vector<cli_command> cmds = {
     HAL_NOT_NEEDED,
     {
         {
-            "in_keyblob", INPUT_FILE, MANDATORY,
+            "in_keyblob", INPUT_FILE, ARG_MANDATORY,
             "The key blob to add the tags to"
         },
         {
-            "out_keyblob", OUTPUT_FILE, MANDATORY,
+            "out_keyblob", OUTPUT_FILE, ARG_MANDATORY,
             "The file to which the key blob with the added parameters will be written"
         },
         {
-            "tags", KEY_PARAMETERS, MANDATORY,
+            "tags", KEY_PARAMETERS, ARG_MANDATORY,
             "A space-separated list of key parameters (tags) to add"
         }
     },
@@ -1173,15 +1173,15 @@ static const std::vector<cli_command> cmds = {
     HAL_NOT_NEEDED,
     {
         {
-            "in_keyblob", INPUT_FILE, MANDATORY,
+            "in_keyblob", INPUT_FILE, ARG_MANDATORY,
             "The key blob to delete the tags from"
         },
         {
-            "out_keyblob", OUTPUT_FILE, MANDATORY,
+            "out_keyblob", OUTPUT_FILE, ARG_MANDATORY,
             "The file to which the key blob with the deleted parameters will be written"
         },
         {
-            "tags", KEY_PARAMETERS, MANDATORY,
+            "tags", KEY_PARAMETERS, ARG_MANDATORY,
             "A space-separated list of key parameters (tags) to delete"
         }
     },
@@ -1238,7 +1238,7 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NEEDED_3_0,
     {
-        { "cmdline", INPUT_STRING, MANDATORY, nullptr }
+        { "cmdline", INPUT_STRING, ARG_MANDATORY, nullptr }
     },
     [](arg_map_t& a) {
         uint32_t cmd, *cmd_p = &cmd;
@@ -1563,7 +1563,7 @@ static int read_and_deserialize_cert_chain(const std::string& path,
             << errno << " (" << std::strerror(errno) << ")" << std::endl;
         return 1;
     }
-    n_certs = ::_::ntohl_(n_certs);
+    n_certs = be32toh(n_certs);
     if (n_certs > 100) {
         std::cerr << "Suspicious value of n_certs (" << n_certs <<
             ") in attestation cert chain file \"" << path << "\"" << std::endl;
@@ -1581,7 +1581,7 @@ static int read_and_deserialize_cert_chain(const std::string& path,
                 "\" : " << errno << " (" << std::strerror(errno) << ")" << std::endl;
             return 1;
         }
-        cert_size = ::_::ntohl_(cert_size);
+        cert_size = be32toh(cert_size);
         if (cert_size > 100000) {
             std::cerr << "Suspicious size of cert no. " << i << " (" << cert_size <<
                 ") in attestation cert chain file \"" << path << "\"" << std::endl;
@@ -1613,7 +1613,7 @@ static int serialize_and_write_cert_chain(const std::string& path,
         return 1;
     }
 
-    uint32_t be_n_certs = ::_::htonl_(cert_chain.size());
+    uint32_t be_n_certs = htobe32(cert_chain.size());
     file.write(reinterpret_cast<const char *>(&be_n_certs), sizeof(uint32_t));
     if (file.fail()) {
         std::cerr << "Failed to write the number of certs to \"" << path << "\" : "
@@ -1622,7 +1622,7 @@ static int serialize_and_write_cert_chain(const std::string& path,
     }
 
     for (uint32_t i = 0; i < cert_chain.size(); i++) {
-        uint32_t cert_size = ::_::htonl_(cert_chain[i].size());
+        uint32_t cert_size = htobe32(cert_chain[i].size());
         file.write(reinterpret_cast<const char *>(&cert_size), sizeof(uint32_t));
         if (file.fail()) {
             std::cerr << "Failed to write the size of cert no. " << i << " to \"" << path <<
@@ -2138,23 +2138,3 @@ static int match_and_run_handler(int argc, const char **argv)
 }
 
 } /* namespace suskeymaster */
-
-#ifdef _WIN32
-#include <winsock2.h>
-#else
-#include <netinet/in.h>
-#endif /* _WIN32 */
-namespace _ {
-    static uint32_t ntohl_(uint32_t n)
-    {
-        return ::ntohl(n);
-    }
-
-#ifndef SUSKEYMASTER_BUILD_HOST
-    static uint32_t htonl_(uint32_t h)
-    {
-        return ::htonl(h);
-    }
-#endif /* SUSKEYMASTER_BUILD_HOST */
-};
-

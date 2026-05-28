@@ -1,7 +1,7 @@
 #ifndef KEYMASTER_TYPES_H_
 #define KEYMASTER_TYPES_H_
 
-#include "../hidl/hidl-types.h"
+#include "../transport/hidl-types.h"
 #include <stdint.h>
 #include <stdbool.h>
 #include <core/vector.h>

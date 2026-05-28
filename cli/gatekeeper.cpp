@@ -1,19 +1,21 @@
 #define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
-#include "core/util.h"
+#include "endian.h"
 #include <core/int.h>
+#include <core/util.h>
 #include <hidl/HidlSupport.h>
-#include <libsuskmhal/hidl/hidl-hal.hpp>
-#include <libsuskmhal/hidl/hal.h>
-#include <libsuskmhal/hidl/base.h>
-#include <libsuskmhal/hidl/parcel.h>
-#include <libsuskmhal/hidl/keymaster-hidl.hpp>
+#ifndef SUSKEYMASTER_BUILD_HOST
+#include <libsuskmhal/transport/hidl-hal.h>
+#include <libsuskmhal/transport/hidl-base.h>
+#include <libsuskmhal/transport/hidl-parcel.h>
+#include <libsuskmhal/transport/km-hidl-hal.hpp>
+#include <libsuskmhal/transport/km-hidl-types.hpp>
+#endif /* SUSKEYMASTER_BUILD_HOST */
 #include <android/hardware/keymaster/generic/types.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstdint>
 #include <cstring>
-#include <endian.h>
 #include <cinttypes>
 #include <openssl/sha.h>
 #include <openssl/aes.h>
@@ -114,17 +116,20 @@ struct __attribute__ ((__packed__)) password_handle_t {
     bool hardware_backed;
 };
 
+#ifndef SUSKEYMASTER_BUILD_HOST
 static int read_gatekeeper_response(const struct kmhal_hidl_parcel *p,
                                     size_t *off_p,
                                     const void **out, size_t out_size);
 
 static constexpr const char *gatekeeper_fqname = "android.hardware.gatekeeper@1.0::IGatekeeper";
 static constexpr const char *gatekeeper_instname = "default";
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
 gk_hal::gk_hal() {
     this->owns = false;
     this->hal_sp = nullptr;
 
+#ifndef SUSKEYMASTER_BUILD_HOST
     this->hal_sp = kmhal_hidl_hal_sp_new_get(gatekeeper_fqname, gatekeeper_instname, nullptr, false);
     if (this->hal_sp == nullptr) {
         std::cerr << "Couldn't obtain a handle to the Gatekeeper HAL" << std::endl;
@@ -133,6 +138,9 @@ gk_hal::gk_hal() {
 
     std::cout << "Successfully initialized Gatekeeper HAL" << std::endl;
     this->owns = true;
+#else
+    std::cerr << "Gatekeeper HAL not supported on host build" << std::endl;
+#endif /* SUSKEYMASTER_BUILD_HOST */
 }
 
 gk_hal::gk_hal(HidlSusKeymaster& kmhal) {
@@ -141,6 +149,7 @@ gk_hal::gk_hal(HidlSusKeymaster& kmhal) {
 
     /* Reuse the binder device from the already initialized keymaster HAL */
 
+#ifndef SUSKEYMASTER_BUILD_HOST
     struct kmhal_hidl_hal_sp *kmhal_sp = kmhal.getHalSp();
     if (kmhal_sp == nullptr) {
         std::cerr << "Keymaster HAL handle is NULL!" << std::endl;
@@ -156,11 +165,16 @@ gk_hal::gk_hal(HidlSusKeymaster& kmhal) {
 
     std::cout << "Successfully initialized Gatekeeper HAL" << std::endl;
     this->owns = true;
+#else
+    std::cerr << "Gatekeeper HAL not supported on host build" << std::endl;
+#endif /* SUSKEYMASTER_BUILD_HOST */
 }
 
 gk_hal::~gk_hal() {
+#ifndef SUSKEYMASTER_BUILD_HOST
     if (this->owns)
         kmhal_hidl_hal_sp_destroy(&this->hal_sp);
+#endif /* SUSKEYMASTER_BUILD_HOST */
 }
 
 int verify(HidlSusKeymaster& kmhal, u32 uid, u64 challenge, hidl_vec<u8> const& cred,
@@ -176,6 +190,7 @@ int verify(HidlSusKeymaster& kmhal, u32 uid, u64 challenge, hidl_vec<u8> const& 
     GatekeeperResponse res;
 
     {
+#ifndef SUSKEYMASTER_BUILD_HOST
         u32 uid_ = uid;
         u64 challenge = 0;
         hidl_vec<u8> pwd_handle = handle;
@@ -205,6 +220,10 @@ int verify(HidlSusKeymaster& kmhal, u32 uid, u64 challenge, hidl_vec<u8> const& 
         }
 
         res = *res_p;
+#else
+        std::cerr << "Gatekeeper HAL not supported on host build" << std::endl;
+        res.code = GatekeeperStatusCode::ERROR_NOT_IMPLEMENTED;
+#endif /* SUSKEYMASTER_BUILD_HOST */
     }
 
     i32 c = static_cast<i32>(res.code);
@@ -622,6 +641,7 @@ static const char * gatekeeper_status_toString(i32 s)
     }
 }
 
+#ifndef SUSKEYMASTER_BUILD_HOST
 static int read_gatekeeper_response(const struct kmhal_hidl_parcel *p,
                                     size_t *off_p,
                                     const void **out, size_t out_size)
@@ -653,6 +673,7 @@ static int read_gatekeeper_response(const struct kmhal_hidl_parcel *p,
 
     return 0;
 }
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
 } /* namespace gatekeeper */
 } /* namespace cli */

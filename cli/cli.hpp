@@ -2,9 +2,9 @@
 #define CLI_SUSKEYMASTER_HPP_
 
 #include <core/log.h>
-#include <libsuskmhal/hidl/base.h>
-#include <libsuskmhal/hidl/hidl-hal.hpp>
 #include <libsuskmhal/util/km-params.hpp>
+#include <libsuskmhal/transport/hidl-base.h>
+#include <libsuskmhal/transport/km-hidl-hal.hpp>
 #include <libsuscertmod/samsung-sus-indata.h>
 #include <vector>
 #include <string>

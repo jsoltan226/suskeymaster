@@ -5,9 +5,9 @@
  * Helpers for common tasks performed during HIDL transactions.
  */
 
-#include "base.h"
-#include "parcel.h"
-#include "binderif.h"
+#include "binder.h"
+#include "hidl-base.h"
+#include "hidl-parcel.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -28,10 +28,9 @@ extern "C" {
  * @return `OK` on success, `NO_MEMORY` on allocation failure.
  *  See `enum kmhal_hidl_android_status`.
  */
-enum kmhal_hidl_android_status kmhal_hidl_util_check_allocate_txn_tmps(
-        struct kmhal_hidl_binder_transaction **txn_p,
-        struct kmhal_hidl_parcel **parcel_p
-);
+enum kmhal_hidl_android_status
+kmhal_hidl_util_check_allocate_txn_tmps(struct kmhal_binder_transaction **txn_p,
+                                        struct kmhal_hidl_parcel **parcel_p);
 
 /* Performs a binder transaction with the (packed) parcel,
  * unpacks the result and checks for any errors.
@@ -68,10 +67,10 @@ enum kmhal_hidl_android_status kmhal_hidl_util_check_allocate_txn_tmps(
  * before being destroyed.
  */
 enum kmhal_hidl_android_status kmhal_hidl_util_transact_and_unpack(
-        struct kmhal_hidl_binder_ctx *binder,
-        struct kmhal_hidl_binder_transaction **txn_p,
+        struct kmhal_binder_ctx *binder,
+        struct kmhal_binder_transaction **txn_p,
         struct kmhal_hidl_parcel **parcel_p,
-        struct kmhal_hidl_binder_tr_sg_args_out *out_reply,
+        struct kmhal_binder_tr_sg_args_out *out_reply,
         bool write_free_reply
 );
 
@@ -82,10 +81,8 @@ enum kmhal_hidl_android_status kmhal_hidl_util_transact_and_unpack(
  *
  * @param parcel_p A pointer to a parcel. May be NULL.
  */
-void kmhal_hidl_util_destroy_txn_tmps(
-        struct kmhal_hidl_binder_transaction **txn_p,
-        struct kmhal_hidl_parcel **parcel_p
-);
+void kmhal_hidl_util_destroy_txn_tmps(struct kmhal_binder_transaction **txn_p,
+                                      struct kmhal_hidl_parcel **parcel_p);
 
 #ifdef __cplusplus
 } /* extern "C" */

@@ -1,22 +1,23 @@
-#ifndef SUSKEYMASTER_HAL_DISABLE_4_1
+#ifndef SUSKEYMASTER_HAL_DISABLE_4_0
 #define HIDL_DISABLE_INSTRUMENTATION
-#include "base.h"
-#include "core/log.h"
-#include "hal.h"
-#include "hidl-hal.hpp"
-#include "keymaster-hidl.hpp"
+#include "km-hidl-hal.hpp"
+#ifndef SUSKEYMASTER_BUILD_HOST
+#include "hidl-base.h"
+#include "hidl-hal.h"
+#include "km-hidl-types.hpp"
+#include <cstdint>
+using ::android::hardware::hidl_vec;
+#endif /* SUSKEYMASTER_BUILD_HOST */
 #include <core/int.h>
 #include <core/util.h>
 #include <core/vector.h>
-#include <cstdint>
 #include <hidl/HidlSupport.h>
 #include <android/hardware/keymaster/generic/types.h>
 #include <iostream>
 
-#define MODULE_NAME "keymaster-hidl-hal-4.1"
+#define MODULE_NAME "keymaster-hidl-hal-4.0"
 
 using namespace ::android::hardware::keymaster::generic;
-using ::android::hardware::hidl_vec;
 
 namespace suskeymaster {
 namespace kmhal {
@@ -24,38 +25,33 @@ namespace hidl {
 
 #ifndef SUSKEYMASTER_BUILD_HOST
 
-HidlSusKeymaster4_1::HidlSusKeymaster4_1(void)
+HidlSusKeymaster4_0::HidlSusKeymaster4_0(void)
 {
     this->hal = kmhal_hidl_hal_sp_new_get(
-            "android.hardware.keymaster@4.1::IKeymasterDevice", "default",
+            "android.hardware.keymaster@4.0::IKeymasterDevice", "default",
             nullptr, false
     );
     if (!this->hal) {
         /* std::cerr << "Failed to get a handle to the keymaster HAL service" << std::endl; */
         return;
     }
-
-    /* All the supported cmds are from the 4.0 base
-     * (4.1 extends 4.0) */
-    kmhal_hidl_hal_set_fqname(this->hal, "android.hardware.keymaster@4.0::IKeymasterDevice");
 }
 
-HidlSusKeymaster4_1::~HidlSusKeymaster4_1(void)
+HidlSusKeymaster4_0::~HidlSusKeymaster4_0(void)
 {
     if (this->hal != NULL)
         kmhal_hidl_hal_sp_destroy(&this->hal);
 }
 
-bool HidlSusKeymaster4_1::isHALOk(void)
+bool HidlSusKeymaster4_0::isHALOk(void)
 {
-    s_log_info("%s: ret: %d", __func__, this->hal && kmhal_hidl_hal_ping(this->hal) == OK);
     if (!this->hal)
         return false;
 
     return kmhal_hidl_hal_ping(this->hal) == OK;
 }
 
-struct kmhal_hidl_hal_sp * HidlSusKeymaster4_1::getHalSp(void)
+struct kmhal_hidl_hal_sp * HidlSusKeymaster4_0::getHalSp(void)
 {
     return this->hal;
 }
@@ -80,9 +76,7 @@ enum kmhal_hidl_KM_4_0_cmd {
     KM_4_0_UPDATE = 17,
     KM_4_0_FINISH = 18,
     KM_4_0_ABORT = 19,
-    KM_4_1_DEVICE_LOCKED = 20,
-    KM_4_1_EARLY_BOOT_ENDED = 21,
-    KM_4_0_N_CMDS__ = KM_4_1_EARLY_BOOT_ENDED
+    KM_4_0_N_CMDS__ = KM_4_0_ABORT
 };
 
 #define check_hal_ok() do {                                         \
@@ -105,7 +99,7 @@ static inline const void ** to_data_p(const struct kmhal_hidl_string **u) {
     return reinterpret_cast<const void **>(u);
 }
 
-void HidlSusKeymaster4_1::getHardwareInfo(SecurityLevel& out_securityLevel,
+void HidlSusKeymaster4_0::getHardwareInfo(SecurityLevel& out_securityLevel,
         hidl_string& out_keymasterName, hidl_string& out_keymasterAuthorName)
 {
     if (!this->isHALOk()) {
@@ -144,7 +138,7 @@ fail:
         hidl_string(*reinterpret_cast<const hidl_string *>(keymasterAuthorName));
 }
 
-ErrorCode HidlSusKeymaster4_1::getHmacSharingParameters(HmacSharingParameters &out_params)
+ErrorCode HidlSusKeymaster4_0::getHmacSharingParameters(HmacSharingParameters &out_params)
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
@@ -174,7 +168,7 @@ ErrorCode HidlSusKeymaster4_1::getHmacSharingParameters(HmacSharingParameters &o
     return ret;
 }
 
-ErrorCode HidlSusKeymaster4_1::computeSharedHmac(hidl_vec<HmacSharingParameters> const& params,
+ErrorCode HidlSusKeymaster4_0::computeSharedHmac(hidl_vec<HmacSharingParameters> const& params,
         hidl_vec<uint8_t>& out_sharingCheck)
 {
     check_hal_ok();
@@ -208,7 +202,7 @@ ErrorCode HidlSusKeymaster4_1::computeSharedHmac(hidl_vec<HmacSharingParameters>
     return ret;
 }
 
-ErrorCode HidlSusKeymaster4_1::verifyAuthorization(uint64_t operationHandle,
+ErrorCode HidlSusKeymaster4_0::verifyAuthorization(uint64_t operationHandle,
         hidl_vec<KeyParameter> const& parametersToVerify, HardwareAuthToken const& authToken,
         VerificationToken& out_token)
 {
@@ -241,7 +235,7 @@ ErrorCode HidlSusKeymaster4_1::verifyAuthorization(uint64_t operationHandle,
     return ret;
 }
 
-ErrorCode HidlSusKeymaster4_1::addRngEntropy(hidl_vec<uint8_t> const& data)
+ErrorCode HidlSusKeymaster4_0::addRngEntropy(hidl_vec<uint8_t> const& data)
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
@@ -266,7 +260,7 @@ ErrorCode HidlSusKeymaster4_1::addRngEntropy(hidl_vec<uint8_t> const& data)
     return ret;
 }
 
-ErrorCode HidlSusKeymaster4_1::generateKey(hidl_vec<KeyParameter> const& keyParams,
+ErrorCode HidlSusKeymaster4_0::generateKey(hidl_vec<KeyParameter> const& keyParams,
         hidl_vec<uint8_t>& out_keyBlob,
         KeyCharacteristics& out_keyCharacteristics)
 {
@@ -302,7 +296,7 @@ ErrorCode HidlSusKeymaster4_1::generateKey(hidl_vec<KeyParameter> const& keyPara
     return ret;
 }
 
-ErrorCode HidlSusKeymaster4_1::importKey(hidl_vec<KeyParameter> const& keyParams,
+ErrorCode HidlSusKeymaster4_0::importKey(hidl_vec<KeyParameter> const& keyParams,
         KeyFormat keyFormat, hidl_vec<uint8_t> const& keyData,
         hidl_vec<uint8_t>& out_keyBlob,
         KeyCharacteristics& out_keyCharacteristics)
@@ -341,7 +335,7 @@ ErrorCode HidlSusKeymaster4_1::importKey(hidl_vec<KeyParameter> const& keyParams
     return ret;
 }
 
-ErrorCode HidlSusKeymaster4_1::importWrappedKey(hidl_vec<uint8_t> const& wrappedKeyData,
+ErrorCode HidlSusKeymaster4_0::importWrappedKey(hidl_vec<uint8_t> const& wrappedKeyData,
             hidl_vec<uint8_t> const& wrappingKeyBlob, hidl_vec<uint8_t> const& maskingKey,
             hidl_vec<KeyParameter> const& unwrappingParams,
             uint64_t passwordSid, uint64_t biometricSid,
@@ -385,7 +379,7 @@ ErrorCode HidlSusKeymaster4_1::importWrappedKey(hidl_vec<uint8_t> const& wrapped
     return ret;
 }
 
-ErrorCode HidlSusKeymaster4_1::getKeyCharacteristics(
+ErrorCode HidlSusKeymaster4_0::getKeyCharacteristics(
         hidl_vec<uint8_t> const& keyBlob,
         hidl_vec<uint8_t> const& applicationId,
         hidl_vec<uint8_t> const& applicationData,
@@ -423,7 +417,7 @@ ErrorCode HidlSusKeymaster4_1::getKeyCharacteristics(
     return ret;
 }
 
-ErrorCode HidlSusKeymaster4_1::exportKey(KeyFormat keyFormat,
+ErrorCode HidlSusKeymaster4_0::exportKey(KeyFormat keyFormat,
         hidl_vec<uint8_t> const& keyBlob,
         hidl_vec<uint8_t> const& applicationId,
         hidl_vec<uint8_t> const& applicationData,
@@ -461,7 +455,7 @@ ErrorCode HidlSusKeymaster4_1::exportKey(KeyFormat keyFormat,
     return ret;
 }
 
-ErrorCode HidlSusKeymaster4_1::attestKey(
+ErrorCode HidlSusKeymaster4_0::attestKey(
         hidl_vec<uint8_t> const& keyToAttest,
         hidl_vec<KeyParameter> const& attestParams,
         hidl_vec<hidl_vec<uint8_t>>& out_certChain)
@@ -499,7 +493,7 @@ ErrorCode HidlSusKeymaster4_1::attestKey(
     return ret;
 }
 
-ErrorCode HidlSusKeymaster4_1::upgradeKey(
+ErrorCode HidlSusKeymaster4_0::upgradeKey(
         hidl_vec<uint8_t> const& keyBlobToUpgrade,
         hidl_vec<KeyParameter> const& upgradeParams,
         hidl_vec<uint8_t>& out_upgradedKeyBlob)
@@ -537,7 +531,7 @@ ErrorCode HidlSusKeymaster4_1::upgradeKey(
     return ret;
 }
 
-ErrorCode HidlSusKeymaster4_1::deleteKey(hidl_vec<uint8_t> const& keyBlob)
+ErrorCode HidlSusKeymaster4_0::deleteKey(hidl_vec<uint8_t> const& keyBlob)
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
@@ -562,7 +556,7 @@ ErrorCode HidlSusKeymaster4_1::deleteKey(hidl_vec<uint8_t> const& keyBlob)
     return ret;
 }
 
-ErrorCode HidlSusKeymaster4_1::deleteAllKeys(void)
+ErrorCode HidlSusKeymaster4_0::deleteAllKeys(void)
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
@@ -585,7 +579,7 @@ ErrorCode HidlSusKeymaster4_1::deleteAllKeys(void)
     return ret;
 }
 
-ErrorCode HidlSusKeymaster4_1::destroyAttestationIds(void)
+ErrorCode HidlSusKeymaster4_0::destroyAttestationIds(void)
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
@@ -608,7 +602,7 @@ ErrorCode HidlSusKeymaster4_1::destroyAttestationIds(void)
     return ret;
 }
 
-ErrorCode HidlSusKeymaster4_1::begin(KeyPurpose purpose,
+ErrorCode HidlSusKeymaster4_0::begin(KeyPurpose purpose,
         hidl_vec<uint8_t> const& keyBlob,
         hidl_vec<KeyParameter> const& inParams,
         HardwareAuthToken const& authToken,
@@ -648,7 +642,7 @@ ErrorCode HidlSusKeymaster4_1::begin(KeyPurpose purpose,
     return ret;
 }
 
-ErrorCode HidlSusKeymaster4_1::update(uint64_t operationHandle,
+ErrorCode HidlSusKeymaster4_0::update(uint64_t operationHandle,
         hidl_vec<KeyParameter> const& inParams,
         hidl_vec<uint8_t> const& input,
         HardwareAuthToken const& authToken,
@@ -694,7 +688,7 @@ ErrorCode HidlSusKeymaster4_1::update(uint64_t operationHandle,
     return ret;
 }
 
-ErrorCode HidlSusKeymaster4_1::finish(uint64_t operationHandle,
+ErrorCode HidlSusKeymaster4_0::finish(uint64_t operationHandle,
         hidl_vec<KeyParameter> const& inParams,
         hidl_vec<uint8_t> const& input,
         hidl_vec<uint8_t> const& signature,
@@ -739,7 +733,7 @@ ErrorCode HidlSusKeymaster4_1::finish(uint64_t operationHandle,
     return ret;
 }
 
-ErrorCode HidlSusKeymaster4_1::abort(uint64_t operationHandle)
+ErrorCode HidlSusKeymaster4_0::abort(uint64_t operationHandle)
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
@@ -766,21 +760,21 @@ ErrorCode HidlSusKeymaster4_1::abort(uint64_t operationHandle)
 
 #else /* SUSKEYMASTER_BUILD_HOST */
 
-HidlSusKeymaster4_1::HidlSusKeymaster4_1(void)
+HidlSusKeymaster4_0::HidlSusKeymaster4_0(void)
 {
 }
 
-HidlSusKeymaster4_1::~HidlSusKeymaster4_1(void)
+HidlSusKeymaster4_0::~HidlSusKeymaster4_0(void)
 {
 }
 
-bool HidlSusKeymaster4_1::isHALOk(void)
+bool HidlSusKeymaster4_0::isHALOk(void)
 {
-    std::cerr << "Keymaster 4.1 HIDL HAL not available in host build!" << std::endl;
+    std::cerr << "Keymaster 4.0 HIDL HAL not available in host build!" << std::endl;
     return false;
 }
 
-struct kmhal_hidl_hal_sp * HidlSusKeymaster4_1::getHalSp(void)
+struct kmhal_hidl_hal_sp * HidlSusKeymaster4_0::getHalSp(void)
 {
     return nullptr;
 }
@@ -790,4 +784,4 @@ struct kmhal_hidl_hal_sp * HidlSusKeymaster4_1::getHalSp(void)
 } /* namespace hidl */
 } /* namespace kmhal */
 } /* namespace suskeymaster */
-#endif /* SUSKEYMASTER_HAL_DISABLE_4_1 */
+#endif /* SUSKEYMASTER_HAL_DISABLE_4_0 */

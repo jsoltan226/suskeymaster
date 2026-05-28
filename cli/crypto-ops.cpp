@@ -1,7 +1,7 @@
 #define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
-#include <libsuskmhal/hidl/hidl-hal.hpp>
 #include <libsuskmhal/util/km-params.hpp>
+#include <libsuskmhal/transport/km-hidl-hal.hpp>
 #include <hidl/HidlSupport.h>
 #include <android/hardware/keymaster/generic/types.h>
 #include <cstring>

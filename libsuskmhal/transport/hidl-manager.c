@@ -1,9 +1,9 @@
-#include "manager.h"
-#include "base.h"
-#include "parcel.h"
-#include "binderif.h"
-#include "txn-util.h"
+#include "hidl-manager.h"
+#include "binder.h"
+#include "hidl-base.h"
 #include "hidl-types.h"
+#include "hidl-parcel.h"
+#include "hidl-txn-util.h"
 #include <core/log.h>
 #include <core/util.h>
 #include <inttypes.h>
@@ -38,35 +38,32 @@ static int read_hidl_vec_of_hidl_string(
 static int read_handle(const struct kmhal_hidl_parcel *parcel,
         size_t *offset_p, u32 *out_handle);
 
-void kmhal_hidl_manager_write_acquire(
-        struct kmhal_hidl_binder_transaction *txn
-)
+void kmhal_hidl_manager_write_acquire(struct kmhal_binder_transaction *txn)
 {
     u_check_params(txn != NULL);
 
-    kmhal_hidl_binder_write_increfs_weak(txn, MGR_BINDER_HANDLE);
-    kmhal_hidl_binder_write_acquire_strong(txn, MGR_BINDER_HANDLE);
+    kmhal_binder_write_increfs(txn, MGR_BINDER_HANDLE);
+    kmhal_binder_write_acquire(txn, MGR_BINDER_HANDLE);
 }
 
 void kmhal_hidl_manager_write_release(
-        struct kmhal_hidl_binder_transaction *txn
+        struct kmhal_binder_transaction *txn
 )
 {
-    kmhal_hidl_binder_write_release_strong(txn, MGR_BINDER_HANDLE);
-    kmhal_hidl_binder_write_decrefs_weak(txn, MGR_BINDER_HANDLE);
+    kmhal_binder_write_release(txn, MGR_BINDER_HANDLE);
+    kmhal_binder_write_decrefs(txn, MGR_BINDER_HANDLE);
 }
 
-enum kmhal_hidl_android_status kmhal_hidl_manager_get(
-        struct kmhal_hidl_binder_ctx *binder,
-        struct kmhal_hidl_binder_transaction **txn_p,
+enum kmhal_hidl_android_status
+kmhal_hidl_manager_get(struct kmhal_binder_ctx *binder,
+                       struct kmhal_binder_transaction **txn_p,
 
-        const char *in_interface_name,
-        const char *in_instance_name,
+                       const char *in_interface_name,
+                       const char *in_instance_name,
 
-        u32 *out_handle
-)
+                       u32 *out_handle)
 {
-    u_check_params(kmhal_hidl_binder_ctx_ok(binder) && txn_p != NULL);
+    u_check_params(kmhal_binder_ctx_ok(binder) && txn_p != NULL);
     u_check_params(in_interface_name != NULL && in_instance_name != NULL);
 
     enum kmhal_hidl_android_status ret = UNKNOWN_ERROR;
@@ -84,7 +81,7 @@ enum kmhal_hidl_android_status kmhal_hidl_manager_get(
         .owns_buffer = false
     };
 
-    struct kmhal_hidl_binder_tr_sg_args_out reply = { 0 };
+    struct kmhal_binder_tr_sg_args_out reply = { 0 };
     u32 handle = (u32)-1;
 
     if ((ret = kmhal_hidl_util_check_allocate_txn_tmps(txn_p, &parcel)) != OK)
@@ -117,11 +114,11 @@ enum kmhal_hidl_android_status kmhal_hidl_manager_get(
 
     /* ...and immediately acquire it
      * (queue the commands in the next transaction) */
-    kmhal_hidl_binder_write_increfs_weak(*txn_p, handle);
-    kmhal_hidl_binder_write_acquire_strong(*txn_p, handle);
+    kmhal_binder_write_increfs(*txn_p, handle);
+    kmhal_binder_write_acquire(*txn_p, handle);
 
     /* only now can we queue the FREE_BUFFER command for the current reply */
-    kmhal_hidl_binder_write_free_reply(*txn_p, reply.data_buf);
+    kmhal_binder_write_free_reply(*txn_p, reply.data_buf);
 
     if (out_handle != NULL) *out_handle = handle;
     kmhal_hidl_parcel_destroy(&parcel);
@@ -140,13 +137,13 @@ err:
 }
 
 enum kmhal_hidl_android_status kmhal_hidl_manager_list(
-        struct kmhal_hidl_binder_ctx *binder,
-        struct kmhal_hidl_binder_transaction **txn_p,
+        struct kmhal_binder_ctx *binder,
+        struct kmhal_binder_transaction **txn_p,
 
         const KMHAL_HIDL_VEC_OF_STRUCT(kmhal_hidl_string) **out_fqInstanceNames
 )
 {
-    u_check_params(kmhal_hidl_binder_ctx_ok(binder) && txn_p != NULL);
+    u_check_params(kmhal_binder_ctx_ok(binder) && txn_p != NULL);
 
     enum kmhal_hidl_android_status ret = UNKNOWN_ERROR;
     struct kmhal_hidl_parcel *parcel = NULL;
@@ -183,15 +180,15 @@ err:
 }
 
 enum kmhal_hidl_android_status kmhal_hidl_manager_list_by_interface(
-        struct kmhal_hidl_binder_ctx *binder,
-        struct kmhal_hidl_binder_transaction **txn_p,
+        struct kmhal_binder_ctx *binder,
+        struct kmhal_binder_transaction **txn_p,
 
         const char *in_interface_name,
 
         const KMHAL_HIDL_VEC_OF_STRUCT(kmhal_hidl_string) **out_instanceNames
 )
 {
-    u_check_params(kmhal_hidl_binder_ctx_ok(binder) && txn_p != NULL);
+    u_check_params(kmhal_binder_ctx_ok(binder) && txn_p != NULL);
     u_check_params(in_interface_name != NULL);
 
     enum kmhal_hidl_android_status ret = UNKNOWN_ERROR;

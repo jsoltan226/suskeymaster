@@ -3,7 +3,7 @@
 
 #include "../util/keymaster-types-c.h"
 #include "hidl-types.h"
-#include "parcel.h"
+#include "hidl-parcel.h"
 #include <core/int.h>
 #include <core/log.h>
 #include <android/hardware/keymaster/generic/types.h>

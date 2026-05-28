@@ -6,7 +6,7 @@
 
 #include <android/hardware/keymaster/generic/types.h>
 #ifndef SUSKEYMASTER_BUILD_HOST
-#include "hal.h"
+#include "hidl-hal.h"
 #endif /* SUSKEYMASTER_BUILD_HOST */
 
 namespace suskeymaster {

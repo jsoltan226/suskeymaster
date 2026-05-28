@@ -1,19 +1,17 @@
-#include "parcel.h"
-#include "base.h"
-#include "binderif.h"
+#include "hidl-parcel.h"
+#include "binder.h"
+#include "hidl-base.h"
 #include <core/log.h>
 #include <core/int.h>
 #include <core/util.h>
 #include <core/vector.h>
-#include <core/bitfield.h>
-#include <stdatomic.h>
 #include <stddef.h>
 #include <string.h>
 #include <stdlib.h>
 #include <limits.h>
 #include <inttypes.h>
+#include <stdatomic.h>
 #include <linux/android/binder.h>
-#include <unistd.h>
 
 #define MODULE_NAME "hidl-parcel"
 
@@ -37,7 +35,7 @@ struct kmhal_hidl_parcel {
 
     _Atomic bool txn_pending;
     VECTOR(binder_size_t) txn_object_offsets;
-    struct kmhal_hidl_binder_tr_sg_args txn_arg;
+    struct kmhal_binder_tr_sg_args txn_arg;
 };
 
 static void parcel_destroy__(struct kmhal_hidl_parcel **parcel_p,
@@ -56,7 +54,7 @@ static int validate_buffer_object(const struct kmhal_hidl_parcel *parcel,
 static int validate_parent(const struct kmhal_hidl_parcel *parcel,
                            binder_size_t parent_idx, binder_size_t child_idx);
 
-static int validate_reply(const struct kmhal_hidl_binder_tr_sg_args_out *r);
+static int validate_reply(const struct kmhal_binder_tr_sg_args_out *r);
 
 struct kmhal_hidl_parcel * kmhal_hidl_parcel_new(void)
 {
@@ -74,7 +72,7 @@ struct kmhal_hidl_parcel * kmhal_hidl_parcel_new(void)
 
     atomic_store(&ret->txn_pending, false);
     ret->txn_object_offsets = vector_new(binder_size_t);
-    ret->txn_arg = (struct kmhal_hidl_binder_tr_sg_args){ 0 };
+    ret->txn_arg = (struct kmhal_binder_tr_sg_args){ 0 };
 
     return ret;
 
@@ -86,7 +84,7 @@ err:
 }
 
 struct kmhal_hidl_parcel * kmhal_hidl_parcel_new_from_reply(
-        const struct kmhal_hidl_binder_tr_sg_args_out *reply
+        const struct kmhal_binder_tr_sg_args_out *reply
 )
 {
     (void) reply;
@@ -367,7 +365,7 @@ kmhal_hidl_parcel_obj_find_by_offset(const struct kmhal_hidl_parcel *parcel,
     return r;
 }
 
-void kmhal_hidl_parcel_pack(struct kmhal_hidl_binder_transaction *txn,
+void kmhal_hidl_parcel_pack(struct kmhal_binder_transaction *txn,
                             struct kmhal_hidl_parcel *parcel,
                             u32 handle, u32 cmd)
 {
@@ -385,7 +383,7 @@ void kmhal_hidl_parcel_pack(struct kmhal_hidl_binder_transaction *txn,
     for (u32 i = 0; i < n_objs; i++)
         vector_push_back(&parcel->txn_object_offsets, parcel->objects[i].off);
 
-    parcel->txn_arg = (struct kmhal_hidl_binder_tr_sg_args) {
+    parcel->txn_arg = (struct kmhal_binder_tr_sg_args) {
         .in_txn = txn,
         .in_data = {
             .cmd = cmd,
@@ -397,14 +395,14 @@ void kmhal_hidl_parcel_pack(struct kmhal_hidl_binder_transaction *txn,
             .offsets_count = n_objs,
             .sg_buffers_size = parcel->sg_buffers_size
         },
-        .out_reply = {}
+        .out_reply = { 0 }
     };
 
-    kmhal_hidl_binder_add_transact_sg(&parcel->txn_arg);
+    kmhal_binder_write_transact_sg(&parcel->txn_arg);
 }
 
 int kmhal_hidl_parcel_unpack(struct kmhal_hidl_parcel **parcel_p,
-                             struct kmhal_hidl_binder_tr_sg_args_out *out)
+                             struct kmhal_binder_tr_sg_args_out *out)
 {
     u_check_params(parcel_p != NULL && *parcel_p != NULL &&
             atomic_load(&(*parcel_p)->initialized_));
@@ -416,22 +414,22 @@ int kmhal_hidl_parcel_unpack(struct kmhal_hidl_parcel **parcel_p,
     }
 
     switch (parcel->txn_arg.out_reply.status) {
-    case KMHAL_HIDL_BINDER_TR_SG_OK:
+    case KMHAL_BINDER_TR_SG_OK:
         break;
     default:
-    case KMHAL_HIDL_BINDER_TR_SG_UNINITIALIZED:
+    case KMHAL_BINDER_TR_SG_UNINITIALIZED:
         s_log_fatal("Transaction not even initialized, invalid state!");
-    case KMHAL_HIDL_BINDER_TR_SG_PENDING:
+    case KMHAL_BINDER_TR_SG_PENDING:
         s_log_fatal("Transaction still pending, impossible outcome!");
-    case KMHAL_HIDL_BINDER_TR_SG_FAILED:
+    case KMHAL_BINDER_TR_SG_FAILED:
         s_log_error("Transaction failed :(");
         parcel_destroy__(parcel_p, true);
         return 1;
     }
 
     if (!memcmp(&parcel->txn_arg.out_reply,
-                &(struct kmhal_hidl_binder_tr_sg_args_out) { 0 },
-                sizeof(struct kmhal_hidl_binder_tr_sg_args_out)))
+                &(struct kmhal_binder_tr_sg_args_out) { 0 },
+                sizeof(struct kmhal_binder_tr_sg_args_out)))
     {
         s_log_error("The transaction didn't write anything");
         return 1;
@@ -701,12 +699,12 @@ static void parcel_destroy__(struct kmhal_hidl_parcel **parcel_p,
     if (!allow_pending_transaction && txn_pending) {
         switch (parcel->txn_arg.out_reply.status) {
         default:
-        case KMHAL_HIDL_BINDER_TR_SG_PENDING:
-        case KMHAL_HIDL_BINDER_TR_SG_UNINITIALIZED:
+        case KMHAL_BINDER_TR_SG_PENDING:
+        case KMHAL_BINDER_TR_SG_UNINITIALIZED:
             s_abort(MODULE_NAME, "kmhal_hidl_parcel_destroy",
                     "Attempt to destroy parcel with a pending transaction");
-        case KMHAL_HIDL_BINDER_TR_SG_OK:
-        case KMHAL_HIDL_BINDER_TR_SG_FAILED:
+        case KMHAL_BINDER_TR_SG_OK:
+        case KMHAL_BINDER_TR_SG_FAILED:
             s_log_warn("Destroying a parcel without unpacking it first!");
         }
     }
@@ -867,7 +865,7 @@ static int validate_parent(const struct kmhal_hidl_parcel *parcel,
     return 0;
 }
 
-static int validate_reply(const struct kmhal_hidl_binder_tr_sg_args_out *r)
+static int validate_reply(const struct kmhal_binder_tr_sg_args_out *r)
 {
     if (r == NULL) {
         s_log_error("Invalid parameters");
@@ -922,7 +920,7 @@ static int validate_reply(const struct kmhal_hidl_binder_tr_sg_args_out *r)
         }
 
         struct binder_object_header hdr;
-        memcpy(&hdr, r->data_buf + off, sizeof(hdr));
+        memcpy(&hdr, (const u8 *)r->data_buf + off, sizeof(hdr));
 
         size_t required_size = 0;
 
@@ -955,7 +953,7 @@ static int validate_reply(const struct kmhal_hidl_binder_tr_sg_args_out *r)
 
         if (hdr.type == BINDER_TYPE_PTR) {
             struct binder_buffer_object obj;
-            memcpy(&obj, r->data_buf + off, sizeof(obj));
+            memcpy(&obj, (const u8 *)r->data_buf + off, sizeof(obj));
             if (obj.flags & BINDER_BUFFER_FLAG_HAS_PARENT &&
                     obj.parent >= r->offsets_count)
             {

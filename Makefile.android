@@ -1,4 +1,4 @@
-PLATFORM ?= linux
+PLATFORM = android
 PREFIX ?= /usr
 
 ifeq ($(PREFIX), /data/data/com.termux/files/usr)
@@ -122,6 +122,11 @@ EXEARGS :=
 .NOTPARALLEL: all trace release br bdr build-tests build-tests-release
 
 # Build targets
+all: CFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
+all: CXXFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
+all: LDFLAGS += $(ASAN_FLAGS)
+all: cli lib
+
 cli: CFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
 cli: CXXFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
 cli: LDFLAGS += $(ASAN_FLAGS)
@@ -131,11 +136,6 @@ lib: CFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
 lib: CXXFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
 lib: LDFLAGS += $(ASAN_FLAGS)
 lib: $(OBJDIR) $(BINDIR) $(SO_LIB)
-
-all: CFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
-all: CXXFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
-all: LDFLAGS += $(ASAN_FLAGS)
-all: $(OBJDIR) $(BINDIR) $(EXE) $(SO_LIB)
 
 trace: CFLAGS = -g -O0 -Wall -DCGD_ENABLE_TRACE $(ASAN_FLAGS)
 trace: CXXFLAGS = -g -O0 -Wall -DCGD_ENABLE_TRACE $(ASAN_FLAGS)

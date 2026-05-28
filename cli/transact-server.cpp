@@ -4,9 +4,9 @@
 #include "google-root.h"
 #include <core/int.h>
 #include <core/vector.h>
-#include <libsuskmhal/hidl/hidl-hal.hpp>
 #include <libsuskmhal/util/km-params.hpp>
 #include <libsuskmhal/util/keymaster-types-c.h>
+#include <libsuskmhal/transport/km-hidl-hal.hpp>
 #include <libsuscertmod/certmod.h>
 #include <libsuscertmod/key-desc.h>
 #include <libsuscertmod/leaf-cert.h>
@@ -430,7 +430,6 @@ static int check_google_root(hidl_vec<uint8_t> const& root_der, bool *is_old_roo
         if (!std::memcmp(root_der.data(), google_root_5_rsa_4096_old_der,
                 google_root_5_rsa_4096_old_der_len))
         {
-            std::cout << "WARNING: using old attestation root" << std::endl;
             *is_old_root = true;
             return 0;
         }

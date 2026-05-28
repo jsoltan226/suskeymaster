@@ -3,11 +3,11 @@
 #include <core/log.h>
 #include <core/math.h>
 #include <core/util.h>
-#include <libsuskmhal/hidl/hidl-hal.hpp>
 #include <libsuskmhal/util/dump-utils.h>
 #include <libsuskmhal/util/samsung-utils.h>
 #include <libsuskmhal/util/keymaster-types-c.h>
 #include <libsuskmhal/util/samsung-sus-indata.hpp>
+#include <libsuskmhal/transport/km-hidl-hal.hpp>
 #include <android/hardware/keymaster/generic/types.h>
 #include <cstdarg>
 #include <cstdlib>

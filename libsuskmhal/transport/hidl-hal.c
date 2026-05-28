@@ -1,9 +1,9 @@
-#include "hal.h"
-#include "base.h"
-#include "manager.h"
-#include "parcel.h"
-#include "txn-util.h"
-#include "binderif.h"
+#include "binder.h"
+#include "hidl-hal.h"
+#include "hidl-base.h"
+#include "hidl-manager.h"
+#include "hidl-parcel.h"
+#include "hidl-txn-util.h"
 #include <core/log.h>
 #include <core/util.h>
 #include <string.h>
@@ -17,10 +17,10 @@
 struct kmhal_hidl_hal_sp {
     _Atomic bool initialized_;
 
-    struct kmhal_hidl_binder_ctx *binder;
+    struct kmhal_binder_ctx *binder;
     bool owns_binder;
 
-    struct kmhal_hidl_binder_transaction *txn;
+    struct kmhal_binder_transaction *txn;
 
     bool manager_acquired;
     u32 handle;
@@ -61,7 +61,7 @@ struct kmhal_hidl_hal_sp * kmhal_hidl_hal_sp_new_empty(void)
 
 struct kmhal_hidl_hal_sp *
 kmhal_hidl_hal_sp_new_get(const char *fqname, const char *instname,
-                          struct kmhal_hidl_binder_ctx *opt_existing_binder,
+                          struct kmhal_binder_ctx *opt_existing_binder,
                           bool owns_existing_binder)
 {
     u_check_params(fqname != NULL && instname != NULL);
@@ -73,7 +73,7 @@ kmhal_hidl_hal_sp_new_get(const char *fqname, const char *instname,
         goto err;
 
     if (opt_existing_binder == NULL) {
-        ret->binder = kmhal_hidl_binder_open(KMHAL_HIDL_BINDER_DEFAULT_ORDER);
+        ret->binder = kmhal_binder_open(KMHAL_BINDER_DEFAULT_ORDER);
         if (ret->binder == NULL)
             goto_error("Failed to open binder device");
         ret->owns_binder = true;
@@ -89,7 +89,7 @@ kmhal_hidl_hal_sp_new_get(const char *fqname, const char *instname,
         goto err;
 
     kmhal_hidl_manager_write_acquire(ret->txn);
-    if (kmhal_hidl_binder_write_read_ioctl(ret->binder, &ret->txn))
+    if (kmhal_binder_do_write_read_ioctl(ret->binder, &ret->txn))
         goto_error("Binder acquire transactions on service manager failed");
     ret->manager_acquired = true;
 
@@ -139,8 +139,8 @@ void kmhal_hidl_hal_sp_destroy(struct kmhal_hidl_hal_sp **hal_p)
             goto skip_binder_refs;
         }
 
-        kmhal_hidl_binder_write_release_strong(hal->txn, hal->handle);
-        kmhal_hidl_binder_write_decrefs_weak(hal->txn, hal->handle);
+        kmhal_binder_write_release(hal->txn, hal->handle);
+        kmhal_binder_write_decrefs(hal->txn, hal->handle);
         do_final_transaction = true;
     }
     hal->handle = (u32)-1;
@@ -165,20 +165,20 @@ void kmhal_hidl_hal_sp_destroy(struct kmhal_hidl_hal_sp **hal_p)
             goto skip_binder_refs;
         }
 
-        if (kmhal_hidl_binder_write_read_ioctl(hal->binder, &hal->txn)) {
+        if (kmhal_binder_do_write_read_ioctl(hal->binder, &hal->txn)) {
             s_log_error("Failed to perform the final transaction "
                     "to flush the remaining queued commands and "
                     "drop all the acquired binder references");
         }
     }
-    kmhal_hidl_binder_transaction_destroy(&hal->txn);
+    kmhal_binder_transaction_destroy(&hal->txn);
 
 skip_binder_refs:
 
     if (hal->owns_binder) {
         hal->owns_binder = false;
         if (hal->binder != NULL)
-            kmhal_hidl_binder_close(&hal->binder);
+            kmhal_binder_close(&hal->binder);
     }
     hal->binder = NULL;
 
@@ -244,7 +244,7 @@ err:
     return ret;
 }
 
-struct kmhal_hidl_binder_ctx *
+struct kmhal_binder_ctx *
 kmhal_hidl_hal_get_binder(struct kmhal_hidl_hal_sp *hal,
                           bool *opt_out_owns_binder)
 {
@@ -254,13 +254,13 @@ kmhal_hidl_hal_get_binder(struct kmhal_hidl_hal_sp *hal,
 }
 
 void kmhal_hidl_hal_set_binder(struct kmhal_hidl_hal_sp *hal,
-                               struct kmhal_hidl_binder_ctx *binder,
+                               struct kmhal_binder_ctx *binder,
                                bool owns_binder)
 {
     u_check_params(hal != NULL && atomic_load(&hal->initialized_));
 
     if (hal->binder != NULL && hal->owns_binder)
-        kmhal_hidl_binder_close(&hal->binder);
+        kmhal_binder_close(&hal->binder);
 
     hal->binder = binder;
     hal->owns_binder = owns_binder;
@@ -284,8 +284,8 @@ void kmhal_hidl_hal_set_handle(struct kmhal_hidl_hal_sp *hal,
             s_log_error("Failed to allocate a new binder transaction; "
                     "not dropping existing HAL handle reference");
         } else {
-            kmhal_hidl_binder_write_release_strong(hal->txn, hal->handle);
-            kmhal_hidl_binder_write_decrefs_weak(hal->txn, hal->handle);
+            kmhal_binder_write_release(hal->txn, hal->handle);
+            kmhal_binder_write_decrefs(hal->txn, hal->handle);
         }
     }
 

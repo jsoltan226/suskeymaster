@@ -1,8 +1,8 @@
-#include "base.h"
-#include "binderif.h"
+#include "hidl-base.h"
+#include "binder.h"
 #include "hidl-types.h"
-#include "parcel.h"
-#include "txn-util.h"
+#include "hidl-parcel.h"
+#include "hidl-txn-util.h"
 #include <core/log.h>
 #include <core/util.h>
 #include <string.h>
@@ -37,15 +37,15 @@ const char * kmhal_hidl_android_status_toString(i32 s)
 }
 
 enum kmhal_hidl_android_status
-kmhal_hidl_base_ping(struct kmhal_hidl_binder_ctx *binder,
-                     struct kmhal_hidl_binder_transaction **txn_p,
+kmhal_hidl_base_ping(struct kmhal_binder_ctx *binder,
+                     struct kmhal_binder_transaction **txn_p,
                      u32 handle)
 {
-    u_check_params(kmhal_hidl_binder_ctx_ok(binder) && txn_p != NULL);
+    u_check_params(kmhal_binder_ctx_ok(binder) && txn_p != NULL);
 
     enum kmhal_hidl_android_status ret = UNKNOWN_ERROR;
     struct kmhal_hidl_parcel *parcel = NULL;
-    struct kmhal_hidl_binder_tr_sg_args_out reply = { 0 };
+    struct kmhal_binder_tr_sg_args_out reply = { 0 };
 
     if ((ret = kmhal_hidl_util_check_allocate_txn_tmps(txn_p, &parcel)) != OK)
         goto err;
@@ -54,14 +54,14 @@ kmhal_hidl_base_ping(struct kmhal_hidl_binder_ctx *binder,
 
     kmhal_hidl_parcel_pack(*txn_p, parcel, handle, HIDL_PING_TRANSACTION);
 
-    if (kmhal_hidl_binder_write_read_ioctl(binder, txn_p)) {
+    if (kmhal_binder_do_write_read_ioctl(binder, txn_p)) {
         (void) kmhal_hidl_parcel_unpack(&parcel, NULL);
         ret = FAILED_TRANSACTION;
         goto_error("The binder WRITE_READ ioctl failed");
     }
 
     if (kmhal_hidl_parcel_unpack(&parcel, &reply) ||
-            reply.status != KMHAL_HIDL_BINDER_TR_SG_OK)
+            reply.status != KMHAL_BINDER_TR_SG_OK)
     {
         ret = FAILED_TRANSACTION;
         goto_error("Failed to unpack the transaction result");
@@ -90,12 +90,12 @@ err:
 }
 
 enum kmhal_hidl_android_status
-kmhal_hidl_base_get_descriptor(struct kmhal_hidl_binder_ctx *binder,
-                               struct kmhal_hidl_binder_transaction **txn_p,
+kmhal_hidl_base_get_descriptor(struct kmhal_binder_ctx *binder,
+                               struct kmhal_binder_transaction **txn_p,
                                u32 handle,
                                const struct kmhal_hidl_string **out_p)
 {
-    u_check_params(kmhal_hidl_binder_ctx_ok(binder) && txn_p != NULL);
+    u_check_params(kmhal_binder_ctx_ok(binder) && txn_p != NULL);
 
     enum kmhal_hidl_android_status ret = UNKNOWN_ERROR;
     struct kmhal_hidl_parcel *parcel = NULL;

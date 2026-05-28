@@ -2,8 +2,8 @@
 #include "certsign.h"
 #include "keybox.h"
 #include "certmod.h"
-#include <libsuskmhal/hidl/hidl-hal.hpp>
 #include <libsuskmhal/util/keymaster-types-c.h>
+#include <libsuskmhal/transport/km-hidl-hal.hpp>
 #include <core/int.h>
 #include <core/log.h>
 #include <core/util.h>

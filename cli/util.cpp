@@ -1,10 +1,10 @@
 #define OPENSSL_API_COMPAT 0x10002000L
 #define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
+#include "endian.h"
 #include <hidl/HidlSupport.h>
 #include <cstdio>
 #include <cstring>
-#include <endian.h>
 #ifdef SUSKEYMASTER_BUILD_ANDROID
 #include <sys/system_properties.h>
 #endif /* SUSKEYMASTER_BUILD_ANDROID */
@@ -474,7 +474,7 @@ int aes256gcm_software_decrypt(hidl_vec<u8> const& key, hidl_vec<u8> const& iv,
     }
     total += len;
 
-    if (total != ciphertext.size()) {
+    if (static_cast<unsigned int>(total) != ciphertext.size()) {
         std::cerr << "Incorrect number of bytes written to plaintext output buffer (" <<
             total << ", expected " << ciphertext.size() << ")!" << std::endl;
         std::abort();
@@ -512,7 +512,7 @@ int personalized_hash(hidl_vec<uint8_t> const& in_data, const char *personalizat
     std::memset(prefix, 0, sizeof(prefix));
 
     const int personalization_size = strlen(personalization);
-    if (personalization_size > sizeof(prefix) || personalization_size < 0) {
+    if (personalization_size > static_cast<int>(sizeof(prefix)) || personalization_size < 0) {
         std::cerr << "Personalization string invalid or too long" << std::endl;
         return 1;
     }

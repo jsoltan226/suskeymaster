@@ -1,7 +1,7 @@
-#include "txn-util.h"
-#include "base.h"
-#include "parcel.h"
-#include "binderif.h"
+#include "hidl-txn-util.h"
+#include "binder.h"
+#include "hidl-base.h"
+#include "hidl-parcel.h"
 #include <core/log.h>
 #include <string.h>
 #include <inttypes.h>
@@ -9,13 +9,12 @@
 
 #define MODULE_NAME "hidl-txn-util"
 
-enum kmhal_hidl_android_status kmhal_hidl_util_check_allocate_txn_tmps(
-        struct kmhal_hidl_binder_transaction **txn_p,
-        struct kmhal_hidl_parcel **parcel_p
-)
+enum kmhal_hidl_android_status
+kmhal_hidl_util_check_allocate_txn_tmps(struct kmhal_binder_transaction **txn_p,
+                                        struct kmhal_hidl_parcel **parcel_p)
 {
     if (txn_p != NULL && *txn_p == NULL) {
-        *txn_p = kmhal_hidl_binder_transaction_new();
+        *txn_p = kmhal_binder_transaction_new();
         if (*txn_p == NULL) {
             s_log_error("Failed to allocate a new binder transaction struct");
             return NO_MEMORY;
@@ -34,17 +33,17 @@ enum kmhal_hidl_android_status kmhal_hidl_util_check_allocate_txn_tmps(
 }
 
 enum kmhal_hidl_android_status kmhal_hidl_util_transact_and_unpack(
-        struct kmhal_hidl_binder_ctx *binder,
-        struct kmhal_hidl_binder_transaction **txn_p,
+        struct kmhal_binder_ctx *binder,
+        struct kmhal_binder_transaction **txn_p,
         struct kmhal_hidl_parcel **parcel_p,
-        struct kmhal_hidl_binder_tr_sg_args_out *out_reply,
+        struct kmhal_binder_tr_sg_args_out *out_reply,
         bool write_free_reply
 )
 {
     enum kmhal_hidl_android_status ret = UNKNOWN_ERROR;
-    struct kmhal_hidl_binder_tr_sg_args_out reply;
+    struct kmhal_binder_tr_sg_args_out reply;
 
-    if (!kmhal_hidl_binder_ctx_ok(binder)) {
+    if (!kmhal_binder_ctx_ok(binder)) {
         s_log_error("Invalid binder device context");
         return UNEXPECTED_NULL;
     } else if (txn_p == NULL || *txn_p == NULL) {
@@ -55,7 +54,7 @@ enum kmhal_hidl_android_status kmhal_hidl_util_transact_and_unpack(
         return UNEXPECTED_NULL;
     }
 
-    if (kmhal_hidl_binder_write_read_ioctl(binder, txn_p)) {
+    if (kmhal_binder_do_write_read_ioctl(binder, txn_p)) {
         (void) kmhal_hidl_parcel_unpack(parcel_p, NULL);
         s_log_error("Binder WRITE_READ ioctl failed");
         return FAILED_TRANSACTION;
@@ -64,7 +63,7 @@ enum kmhal_hidl_android_status kmhal_hidl_util_transact_and_unpack(
     if (kmhal_hidl_parcel_unpack(parcel_p, &reply)) {
         s_log_error("Failed to unpack parcel after transaction");
         return FAILED_TRANSACTION;
-    } else if (reply.status != KMHAL_HIDL_BINDER_TR_SG_OK) {
+    } else if (reply.status != KMHAL_BINDER_TR_SG_OK) {
         s_log_error("Reply status is not OK");
         return FAILED_TRANSACTION;
     } else if (reply.flags & TF_STATUS_CODE) {
@@ -84,7 +83,7 @@ enum kmhal_hidl_android_status kmhal_hidl_util_transact_and_unpack(
         return ret;
 
     if (write_free_reply)
-        kmhal_hidl_binder_write_free_reply(*txn_p, reply.data_buf);
+        kmhal_binder_write_free_reply(*txn_p, reply.data_buf);
 
     if ((*parcel_p = kmhal_hidl_parcel_new_from_reply(&reply)) == NULL) {
         s_log_error("Failed to initialize a new parcel from the reply");
@@ -97,11 +96,9 @@ enum kmhal_hidl_android_status kmhal_hidl_util_transact_and_unpack(
     return OK;
 }
 
-void kmhal_hidl_util_destroy_txn_tmps(
-        struct kmhal_hidl_binder_transaction **txn_p,
-        struct kmhal_hidl_parcel **parcel_p
-)
+void kmhal_hidl_util_destroy_txn_tmps(struct kmhal_binder_transaction **txn_p,
+                                      struct kmhal_hidl_parcel **parcel_p)
 {
-    kmhal_hidl_binder_transaction_destroy(txn_p);
+    kmhal_binder_transaction_destroy(txn_p);
     kmhal_hidl_parcel_destroy(parcel_p);
 }

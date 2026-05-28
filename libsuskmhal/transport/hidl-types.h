@@ -2,13 +2,16 @@
 #define SUSKEYMASTER_KMHAL_HIDL_TYPES_H_
 
 /**
- * A wrapper for HIDL types,
+ * A wrapper for common HIDL types,
  * and primitives to serialize and deserialize them.
  */
 
-#include "parcel.h"
+#ifndef SUSKEYMASTER_BUILD_HOST
+#include "hidl-parcel.h"
+#endif /* SUSKEYMASTER_BUILD_HOST */
 #include <core/int.h>
 #include <stddef.h>
+#include <assert.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -20,14 +23,16 @@ struct kmhal_hidl_string {
     u32 length;
     u32 owns_buffer;
 };
-_Static_assert(offsetof(struct kmhal_hidl_string, buffer) == 0,
+static_assert(offsetof(struct kmhal_hidl_string, buffer) == 0,
         "Invalid offset of the buffer pointer in HIDL string");
-_Static_assert(offsetof(struct kmhal_hidl_string, length) == 8,
+static_assert(offsetof(struct kmhal_hidl_string, length) == 8,
         "Invalid offset of the length u32 in HIDL string");
-_Static_assert(offsetof(struct kmhal_hidl_string, owns_buffer) == 12,
+static_assert(offsetof(struct kmhal_hidl_string, owns_buffer) == 12,
         "Invalid offset of the `owns_buffer` u32 in HIDL string");
-_Static_assert(sizeof(struct kmhal_hidl_string) == 16,
+static_assert(sizeof(struct kmhal_hidl_string) == 16,
         "Invalid size of the HIDL string struct");
+
+#ifndef SUSKEYMASTER_BUILD_HOST
 
 /**
  * Write objects for an HIDL string struct and its contents into the parcel.
@@ -130,6 +135,8 @@ int kmhal_hidl_string_read_embedded(const char **out,
                                     kmhal_hidl_parcel_obj_t parent_handle,
                                     size_t parent_offset);
 
+#endif /* SUSKEYMASTER_BUILD_HOST */
+
 /* The C struct representation of the HIDL vec type */
 struct kmhal_hidl_vec {
     const void *buffer;
@@ -138,13 +145,13 @@ struct kmhal_hidl_vec {
 };
 
 #define KMHAL_HIDL_VEC_LAYOUT_ASSERTS(T)                        \
-_Static_assert(offsetof(T, buffer) == 0,                        \
+static_assert(offsetof(T, buffer) == 0,                        \
         "Invalid offset of the buffer pointer in HIDL vec");    \
-_Static_assert(offsetof(T, size) == 8,                          \
+static_assert(offsetof(T, size) == 8,                          \
         "Invalid offset of the size u32 in HIDL vec");          \
-_Static_assert(offsetof(T, owns_buffer) == 12,                  \
+static_assert(offsetof(T, owns_buffer) == 12,                  \
         "Invalid offset of the `owns_buffer` u32 in HIDL vec"); \
-_Static_assert(sizeof(T) == 16,                                 \
+static_assert(sizeof(T) == 16,                                 \
         "Invalid size of the HIDL vec struct")
 KMHAL_HIDL_VEC_LAYOUT_ASSERTS(struct kmhal_hidl_vec);
 
@@ -192,6 +199,8 @@ KMHAL_HIDL_VEC_LAYOUT_ASSERTS(struct kmhal_hidl_vec);
 KMHAL_HIDL_VEC_OF_DECL(uint8_t);
 KMHAL_HIDL_VEC_OF_STRUCT_DECL(kmhal_hidl_string);
 KMHAL_HIDL_VEC_OF_VEC_OF_DECL(uint8_t);
+
+#ifndef SUSKEYMASTER_BUILD_HOST
 
 /**
  * Write objects for both the HIDL vec struct and its contents into the parcel.
@@ -320,6 +329,8 @@ int kmhal_hidl_vec_read_embedded(const void **out,
                                                                     \
     kmhal_hidl_vec_read_embedded(out, out_ref, parcel, parent_vec,  \
             sizeof(T), parent_handle, parent_offset, child_hint)
+
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
 #ifdef __cplusplus
 } /* extern "C" */

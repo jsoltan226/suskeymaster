@@ -5,9 +5,9 @@
  * HIDL HAL - A wrapper around HIDL HAL handles and transactions.
  */
 
-#include "base.h"
-#include "parcel.h"
-#include "binderif.h"
+#include "binder.h"
+#include "hidl-base.h"
+#include "hidl-parcel.h"
 #include "hidl-types.h"
 #include <core/int.h>
 #include <core/log.h>
@@ -50,7 +50,7 @@ struct kmhal_hidl_hal_sp * kmhal_hidl_hal_sp_new_empty(void);
  */
 struct kmhal_hidl_hal_sp *
 kmhal_hidl_hal_sp_new_get(const char *fqname, const char *instname,
-                          struct kmhal_hidl_binder_ctx *opt_existing_binder,
+                          struct kmhal_binder_ctx *opt_existing_binder,
                           bool owns_existing_binder);
 
 /**
@@ -256,7 +256,7 @@ kmhal_hidl_hal_arg_parse_hidl_string(const struct kmhal_hidl_parcel *p,
  *
  * @return @hal's binder device context.
  */
-struct kmhal_hidl_binder_ctx *
+struct kmhal_binder_ctx *
 kmhal_hidl_hal_get_binder(struct kmhal_hidl_hal_sp *hal,
                           bool *opt_out_owns_binder);
 
@@ -273,7 +273,7 @@ kmhal_hidl_hal_get_binder(struct kmhal_hidl_hal_sp *hal,
  *  automatically during @hal's destruction.
  */
 void kmhal_hidl_hal_set_binder(struct kmhal_hidl_hal_sp *hal,
-                               struct kmhal_hidl_binder_ctx *binder,
+                               struct kmhal_binder_ctx *binder,
                                bool owns_binder);
 
 /**

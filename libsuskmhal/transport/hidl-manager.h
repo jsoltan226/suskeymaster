@@ -5,8 +5,8 @@
  * A wrapper around some of the HIDL IServiceManager calls.
  */
 
-#include "base.h"
-#include "binderif.h"
+#include "binder.h"
+#include "hidl-base.h"
 #include "hidl-types.h"
 
 #ifdef __cplusplus
@@ -19,9 +19,7 @@ extern "C" {
  *
  * @param txn The binder transaction context to write into.
  */
-void kmhal_hidl_manager_write_acquire(
-        struct kmhal_hidl_binder_transaction *txn
-);
+void kmhal_hidl_manager_write_acquire(struct kmhal_binder_transaction *txn);
 
 /**
  * Writes the DECREFS and RELEASE commands for the hwservicemanager handle.
@@ -29,9 +27,7 @@ void kmhal_hidl_manager_write_acquire(
  *
  * @param txn The binder transaction context to write into.
  */
-void kmhal_hidl_manager_write_release(
-        struct kmhal_hidl_binder_transaction *txn
-);
+void kmhal_hidl_manager_write_release(struct kmhal_binder_transaction *txn);
 
 /**
  * Calls the hwservicemanager method:
@@ -55,15 +51,14 @@ void kmhal_hidl_manager_write_release(
  * @return `OK` on success, anything else means failure.
  *  See `enum kmhal_hidl_android_status`.
  */
-enum kmhal_hidl_android_status kmhal_hidl_manager_get(
-        struct kmhal_hidl_binder_ctx *binder,
-        struct kmhal_hidl_binder_transaction **txn_p,
+enum kmhal_hidl_android_status
+kmhal_hidl_manager_get(struct kmhal_binder_ctx *binder,
+                       struct kmhal_binder_transaction **txn_p,
 
-        const char *in_fqName,
-        const char *in_name, /* Instance name */
+                       const char *in_interface_name,
+                       const char *in_instance_name,
 
-        u32 *out_service
-);
+                       u32 *out_handle);
 
 /**
  * Calls the hwservicemanager method:
@@ -94,8 +89,8 @@ enum kmhal_hidl_android_status kmhal_hidl_manager_get(
  *  See `enum kmhal_hidl_android_status`.
  */
 enum kmhal_hidl_android_status kmhal_hidl_manager_list(
-        struct kmhal_hidl_binder_ctx *binder,
-        struct kmhal_hidl_binder_transaction **txn_p,
+        struct kmhal_binder_ctx *binder,
+        struct kmhal_binder_transaction **txn_p,
 
         const KMHAL_HIDL_VEC_OF_STRUCT(kmhal_hidl_string) **out_fqInstanceNames
 );
@@ -121,8 +116,8 @@ enum kmhal_hidl_android_status kmhal_hidl_manager_list(
  *  See `enum kmhal_hidl_android_status`.
  */
 enum kmhal_hidl_android_status kmhal_hidl_manager_list_by_interface(
-        struct kmhal_hidl_binder_ctx *binder,
-        struct kmhal_hidl_binder_transaction **txn_p,
+        struct kmhal_binder_ctx *binder,
+        struct kmhal_binder_transaction **txn_p,
 
         const char *in_interface_name,
 

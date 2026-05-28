@@ -1,16 +1,17 @@
 #define OPENSSL_API_COMPAT 0x10002000L
 #define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
-#include <libsuskmhal/hidl/hidl-hal.hpp>
+#include <libsuskmhal/transport/km-hidl-hal.hpp>
 #include <android/hardware/keymaster/generic/types.h>
-#include <endian.h>
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#ifndef SUSKEYMASTER_BUILD_WINDOWS
 #include <iomanip>
 #include <sstream>
 #include <linux/unistd.h>
 #include <linux/fscrypt.h>
+#endif /* SUSKEYMASTER_BUILD_WINDOWS */
 #include <openssl/sha.h>
 
 namespace suskeymaster {
@@ -38,6 +39,7 @@ typedef int32_t key_serial_t;
 /* keyctl commands */
 #define KEYCTL_SEARCH            10    /* search for a key in a keyring */
 
+#ifndef SUSKEYMASTER_BUILD_WINDOWS
 static int derive_key_ref(hidl_vec<u8> const& key, hidl_vec<u8>& out);
 
 static std::string get_key_name(const char *prefix, hidl_vec<u8> const& ref);
@@ -49,6 +51,7 @@ static long keyctl_search(key_serial_t ringid,
 static key_serial_t add_key(const char *type, const char *description,
                             const void *payload, size_t plen,
                             key_serial_t ringid);
+#endif /* SUSKEYMASTER_BUILD_WINDOWS */
 
 int generate_app_id(hidl_vec<u8> const& in_secdiscardable,
         hidl_vec<u8> const& in_secret,
@@ -152,6 +155,7 @@ int decrypt_ce_key(
 
 int fscrypt_legacy_install_key(hidl_vec<u8> const& key)
 {
+#ifndef SUSKEYMASTER_BUILD_WINDOWS
     if (key.size() != FSCRYPT_MAX_KEY_SIZE) {
         std::cerr << "Invalid fscrypt key" << std::endl;
         return EXIT_FAILURE;
@@ -193,8 +197,13 @@ int fscrypt_legacy_install_key(hidl_vec<u8> const& key)
     }
 
     return EXIT_SUCCESS;
+#else
+    std::cerr << __func__ << " is not implemented on windows" << std::endl;
+    return EXIT_FAILURE;
+#endif /* SUSKEYMASTER_BUILD_WINDOWS */
 }
 
+#ifndef SUSKEYMASTER_BUILD_WINDOWS
 static int derive_key_ref(hidl_vec<u8> const& key, hidl_vec<u8>& out)
 {
     static_assert(FSCRYPT_KEY_DESCRIPTOR_SIZE <= SHA512_DIGEST_LENGTH,
@@ -258,6 +267,7 @@ static key_serial_t add_key(const char *type, const char *description,
     return syscall(__NR_add_key,
                type, description, payload, plen, ringid);
 }
+#endif /* SUSKEYMASTER_BUILD_WINDOWS */
 
 } /* namespace vold */
 } /* namespace cli */
