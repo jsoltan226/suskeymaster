@@ -16,7 +16,6 @@ INCLUDES ?=
 ifeq ($(PLATFORM), linux)
 INCLUDES += -I$(PREFIX)/include/libdrm
 endif
-INCLUDES += -I$(PWD)/aosp-headers/include-base -I$(PWD)/aosp-headers/include-keymaster
 INCLUDES += -I$(PWD)/cgd
 INCLUDES += -I$(PWD)/libsuscertmod/include
 INCLUDES += -I$(PWD)/libsuskmhal/include

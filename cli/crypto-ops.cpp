@@ -1,9 +1,8 @@
-#define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
 #include <libsuskmhal/util/km-params.hpp>
+#include <libsuskmhal/util/keymaster-types-cpp.hpp>
 #include <libsuskmhal/transport/km-hidl-hal.hpp>
-#include <hidl/HidlSupport.h>
-#include <android/hardware/keymaster/generic/types.h>
+#include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <cstring>
 
 namespace suskeymaster {

@@ -3,15 +3,15 @@
 
 #include <core/log.h>
 #include <libsuskmhal/util/km-params.hpp>
+#include <libsuskmhal/util/keymaster-types-cpp.hpp>
 #include <libsuskmhal/transport/hidl-base.h>
 #include <libsuskmhal/transport/km-hidl-hal.hpp>
+#include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <libsuscertmod/samsung-sus-indata.h>
 #include <vector>
 #include <string>
 #include <cstring>
 #include <cstdint>
-#include <hidl/HidlSupport.h>
-#include <android/hardware/keymaster/generic/types.h>
 #include <openssl/evp.h>
 #include <openssl/asn1.h>
 #include <openssl/crypto.h>

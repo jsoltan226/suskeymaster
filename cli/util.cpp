@@ -1,8 +1,7 @@
 #define OPENSSL_API_COMPAT 0x10002000L
-#define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
 #include "endian.h"
-#include <hidl/HidlSupport.h>
+#include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <cstdio>
 #include <cstring>
 #ifdef SUSKEYMASTER_BUILD_ANDROID

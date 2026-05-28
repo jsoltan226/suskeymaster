@@ -1,4 +1,3 @@
-#define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
 #include <core/vector.h>
 #include <libsuscertmod/key-desc.h>
@@ -6,8 +5,7 @@
 #include <libsuskmhal/util/km-params.hpp>
 #include <libsuskmhal/util/keymaster-types-c.h>
 #include <libsuskmhal/transport/km-hidl-hal.hpp>
-#include <hidl/HidlSupport.h>
-#include <android/hardware/keymaster/generic/types.h>
+#include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <ctime>
 #include <cstdio>
 #include <cstdlib>

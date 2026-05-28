@@ -1,14 +1,14 @@
 #define OPENSSL_API_COMPAT 0x10002000L
-#define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
+#include <libsuskmhal/util/keymaster-types-cpp.hpp>
 #include <libsuskmhal/transport/km-hidl-hal.hpp>
-#include <android/hardware/keymaster/generic/types.h>
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
 #ifndef SUSKEYMASTER_BUILD_WINDOWS
 #include <iomanip>
 #include <sstream>
+#include <unistd.h>
 #include <linux/unistd.h>
 #include <linux/fscrypt.h>
 #endif /* SUSKEYMASTER_BUILD_WINDOWS */

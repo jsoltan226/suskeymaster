@@ -1,7 +1,6 @@
 #pragma once
 
-#define HIDL_DISABLE_INSTRUMENTATION
-#include <android/hidl/base/1.0/types.h>
+#include <libsuskmhal/transport/aosp-hidl-support.hpp>
 
 namespace suskeymaster {
     int sus_keymaster_hack_cert_chain(

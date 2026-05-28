@@ -1,7 +1,5 @@
 CompileFlags:
   Add:
-    - "-Iaosp-headers/include-base"
-    - "-Iaosp-headers/include-keymaster"
     - "-Icgd"
     - "-Ilibsuscertsign/include"
     - "-Ilibgenericutil/include"

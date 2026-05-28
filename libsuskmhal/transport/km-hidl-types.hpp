@@ -1,12 +1,13 @@
 #ifndef SUSKEYMASTER_KMHAL_HIDL_KEYMASTER_HIDL_H_
 #define SUSKEYMASTER_KMHAL_HIDL_KEYMASTER_HIDL_H_
 
-#include "../util/keymaster-types-c.h"
+#ifndef SUSKEYMASTER_BUILD_HOST
+
 #include "hidl-types.h"
 #include "hidl-parcel.h"
+#include "../util/keymaster-types-c.h"
 #include <core/int.h>
 #include <core/log.h>
-#include <android/hardware/keymaster/generic/types.h>
 #include <cstddef>
 #include <cstring>
 
@@ -629,5 +630,7 @@ int read_verification_token(const struct kmhal_hidl_parcel *p,
 
     return 0;
 }
+
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
 #endif /* SUSKEYMASTER_KMHAL_HIDL_KEYMASTER_HIDL_H_ */

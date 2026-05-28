@@ -1,9 +1,7 @@
-#define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
 #include "endian.h"
 #include <core/int.h>
 #include <core/util.h>
-#include <hidl/HidlSupport.h>
 #ifndef SUSKEYMASTER_BUILD_HOST
 #include <libsuskmhal/transport/hidl-hal.h>
 #include <libsuskmhal/transport/hidl-base.h>
@@ -11,7 +9,8 @@
 #include <libsuskmhal/transport/km-hidl-hal.hpp>
 #include <libsuskmhal/transport/km-hidl-types.hpp>
 #endif /* SUSKEYMASTER_BUILD_HOST */
-#include <android/hardware/keymaster/generic/types.h>
+#include <libsuskmhal/util/keymaster-types-cpp.hpp>
+#include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <cstdio>
 #include <cstdlib>
 #include <cstdint>

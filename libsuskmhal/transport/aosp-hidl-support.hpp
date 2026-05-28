@@ -1,3 +1,6 @@
+/** Code stole from AOSP headers (hidl/HidlSupport.h).
+ * Includes only code relevant for hidl_string and hidl_vec<T>. **/
+
 /*
  * Copyright (C) 2016 The Android Open Source Project
  *
@@ -22,7 +25,6 @@
 #include <cassert>
 #include <exception>
 #include <iterator>
-#include <hidl/HidlInternal.h>
 #include <map>
 #include <sstream>
 #include <stddef.h>
@@ -31,116 +33,135 @@
 #include <vector>
 #include <cstdint>
 #include <cstring>
-#include <climits>
 #include <iostream>
+
+namespace android {
+namespace hardware {
+namespace details {
+
+// tag for pure interfaces (e.x. IFoo)
+struct i_tag {};
+
+// tag for server interfaces (e.x. BnHwFoo)
+struct bnhw_tag {};
+
+// tag for proxy interfaces (e.x. BpHwFoo)
+struct bphw_tag {};
+
+// tag for passthrough interfaces (e.x. BsFoo)
+struct bs_tag {};
+
+//Templated classes can use the below method
+//to avoid creating dependencies on liblog.
+inline void logAlwaysFatal(const char *message)
+{
+    std::cerr << message << std::endl;
+    std::terminate();
+}
+
+// Returns VNDK-SP hw path according to "ro.vndk.version"
+#if defined(__LP64__)
+std::string getVndkSpHwPath(const char* lib = "lib64");
+#else
+std::string getVndkSpHwPath(const char* lib = "lib");
+#endif
+
+// Explicitly invokes the parameterized element's destructor;
+// intended to be used alongside the placement new operator.
+template<typename T>
+void destructElement(T* element) {
+    if (element != nullptr) {
+        element->~T();
+    }
+}
+
+// HIDL client/server code should *NOT* use this class.
+//
+// hidl_pointer wraps a pointer without taking ownership,
+// and stores it in a union with a uint64_t. This ensures
+// that we always have enough space to store a pointer,
+// regardless of whether we're running in a 32-bit or 64-bit
+// process.
+template<typename T>
+struct hidl_pointer {
+    hidl_pointer()
+        : _pad(0) {
+        static_assert(sizeof(*this) == 8, "wrong size");
+    }
+    hidl_pointer(T* ptr) : hidl_pointer() { mPointer = ptr; }
+    hidl_pointer(const hidl_pointer<T>& other) : hidl_pointer() { mPointer = other.mPointer; }
+    hidl_pointer(hidl_pointer<T>&& other) noexcept : hidl_pointer() { *this = std::move(other); }
+
+    hidl_pointer &operator=(const hidl_pointer<T>& other) {
+        mPointer = other.mPointer;
+        return *this;
+    }
+    hidl_pointer& operator=(hidl_pointer<T>&& other) noexcept {
+        mPointer = other.mPointer;
+        other.mPointer = nullptr;
+        return *this;
+    }
+    hidl_pointer &operator=(T* ptr) {
+        mPointer = ptr;
+        return *this;
+    }
+
+    operator T*() const {
+        return mPointer;
+    }
+    explicit operator void*() const { // requires explicit cast to avoid ambiguity
+        return mPointer;
+    }
+    T& operator*() const {
+        return *mPointer;
+    }
+    T* operator->() const {
+        return mPointer;
+    }
+    T &operator[](size_t index) {
+        return mPointer[index];
+    }
+    const T &operator[](size_t index) const {
+        return mPointer[index];
+    }
+
+private:
+    union {
+        T* mPointer;
+        uint64_t _pad;
+    };
+};
+
+#define HAL_LIBRARY_PATH_SYSTEM_64BIT "/system/lib64/hw/"
+#define HAL_LIBRARY_PATH_SYSTEM_EXT_64BIT "/system_ext/lib64/hw/"
+#define HAL_LIBRARY_PATH_VENDOR_64BIT "/vendor/lib64/hw/"
+#define HAL_LIBRARY_PATH_ODM_64BIT    "/odm/lib64/hw/"
+#define HAL_LIBRARY_PATH_SYSTEM_32BIT "/system/lib/hw/"
+#define HAL_LIBRARY_PATH_SYSTEM_EXT_32BIT "/system_ext/lib/hw/"
+#define HAL_LIBRARY_PATH_VENDOR_32BIT "/vendor/lib/hw/"
+#define HAL_LIBRARY_PATH_ODM_32BIT    "/odm/lib/hw/"
+
+#if defined(__LP64__)
+#define HAL_LIBRARY_PATH_SYSTEM HAL_LIBRARY_PATH_SYSTEM_64BIT
+#define HAL_LIBRARY_PATH_SYSTEM_EXT HAL_LIBRARY_PATH_SYSTEM_EXT_64BIT
+#define HAL_LIBRARY_PATH_VENDOR HAL_LIBRARY_PATH_VENDOR_64BIT
+#define HAL_LIBRARY_PATH_ODM    HAL_LIBRARY_PATH_ODM_64BIT
+#else
+#define HAL_LIBRARY_PATH_SYSTEM HAL_LIBRARY_PATH_SYSTEM_32BIT
+#define HAL_LIBRARY_PATH_SYSTEM_EXT HAL_LIBRARY_PATH_SYSTEM_EXT_32BIT
+#define HAL_LIBRARY_PATH_VENDOR HAL_LIBRARY_PATH_VENDOR_32BIT
+#define HAL_LIBRARY_PATH_ODM    HAL_LIBRARY_PATH_ODM_32BIT
+#endif
 
 // no requirements on types not used in scatter/gather
 // no requirements on other libraries
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wpadded"
-#include <cutils/native_handle.h>
-#include <hidl/Status.h>
-#include <utils/Errors.h>
-#include <utils/RefBase.h>
-#include <utils/StrongPointer.h>
 #pragma clang diagnostic pop
 
-namespace android {
+} /* namespace details */
 
-// this file is included by all hidl interface, so we must forward declare the
-// IMemory and IBase types.
-namespace hidl {
-namespace memory {
-namespace V1_0 {
-
-struct IMemory;
-
-}  // namespace V1_0
-}  // namespace memory
-}  // namespace hidl
-
-namespace hidl {
-namespace base {
-namespace V1_0 {
-
-struct IBase;
-
-}  // namespace V1_0
-}  // namespace base
-}  // namespace hidl
-
-namespace hardware {
-
-namespace details {
-// Return true on userdebug / eng builds and false on user builds.
-bool debuggable();
-} //  namespace details
-
-// hidl_death_recipient is a callback interfaced that can be used with
-// linkToDeath() / unlinkToDeath()
-struct hidl_death_recipient : public virtual RefBase {
-    virtual void serviceDied(uint64_t cookie,
-            const ::android::wp<::android::hidl::base::V1_0::IBase>& who) = 0;
-};
-
-// hidl_handle wraps a pointer to a native_handle_t in a hidl_pointer,
-// so that it can safely be transferred between 32-bit and 64-bit processes.
-// The ownership semantics for this are:
-// 1) The conversion constructor and assignment operator taking a const native_handle_t*
-//    do not take ownership of the handle; this is because these operations are usually
-//    just done for IPC, and cloning by default is a waste of resources. If you want
-//    a hidl_handle to take ownership, call setTo(handle, true /*shouldOwn*/);
-// 2) The copy constructor/assignment operator taking a hidl_handle *DO* take ownership;
-//    that is because it's not intuitive that this class encapsulates a native_handle_t
-//    which needs cloning to be valid; in particular, this allows constructs like this:
-//    hidl_handle copy;
-//    foo->someHidlCall([&](auto incoming_handle) {
-//            copy = incoming_handle;
-//    });
-//    // copy and its enclosed file descriptors will remain valid here.
-// 3) The move constructor does what you would expect; it only owns the handle if the
-//    original did.
 static const char *const kEmptyString = "";
-struct hidl_handle {
-    hidl_handle();
-    ~hidl_handle();
-
-    hidl_handle(const native_handle_t *handle);
-
-    // copy constructor.
-    hidl_handle(const hidl_handle &other);
-
-    // move constructor.
-    hidl_handle(hidl_handle &&other) noexcept;
-
-    // assignment operators
-    hidl_handle &operator=(const hidl_handle &other);
-
-    hidl_handle &operator=(const native_handle_t *native_handle);
-
-    hidl_handle &operator=(hidl_handle &&other) noexcept;
-
-    void setTo(native_handle_t* handle, bool shouldOwn = false);
-
-    const native_handle_t* operator->() const;
-
-    // implicit conversion to const native_handle_t*
-    operator const native_handle_t *() const;
-
-    // explicit conversion
-    const native_handle_t *getNativeHandle() const;
-
-    // offsetof(hidl_handle, mHandle) exposed since mHandle is private.
-    static const size_t kOffsetOfNativeHandle;
-
-private:
-    void freeHandle();
-
-    details::hidl_pointer<const native_handle_t> mHandle;
-    bool mOwnsHandle;
-    uint8_t mPad[7];
-};
-
 struct hidl_string {
     hidl_string() : mBuffer(kEmptyString), mSize(0), mOwnsBuffer(false) {
         memset(mPad, 0, sizeof(mPad));
@@ -322,127 +343,6 @@ HIDL_STRING_OPERATOR(>)
 HIDL_STRING_OPERATOR(>=)
 
 #undef HIDL_STRING_OPERATOR
-
-// Send our content to the output stream
-std::ostream& operator<<(std::ostream& os, const hidl_string& str);
-
-
-// hidl_memory is a structure that can be used to transfer
-// pieces of shared memory between processes. The assumption
-// of this object is that the memory remains accessible as
-// long as the file descriptors in the enclosed mHandle
-// - as well as all of its cross-process dups() - remain opened.
-struct hidl_memory {
-
-    hidl_memory() : mHandle(nullptr), mSize(0), mName("") {
-    }
-
-    /**
-     * Creates a hidl_memory object whose handle has the same lifetime
-     * as the handle moved into it.
-     */
-    hidl_memory(const hidl_string& name, hidl_handle&& handle, size_t size)
-        : mHandle(std::move(handle)), mSize(size), mName(name) {}
-
-    /**
-     * Creates a hidl_memory object, but doesn't take ownership of
-     * the passed in native_handle_t; callers are responsible for
-     * making sure the handle remains valid while this object is
-     * used.
-     */
-    hidl_memory(const hidl_string &name, const native_handle_t *handle, size_t size)
-      :  mHandle(handle),
-         mSize(size),
-         mName(name)
-    {}
-
-    // copy constructor
-    hidl_memory(const hidl_memory& other) {
-        *this = other;
-    }
-
-    // copy assignment
-    hidl_memory &operator=(const hidl_memory &other) {
-        if (this != &other) {
-            mHandle = other.mHandle;
-            mSize = other.mSize;
-            mName = other.mName;
-        }
-
-        return *this;
-    }
-
-    // move constructor
-    hidl_memory(hidl_memory&& other) noexcept {
-        *this = std::move(other);
-    }
-
-    // move assignment
-    hidl_memory &operator=(hidl_memory &&other) noexcept {
-        if (this != &other) {
-            mHandle = std::move(other.mHandle);
-            mSize = other.mSize;
-            mName = std::move(other.mName);
-            other.mSize = 0;
-        }
-
-        return *this;
-    }
-
-
-    ~hidl_memory() {
-    }
-
-    const native_handle_t* handle() const {
-        return mHandle;
-    }
-
-    const hidl_string &name() const {
-        return mName;
-    }
-
-    uint64_t size() const {
-        return mSize;
-    }
-
-    // @return true if it's valid
-    inline bool valid() const { return handle() != nullptr; }
-
-    // offsetof(hidl_memory, mHandle) exposed since mHandle is private.
-    static const size_t kOffsetOfHandle;
-    // offsetof(hidl_memory, mName) exposed since mHandle is private.
-    static const size_t kOffsetOfName;
-
-private:
-    hidl_handle mHandle;
-    uint64_t mSize;
-    hidl_string mName;
-};
-
-// HidlMemory is a wrapper class to support sp<> for hidl_memory. It also
-// provides factory methods to create an instance from hidl_memory or
-// from a opened file descriptor. The number of factory methods can be increase
-// to support other type of hidl_memory without break the ABI.
-class HidlMemory : public virtual hidl_memory, public virtual ::android::RefBase {
-public:
-    static sp<HidlMemory> getInstance(const hidl_memory& mem);
-
-    static sp<HidlMemory> getInstance(hidl_memory&& mem);
-
-    static sp<HidlMemory> getInstance(const hidl_string& name, hidl_handle&& handle, uint64_t size);
-    // @param fd, shall be opened and points to the resource.
-    // @note this method takes the ownership of the fd and will close it in
-    //     destructor
-    // @return nullptr in failure with the fd closed
-    static sp<HidlMemory> getInstance(const hidl_string& name, int fd, uint64_t size);
-
-    virtual ~HidlMemory();
-
-protected:
-    HidlMemory();
-    HidlMemory(const hidl_string& name, hidl_handle&& handle, size_t size);
-};
-////////////////////////////////////////////////////////////////////////////////
 
 template<typename T>
 struct hidl_vec {
@@ -1094,21 +994,6 @@ inline std::string toString(const void *t) {
 // debug string dump. There will be quotes around the string!
 inline std::string toString(const hidl_string &hs) {
     return std::string{"\""} + hs.c_str() + "\"";
-}
-
-// debug string dump
-inline std::string toString(const hidl_handle &hs) {
-    return toString(hs.getNativeHandle());
-}
-
-inline std::string toString(const hidl_memory &mem) {
-    return std::string{"memory {.name = "} + toString(mem.name()) + ", .size = "
-              + toString(mem.size())
-              + ", .handle = " + toString(mem.handle()) + "}";
-}
-
-inline std::string toString(const sp<hidl_death_recipient> &dr) {
-    return std::string{"death_recipient@"} + toString(dr.get());
 }
 
 // debug string dump, assuming that toString(T) is defined.

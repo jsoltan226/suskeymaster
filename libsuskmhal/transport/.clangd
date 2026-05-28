@@ -1,12 +1,9 @@
 CompileFlags:
   Add:
-    - "-I../../aosp-headers/include-base"
-    - "-I../../aosp-headers/include-keymaster"
     - "-I../../cgd"
     - "-Wpedantic"
     - "-Wall"
     - "-Wno-c11-extensions"
-    - "-DSUSKEYMASTER_BUILD_HOST"
 
 Diagnostics:
   Includes:

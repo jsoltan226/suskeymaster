@@ -5,8 +5,8 @@
 #include <core/vector.h>
 #include <libsuscertmod/keybox.h>
 #include <libsuscertmod/certmod.h>
+#include <libsuskmhal/util/keymaster-types-cpp.hpp>
 #include <libsuscertmod/samsung-sus-indata.h>
-#include <android/hardware/keymaster/generic/types.h>
 #include <android/log.h>
 #include <cstdint>
 #include <cstring>

@@ -1,10 +1,9 @@
 #ifndef SUSKEYMASTER_HIDL_HAL_HPP_
 #define SUSKEYMASTER_HIDL_HAL_HPP_
 
+#include "../util/keymaster-types-cpp.hpp"
 #include <cstdint>
-#include <utils/StrongPointer.h>
 
-#include <android/hardware/keymaster/generic/types.h>
 #ifndef SUSKEYMASTER_BUILD_HOST
 #include "hidl-hal.h"
 #endif /* SUSKEYMASTER_BUILD_HOST */

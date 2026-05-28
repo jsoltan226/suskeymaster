@@ -3,7 +3,7 @@
 
 #define HIDL_DISABLE_INSTRUMENTATION
 #include <openssl/asn1t.h>
-#include <hidl/HidlSupport.h>
+#include "..//transport/aosp-hidl-support.hpp"
 
 namespace suskeymaster {
 namespace kmhal {

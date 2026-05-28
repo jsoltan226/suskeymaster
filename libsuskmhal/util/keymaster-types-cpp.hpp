@@ -1,11 +1,8 @@
 #ifndef HIDL_GENERATED_ANDROID_HARDWARE_KEYMASTER_GENERIC_TYPES_H
 #define HIDL_GENERATED_ANDROID_HARDWARE_KEYMASTER_GENERIC_TYPES_H
 
-#include "../../../../../../libsuskmhal/util/km-tags-def.h"
-#include <hidl/HidlSupport.h>
-#include <hidl/MQDescriptor.h>
-#include <utils/NativeHandle.h>
-#include <utils/misc.h>
+#include "km-tags-def.h"
+#include "../transport/aosp-hidl-support.hpp"
 #include <cstdint>
 
 namespace android {

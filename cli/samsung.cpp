@@ -1,4 +1,3 @@
-#define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
 #include <core/log.h>
 #include <core/math.h>
@@ -7,8 +6,8 @@
 #include <libsuskmhal/util/samsung-utils.h>
 #include <libsuskmhal/util/keymaster-types-c.h>
 #include <libsuskmhal/util/samsung-sus-indata.hpp>
+#include <libsuskmhal/util/keymaster-types-cpp.hpp>
 #include <libsuskmhal/transport/km-hidl-hal.hpp>
-#include <android/hardware/keymaster/generic/types.h>
 #include <cstdarg>
 #include <cstdlib>
 #include <unordered_map>

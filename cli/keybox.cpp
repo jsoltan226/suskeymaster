@@ -1,10 +1,9 @@
-#define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
 #include <core/util.h>
 #include <core/vector.h>
 #include <libsuscertmod/keybox.h>
-#include <hidl/HidlSupport.h>
-#include <android/hardware/keymaster/generic/types.h>
+#include <libsuskmhal/util/keymaster-types-cpp.hpp>
+#include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <ctime>
 #include <string>
 #include <iosfwd>

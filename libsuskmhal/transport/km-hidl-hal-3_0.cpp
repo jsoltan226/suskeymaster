@@ -1,18 +1,17 @@
 #ifndef SUSKEYMASTER_HAL_DISABLE_3_0
-#define HIDL_DISABLE_INSTRUMENTATION
 #include "km-hidl-hal.hpp"
 #ifndef SUSKEYMASTER_BUILD_HOST
 #include "hidl-base.h"
 #include "hidl-hal.h"
 #include "km-hidl-types.hpp"
+#include "aosp-hidl-support.hpp"
+#include "../util/keymaster-types-cpp.hpp"
 #include <cstdint>
 using ::android::hardware::hidl_vec;
 #endif /* SUSKEYMASTER_BUILD_HOST */
 #include <core/int.h>
 #include <core/util.h>
 #include <core/vector.h>
-#include <hidl/HidlSupport.h>
-#include <android/hardware/keymaster/generic/types.h>
 #include <iostream>
 
 #define MODULE_NAME "keymaster-hidl-hal-3.0"

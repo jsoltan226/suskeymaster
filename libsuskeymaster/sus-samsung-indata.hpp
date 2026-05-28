@@ -3,7 +3,7 @@
 
 #include <core/int.h>
 #include <core/vector.h>
-#include <hidl/HidlSupport.h>
+#include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <cstdint>
 
 namespace suskeymaster {

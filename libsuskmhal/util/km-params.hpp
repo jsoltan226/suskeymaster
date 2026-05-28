@@ -4,10 +4,10 @@
 #define HIDL_DISABLE_INSTRUMENTATION
 
 #include "keymaster-types-c.h"
+#include "keymaster-types-cpp.hpp"
+#include "../transport/aosp-hidl-support.hpp"
 #include <vector>
 #include <cstdint>
-#include <hidl/HidlSupport.h>
-#include <android/hardware/keymaster/generic/types.h>
 
 namespace suskeymaster {
 namespace kmhal {

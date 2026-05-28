@@ -1,8 +1,8 @@
 #define HIDL_DISABLE_INSTRUMENTATION
 #include "km-params.hpp"
 #include "keymaster-types-c.h"
-#include <hidl/HidlSupport.h>
-#include <android/hardware/keymaster/generic/types.h>
+#include "keymaster-types-cpp.hpp"
+#include "../transport/aosp-hidl-support.hpp"
 #include <string>
 #include <strings.h>
 #include <vector>

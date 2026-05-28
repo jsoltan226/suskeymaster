@@ -1,11 +1,10 @@
-#define HIDL_DISABLE_INSTRUMENTATION
 #include "cli.hpp"
 #include "endian.h"
 #include <core/log.h>
 #include <libsuscertmod/certmod.h>
 #include <libsuskmhal/util/km-params.hpp>
+#include <libsuskmhal/util/keymaster-types-cpp.hpp>
 #include <libsuskmhal/transport/km-hidl-hal.hpp>
-#include <android/hardware/keymaster/generic/types.h>
 #include <strings.h>
 #include <cstdio>
 #include <string>
@@ -268,7 +267,15 @@ static const std::vector<cli_command> cmds = {
     },
     [](arg_map_t& a) {
         hidl_vec<uint8_t> keyblob;
-        if (cli::hal_ops::generate_key(*g_hal, a["generate_params"].in_key_params(), keyblob)) {
+        hidl_vec<KeyParameter> params = a["generate_params"].in_key_params();
+        /* Make temporary keys generated for attestation have a purpose by default,
+         * because many vendors implement their keymaster in such a way that
+         * attesting a key with no purpose generates a certificate
+         * with an empty KeyUsage extension, which OpenSSL rejects as "invalid certificate". */
+        kmhal::util::init_default_params(params,
+                { { Tag::PURPOSE, { KeyPurpose::SIGN, KeyPurpose::VERIFY }}});
+
+        if (cli::hal_ops::generate_key(*g_hal, params, keyblob)) {
             std::cerr << "Failed to generate ephemeral attested key!" << std::endl;
             return 1;
         }

@@ -3,14 +3,15 @@
 #include "keybox.h"
 #include "certmod.h"
 #include <libsuskmhal/util/keymaster-types-c.h>
+#include <libsuskmhal/util/keymaster-types-cpp.hpp>
 #include <libsuskmhal/transport/km-hidl-hal.hpp>
+#include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <core/int.h>
 #include <core/log.h>
 #include <core/util.h>
 #include <core/vector.h>
 #include <string.h>
-#include <hidl/HidlSupport.h>
-#include <android/hardware/keymaster/generic/types.h>
+#include <memory>
 
 #define MODULE_NAME "certsign"
 
