@@ -38,7 +38,7 @@ static int read_hidl_vec_of_hidl_string(
 static int read_handle(const struct kmhal_hidl_parcel *parcel,
         size_t *offset_p, u32 *out_handle);
 
-void kmhal_hidl_manager_write_acquire(struct kmhal_binder_transaction *txn)
+void kmhal_hidl_manager_write_acquire(struct kmhal_binder_txn *txn)
 {
     u_check_params(txn != NULL);
 
@@ -47,7 +47,7 @@ void kmhal_hidl_manager_write_acquire(struct kmhal_binder_transaction *txn)
 }
 
 void kmhal_hidl_manager_write_release(
-        struct kmhal_binder_transaction *txn
+        struct kmhal_binder_txn *txn
 )
 {
     kmhal_binder_write_release(txn, MGR_BINDER_HANDLE);
@@ -56,7 +56,7 @@ void kmhal_hidl_manager_write_release(
 
 enum kmhal_hidl_android_status
 kmhal_hidl_manager_get(struct kmhal_binder_ctx *binder,
-                       struct kmhal_binder_transaction **txn_p,
+                       struct kmhal_binder_txn **txn_p,
 
                        const char *in_interface_name,
                        const char *in_instance_name,
@@ -81,7 +81,7 @@ kmhal_hidl_manager_get(struct kmhal_binder_ctx *binder,
         .owns_buffer = false
     };
 
-    struct kmhal_binder_tr_sg_args_out reply = { 0 };
+    struct kmhal_binder_txn_args_out reply = { 0 };
     u32 handle = (u32)-1;
 
     if ((ret = kmhal_hidl_util_check_allocate_txn_tmps(txn_p, &parcel)) != OK)
@@ -138,7 +138,7 @@ err:
 
 enum kmhal_hidl_android_status kmhal_hidl_manager_list(
         struct kmhal_binder_ctx *binder,
-        struct kmhal_binder_transaction **txn_p,
+        struct kmhal_binder_txn **txn_p,
 
         const KMHAL_HIDL_VEC_OF_STRUCT(kmhal_hidl_string) **out_fqInstanceNames
 )
@@ -181,7 +181,7 @@ err:
 
 enum kmhal_hidl_android_status kmhal_hidl_manager_list_by_interface(
         struct kmhal_binder_ctx *binder,
-        struct kmhal_binder_transaction **txn_p,
+        struct kmhal_binder_txn **txn_p,
 
         const char *in_interface_name,
 

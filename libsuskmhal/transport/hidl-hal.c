@@ -20,7 +20,7 @@ struct kmhal_hidl_hal_sp {
     struct kmhal_binder_ctx *binder;
     bool owns_binder;
 
-    struct kmhal_binder_transaction *txn;
+    struct kmhal_binder_txn *txn;
 
     bool manager_acquired;
     u32 handle;
@@ -171,7 +171,7 @@ void kmhal_hidl_hal_sp_destroy(struct kmhal_hidl_hal_sp **hal_p)
                     "drop all the acquired binder references");
         }
     }
-    kmhal_binder_transaction_destroy(&hal->txn);
+    kmhal_binder_txn_destroy(&hal->txn);
 
 skip_binder_refs:
 

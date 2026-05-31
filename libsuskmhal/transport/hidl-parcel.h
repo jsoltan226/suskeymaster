@@ -82,7 +82,7 @@ struct kmhal_hidl_parcel * kmhal_hidl_parcel_new(void);
  *  NULL on allocation or parsing error.
  */
 struct kmhal_hidl_parcel * kmhal_hidl_parcel_new_from_reply(
-        const struct kmhal_binder_tr_sg_args_out *reply
+        const struct kmhal_binder_txn_args_out *reply
 );
 
 /**
@@ -262,7 +262,7 @@ kmhal_hidl_parcel_obj_find_by_offset(const struct kmhal_hidl_parcel *parcel,
  * @param handle Target binder object handle.
  * @param cmd Binder/HIDL transaction command ID.
  */
-void kmhal_hidl_parcel_pack(struct kmhal_binder_transaction *txn,
+void kmhal_hidl_parcel_pack(struct kmhal_binder_txn *txn,
                             struct kmhal_hidl_parcel *parcel,
                             u32 handle, u32 cmd);
 
@@ -287,7 +287,7 @@ void kmhal_hidl_parcel_pack(struct kmhal_binder_transaction *txn,
  *      negative value on API misuse or invalid state.
  */
 int kmhal_hidl_parcel_unpack(struct kmhal_hidl_parcel **parcel_p,
-                             struct kmhal_binder_tr_sg_args_out *out);
+                             struct kmhal_binder_txn_args_out *out);
 
 /* Read arbitrary data at an arbitrary offset from the parcel's buffer.
  * The offset doesn't have to be aligned.

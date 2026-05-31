@@ -21,7 +21,7 @@ struct kmhal_binder_ctx;
 /* A struct used to hold the context of a single binder transaction.
  * Internally, stores the serialized commands & data to be consumed
  * later by the `BINDER_WRITE_READ` ioctl call. */
-struct kmhal_binder_transaction;
+struct kmhal_binder_txn;
 
 /* Binder transaction data read buffer size */
 #define KMHAL_BINDER_TD_READ_BUF_SIZE (1024 * 1024)
@@ -97,38 +97,38 @@ bool kmhal_binder_ctx_ok(const struct kmhal_binder_ctx *ctx);
 /**
  * Create a new binder transaction context struct.
  * @return: New transaction context or NULL on failure */
-struct kmhal_binder_transaction * kmhal_binder_transaction_new(void);
+struct kmhal_binder_txn * kmhal_binder_txn_new(void);
 
 /**
  * Serialize `BC_ACQUIRE` command to increment strong reference count.
  * Call before using `handle`.
  */
-void kmhal_binder_write_acquire(struct kmhal_binder_transaction *txn,
+void kmhal_binder_write_acquire(struct kmhal_binder_txn *txn,
                                 u32 handle);
 
 /**
  * Serialize `BC_INCREFS` command to increment weak reference count.
  * Call before using `handle`.
  */
-void kmhal_binder_write_increfs(struct kmhal_binder_transaction *txn,
+void kmhal_binder_write_increfs(struct kmhal_binder_txn *txn,
                                 u32 handle);
 
 /**
  * Serialize `BC_RELEASE` command to decrement strong reference count.
  * Call after using `handle` if `BC_INCREFS` was previously used.
  */
-void kmhal_binder_write_release(struct kmhal_binder_transaction *txn,
+void kmhal_binder_write_release(struct kmhal_binder_txn *txn,
                                 u32 handle);
 
 /**
  * Serialize BC_DECREFS command to decrement weak reference count.
  * Call after using `handle` if `BC_ACQUIRE` was previously used.
  */
-void kmhal_binder_write_decrefs(struct kmhal_binder_transaction *txn,
+void kmhal_binder_write_decrefs(struct kmhal_binder_txn *txn,
                                 u32 handle);
 
 /* The binder transaction input data */
-struct kmhal_binder_tr_sg_args_in {
+struct kmhal_binder_txn_args_in {
     u32 handle; /* Target object handle */
     u32 cmd; /* Command ID */
     u32 flags; /* Transaction flags */
@@ -136,66 +136,80 @@ struct kmhal_binder_tr_sg_args_in {
     void *data_buf; /* Transaction data */
     binder_size_t data_size; /* Number of bytes of transaction data */
 
-    /* Offsets from buffer to any `flat_binder_object` structs */
+    /* Offsets from buffer to any binder objects */
     binder_size_t *offsets_buf;
     size_t offsets_count; /* Number of offsets */
 
-    /* The total size of all scatter-gather `flat_binder_object`s */
+    /* The total size of all scatter-gather binder objects,
+     * used with `kmhal_binder_write_transact_sg`. Ignored otherwise. */
     binder_size_t sg_buffers_size;
 };
 
 /* Binder transaction status */
-enum kmhal_binder_tr_sg_status {
-    KMHAL_BINDER_TR_SG_UNINITIALIZED = 0,
-    KMHAL_BINDER_TR_SG_PENDING = 1,
-    KMHAL_BINDER_TR_SG_OK = 2,
-    KMHAL_BINDER_TR_SG_FAILED = 3
+enum kmhal_binder_txn_status {
+    KMHAL_BINDER_TXN_UNINITIALIZED = 0,
+    KMHAL_BINDER_TXN_PENDING = 1,
+    KMHAL_BINDER_TXN_OK = 2,
+    KMHAL_BINDER_TXN_FAILED = 3
 };
 /* Binder transaction output data */
-struct kmhal_binder_tr_sg_args_out {
-    enum kmhal_binder_tr_sg_status status; /* Transaction status */
+struct kmhal_binder_txn_args_out {
+    enum kmhal_binder_txn_status status; /* Transaction status */
 
     u32 flags; /* Flags decribing the data, such as `TF_STATUS_CODE` */
 
     const void *data_buf; /* Transaction data */
     binder_size_t data_size; /* Number of bytes of transaction data */
 
-    /* Offsets from buffer to any `flat_binder_object` structs */
+    /* Offsets from buffer to any binder objects */
     const binder_size_t *offsets_buf;
     size_t offsets_count; /* Number of offsets */
 };
 
-/* A struct containing the parameter for `kmhal_binder_write_transact_sg` */
-struct kmhal_binder_tr_sg_args {
+/* A struct containing the parameter for `kmhal_binder_write_transact(_sg)` */
+struct kmhal_binder_txn_args {
     /* The transaction context struct, to which the serialized command
      * will be written.
      * Must be non-null. */
-    struct kmhal_binder_transaction *in_txn;
+    struct kmhal_binder_txn *in_txn;
 
     /* The binder transaction input data. Initialize appropriately. */
-    struct kmhal_binder_tr_sg_args_in in_data;
+    struct kmhal_binder_txn_args_in in_data;
 
     /* Data returned by the object.
      * This should be initialized to zero and read out
      * only after a successful ioctl call. */
-    struct kmhal_binder_tr_sg_args_out out_reply;
+    struct kmhal_binder_txn_args_out out_reply;
 };
 
 /**
- * Serialize `BC_TRANSACTION_SG` command for a transaction.
+ * Serialize the `BC_TRANSACTION` command for a standard binder transaction.
  *
- * `transact_sg_ctx` must not go out of scope until after the a call to
- * `kmhal_binder_write_read_ioctl` with the same `in_txn`.
+ * `arg->in_txn` and any referenced data must not go out of scope
+ *  until after the a call to `kmhal_binder_write_read_ioctl`
+ *  with the same `in_txn`.
  *
  * @return: 0 on success, non-zero on failure.
  */
-void kmhal_binder_write_transact_sg(struct kmhal_binder_tr_sg_args *arg);
+void kmhal_binder_write_transact(struct kmhal_binder_txn_args *arg);
 
 /**
- * Serialize `BC_FREE_BUFFER` command to free a reply buffer.
+ * Serialize the `BC_TRANSACTION_SG` command
+ * for a scatter-gather binder transaction.
+ *
+ * `arg->in_txn` and any referenced data must not go out of scope
+ *  until after the a call to `kmhal_binder_write_read_ioctl`
+ *  with the same `in_txn`.
+ *
+ * @return: 0 on success, non-zero on failure.
+ */
+void kmhal_binder_write_transact_sg(struct kmhal_binder_txn_args *arg);
+
+/**
+ * Serialize `BC_FREE_BUFFER` command to free a transaction reply buffer.
  * Must be in a separate ioctl than the transaction that created it.
  */
-void kmhal_binder_write_free_reply(struct kmhal_binder_transaction *txn,
+void kmhal_binder_write_free_reply(struct kmhal_binder_txn *txn,
                                    const void *reply);
 
 /**
@@ -204,7 +218,7 @@ void kmhal_binder_write_free_reply(struct kmhal_binder_transaction *txn,
  * @return: 0 on success, non-zero on failure.
  */
 int kmhal_binder_do_write_read_ioctl(struct kmhal_binder_ctx *ctx,
-                                     struct kmhal_binder_transaction **txn_p);
+                                     struct kmhal_binder_txn **txn_p);
 
 /**
  * Free the transaction context pointed to by `*txn_p`
@@ -213,7 +227,7 @@ int kmhal_binder_do_write_read_ioctl(struct kmhal_binder_ctx *ctx,
  * Note that this should not normally be called; the transaction context
  * is supposed to be destroyed in `kmhal_binder_write_read_ioctl`.
  */
-void kmhal_binder_transaction_destroy(struct kmhal_binder_transaction **txn_p);
+void kmhal_binder_txn_destroy(struct kmhal_binder_txn **txn_p);
 
 /**
  * Close and free a binder device context.

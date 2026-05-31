@@ -38,14 +38,14 @@ const char * kmhal_hidl_android_status_toString(i32 s)
 
 enum kmhal_hidl_android_status
 kmhal_hidl_base_ping(struct kmhal_binder_ctx *binder,
-                     struct kmhal_binder_transaction **txn_p,
+                     struct kmhal_binder_txn **txn_p,
                      u32 handle)
 {
     u_check_params(kmhal_binder_ctx_ok(binder) && txn_p != NULL);
 
     enum kmhal_hidl_android_status ret = UNKNOWN_ERROR;
     struct kmhal_hidl_parcel *parcel = NULL;
-    struct kmhal_binder_tr_sg_args_out reply = { 0 };
+    struct kmhal_binder_txn_args_out reply = { 0 };
 
     if ((ret = kmhal_hidl_util_check_allocate_txn_tmps(txn_p, &parcel)) != OK)
         goto err;
@@ -61,7 +61,7 @@ kmhal_hidl_base_ping(struct kmhal_binder_ctx *binder,
     }
 
     if (kmhal_hidl_parcel_unpack(&parcel, &reply) ||
-            reply.status != KMHAL_BINDER_TR_SG_OK)
+            reply.status != KMHAL_BINDER_TXN_OK)
     {
         ret = FAILED_TRANSACTION;
         goto_error("Failed to unpack the transaction result");
@@ -91,7 +91,7 @@ err:
 
 enum kmhal_hidl_android_status
 kmhal_hidl_base_get_descriptor(struct kmhal_binder_ctx *binder,
-                               struct kmhal_binder_transaction **txn_p,
+                               struct kmhal_binder_txn **txn_p,
                                u32 handle,
                                const struct kmhal_hidl_string **out_p)
 {

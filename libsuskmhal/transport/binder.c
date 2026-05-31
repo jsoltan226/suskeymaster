@@ -39,8 +39,7 @@ static void set_transaction_input_data(VECTOR(struct transaction_data) data,
 #define WR_FAIL_INVAL ((u32)(1 << 2))
 #define WR_FAIL_DEAD_OBJECT ((u32)(1 << 3))
 #define WR_FAIL_ERROR ((u32)(1 << 4))
-static u32 do_write_read_ioctl_loop(int fd,
-                                    struct kmhal_binder_transaction *txn);
+static u32 do_write_read_ioctl_loop(int fd, struct kmhal_binder_txn *txn);
 
 static int call_write_read_ioctl(int fd, struct binder_write_read *bwr);
 static void sanity_check_bwr_or_abort(const struct binder_write_read *bwr,
@@ -95,16 +94,16 @@ struct kmhal_binder_ctx {
 
 struct transaction_data {
     enum transaction_type {
-        TRANSACTION_SG,
+        TRANSACTION,
     } type;
     union {
         struct td_transaction_sg {
-            struct kmhal_binder_tr_sg_args_out *out_data;
+            struct kmhal_binder_txn_args_out *out_data;
             bool got_reply, got_tr_complete;
-        } tr_sg;
+        } txn;
     } data;
 };
-struct kmhal_binder_transaction {
+struct kmhal_binder_txn {
     VECTOR(u8) buf;
     VECTOR(struct transaction_data) data;
 };
@@ -221,11 +220,11 @@ err:
     return NULL;
 }
 
-struct kmhal_binder_transaction * kmhal_binder_transaction_new(void)
+struct kmhal_binder_txn * kmhal_binder_txn_new(void)
 {
-    struct kmhal_binder_transaction *ret = NULL;
+    struct kmhal_binder_txn *ret = NULL;
 
-    ret = malloc(sizeof(struct kmhal_binder_transaction));
+    ret = malloc(sizeof(struct kmhal_binder_txn));
     if (ret == NULL) {
         s_log_error("Failed to allocate a new binder transaction context");
         return NULL;
@@ -245,48 +244,76 @@ bool kmhal_binder_ctx_ok(const struct kmhal_binder_ctx *ctx)
         ctx->fail_flags == 0;
 }
 
-void kmhal_binder_write_acquire(struct kmhal_binder_transaction *txn,
+void kmhal_binder_write_acquire(struct kmhal_binder_txn *txn,
                                 u32 handle)
 {
     u_check_params(txn != NULL && txn->buf != NULL);
     write_generic_ref_cmd(BC_ACQUIRE, &txn->buf, handle);
 }
 
-void kmhal_binder_write_increfs(struct kmhal_binder_transaction *txn,
+void kmhal_binder_write_increfs(struct kmhal_binder_txn *txn,
                                 u32 handle)
 {
     u_check_params(txn != NULL && txn->buf != NULL);
     write_generic_ref_cmd(BC_INCREFS, &txn->buf, handle);
 }
 
-void kmhal_binder_write_release(struct kmhal_binder_transaction *txn,
+void kmhal_binder_write_release(struct kmhal_binder_txn *txn,
                                 u32 handle)
 {
     u_check_params(txn != NULL && txn->buf != NULL);
     write_generic_ref_cmd(BC_RELEASE, &txn->buf, handle);
 }
 
-void kmhal_binder_write_decrefs(struct kmhal_binder_transaction *txn,
+void kmhal_binder_write_decrefs(struct kmhal_binder_txn *txn,
                                 u32 handle)
 {
     u_check_params(txn != NULL && txn->buf != NULL);
     write_generic_ref_cmd(BC_DECREFS, &txn->buf, handle);
 }
 
-void kmhal_binder_write_transact_sg(struct kmhal_binder_tr_sg_args *arg)
+void kmhal_binder_write_transact(struct kmhal_binder_txn_args *arg)
 {
     u_check_params(arg != NULL && arg->in_txn != NULL);
 
     const size_t off = vector_size(arg->in_txn->buf);
-    const size_t total_td_size =
-        sizeof(u32) + sizeof(struct binder_transaction_data_sg);
-    vector_resize(&arg->in_txn->buf, off + total_td_size);
 
-    u32 cmd = BC_TRANSACTION_SG;
+    const struct kmhal_binder_txn_args_in *const i = &arg->in_data;
+
+    const u32 cmd = BC_TRANSACTION;
+    const struct binder_transaction_data td = {
+        .target.handle = i->handle,
+        .cookie = 0,
+        .code = i->cmd,
+        .flags = i->flags,
+        .sender_euid = 0, .sender_pid = 0,
+
+        .data_size = i->data_size,
+        .offsets_size = i->offsets_count * sizeof(binder_size_t),
+        .data.ptr.buffer = (binder_uintptr_t)i->data_buf,
+        .data.ptr.offsets = (binder_uintptr_t)i->offsets_buf
+    };
+
+    vector_resize(&arg->in_txn->buf, off + sizeof(cmd) + sizeof(td));
     memcpy(arg->in_txn->buf + off, &cmd, sizeof(cmd));
+    memcpy(arg->in_txn->buf + off + sizeof(cmd), &td, sizeof(td));
 
-    struct kmhal_binder_tr_sg_args_in *const i = &arg->in_data;
-    struct binder_transaction_data_sg data = {
+    vector_push_back(&arg->in_txn->data, (struct transaction_data) {
+            .type = TRANSACTION,
+            .data.txn = { .out_data = &arg->out_reply }
+    });
+
+    memset(&arg->out_reply, 0, sizeof(arg->out_reply));
+    arg->out_reply.status = KMHAL_BINDER_TXN_PENDING;
+}
+
+void kmhal_binder_write_transact_sg(struct kmhal_binder_txn_args *arg)
+{
+    u_check_params(arg != NULL && arg->in_txn != NULL);
+
+    const struct kmhal_binder_txn_args_in *const i = &arg->in_data;
+
+    const struct binder_transaction_data_sg td_sg = {
         .transaction_data = {
             .target.handle = i->handle,
             .cookie = 0,
@@ -301,18 +328,25 @@ void kmhal_binder_write_transact_sg(struct kmhal_binder_tr_sg_args *arg)
         },
         .buffers_size = arg->in_data.sg_buffers_size
     };
-    memcpy(arg->in_txn->buf + off + sizeof(cmd), &data, sizeof(data));
+
+    const u32 cmd = BC_TRANSACTION_SG;
+
+    const size_t off = vector_size(arg->in_txn->buf);
+    vector_resize(&arg->in_txn->buf, off + sizeof(cmd) + sizeof(td_sg));
+
+    memcpy(arg->in_txn->buf + off, &cmd, sizeof(cmd));
+    memcpy(arg->in_txn->buf + off + sizeof(cmd), &td_sg, sizeof(td_sg));
 
     vector_push_back(&arg->in_txn->data, (struct transaction_data) {
-            .type = TRANSACTION_SG,
-            .data.tr_sg = { .out_data = &arg->out_reply }
+            .type = TRANSACTION,
+            .data.txn = { .out_data = &arg->out_reply }
     });
 
     memset(&arg->out_reply, 0, sizeof(arg->out_reply));
-    arg->out_reply.status = KMHAL_BINDER_TR_SG_PENDING;
+    arg->out_reply.status = KMHAL_BINDER_TXN_PENDING;
 }
 
-void kmhal_binder_write_free_reply(struct kmhal_binder_transaction *txn,
+void kmhal_binder_write_free_reply(struct kmhal_binder_txn *txn,
                                    const void *reply)
 {
     u_check_params(txn != NULL && txn->buf != NULL);
@@ -320,7 +354,7 @@ void kmhal_binder_write_free_reply(struct kmhal_binder_transaction *txn,
 }
 
 int kmhal_binder_do_write_read_ioctl(struct kmhal_binder_ctx *ctx,
-                                     struct kmhal_binder_transaction **txn_p)
+                                     struct kmhal_binder_txn **txn_p)
 {
     if (!kmhal_binder_ctx_ok(ctx) || txn_p == NULL || *txn_p == NULL ||
             (*txn_p)->buf == NULL)
@@ -330,7 +364,7 @@ int kmhal_binder_do_write_read_ioctl(struct kmhal_binder_ctx *ctx,
     }
     int r_;
     u32 status = 0;
-    struct kmhal_binder_transaction *txn = *txn_p;
+    struct kmhal_binder_txn *txn = *txn_p;
 
     *txn_p = NULL; /* Prevent any possible use early, just in case */
 
@@ -347,7 +381,7 @@ int kmhal_binder_do_write_read_ioctl(struct kmhal_binder_ctx *ctx,
     set_transaction_input_data(txn->data, status != 0);
 
     /* `*txn_p` already set to NULL earlier */
-    kmhal_binder_transaction_destroy(&txn);
+    kmhal_binder_txn_destroy(&txn);
 
     if (status) {
         s_log_error("Binder transaction failed: "
@@ -363,7 +397,7 @@ int kmhal_binder_do_write_read_ioctl(struct kmhal_binder_ctx *ctx,
     return status == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
-void kmhal_binder_transaction_destroy(struct kmhal_binder_transaction **txn_p)
+void kmhal_binder_txn_destroy(struct kmhal_binder_txn **txn_p)
 {
     if (txn_p == NULL || *txn_p == NULL)
         return;
@@ -482,16 +516,16 @@ static void reset_transaction_output_data(VECTOR(struct transaction_data) data)
         struct transaction_data *const curr = &data[i];
 
         switch (curr->type) {
-        case TRANSACTION_SG:
-            if (curr->data.tr_sg.out_data == NULL)
+        case TRANSACTION:
+            if (curr->data.txn.out_data == NULL)
                 s_log_fatal("Missing out_data pointer");
 
-            memset(curr->data.tr_sg.out_data, 0,
-                    sizeof(struct kmhal_binder_tr_sg_args_out));
-            curr->data.tr_sg.out_data->status = KMHAL_BINDER_TR_SG_FAILED;
+            memset(curr->data.txn.out_data, 0,
+                    sizeof(struct kmhal_binder_txn_args_out));
+            curr->data.txn.out_data->status = KMHAL_BINDER_TXN_UNINITIALIZED;
 
-            curr->data.tr_sg.got_reply = false;
-            curr->data.tr_sg.got_tr_complete = false;
+            curr->data.txn.got_reply = false;
+            curr->data.txn.got_tr_complete = false;
             break;
         default:
             s_log_fatal("Invalid transaction data type: %d", curr->type);
@@ -506,24 +540,24 @@ static void set_transaction_input_data(VECTOR(struct transaction_data) data,
         struct transaction_data *const curr = &data[i];
 
         switch (curr->type) {
-        case TRANSACTION_SG:
-            if (curr->data.tr_sg.out_data == NULL)
+        case TRANSACTION:
+            if (curr->data.txn.out_data == NULL)
                 s_log_fatal("Missing out_data pointer");
 
             if (!fail &&
-                    curr->data.tr_sg.got_reply &&
-                    curr->data.tr_sg.got_tr_complete)
+                    curr->data.txn.got_reply &&
+                    curr->data.txn.got_tr_complete)
             {
-                curr->data.tr_sg.out_data->status = KMHAL_BINDER_TR_SG_OK;
+                curr->data.txn.out_data->status = KMHAL_BINDER_TXN_OK;
             } else {
-                memset(curr->data.tr_sg.out_data, 0,
-                        sizeof(struct kmhal_binder_tr_sg_args_out));
-                curr->data.tr_sg.out_data->status =
-                    KMHAL_BINDER_TR_SG_FAILED;
+                memset(curr->data.txn.out_data, 0,
+                        sizeof(struct kmhal_binder_txn_args_out));
+                curr->data.txn.out_data->status =
+                    KMHAL_BINDER_TXN_FAILED;
             }
 
-            curr->data.tr_sg.got_reply = false;
-            curr->data.tr_sg.got_tr_complete = false;
+            curr->data.txn.got_reply = false;
+            curr->data.txn.got_tr_complete = false;
             break;
         default:
             s_log_fatal("Invalid transaction data type: %d", curr->type);
@@ -531,8 +565,7 @@ static void set_transaction_input_data(VECTOR(struct transaction_data) data,
     }
 }
 
-static u32 do_write_read_ioctl_loop(int fd,
-                                    struct kmhal_binder_transaction *txn)
+static u32 do_write_read_ioctl_loop(int fd, struct kmhal_binder_txn *txn)
 {
     u8 proto_read_buf[KMHAL_BINDER_PROTO_READ_BUF_SIZE] = { 0 };
     u32 ret = 0;
@@ -634,11 +667,11 @@ static void process_advance_current_transaction(
     /* `vector_at` does automatic bounds checking */
     struct transaction_data curr_td = vector_at(td, *td_idx_p);
 
-    const struct td_transaction_sg *const td_sg = &curr_td.data.tr_sg;
+    const struct td_transaction_sg *const td_sg = &curr_td.data.txn;
 
     bool advance = false;
     switch (curr_td.type) {
-    case TRANSACTION_SG:
+    case TRANSACTION:
         if (td_sg->got_tr_complete && td_sg->got_reply)
             advance = true;
         break;
@@ -694,11 +727,11 @@ static u32 handle_ioctl_response(const u8 **p, const u8 *end,
     case BR_NOOP:
         break;
     case BR_REPLY: {
-        if (td == NULL || td->type != TRANSACTION_SG) {
+        if (td == NULL || td->type != TRANSACTION) {
             s_log_error("Received unexpected BR_REPLY");
             ret |= WR_FAIL_INVAL;
             break;
-        } else if (!td->data.tr_sg.out_data) {
+        } else if (!td->data.txn.out_data) {
             s_log_error("No reply pointer in transaction context");
             ret |= WR_FAIL_INVAL;
             break;
@@ -707,7 +740,7 @@ static u32 handle_ioctl_response(const u8 **p, const u8 *end,
         struct binder_transaction_data binder_td;
         try_read_advance(binder_td);
 
-        struct kmhal_binder_tr_sg_args_out *const o = td->data.tr_sg.out_data;
+        struct kmhal_binder_txn_args_out *const o = td->data.txn.out_data;
         o->data_buf = (void *)binder_td.data.ptr.buffer;
         o->data_size = binder_td.data_size;
         o->offsets_buf = (void *)binder_td.data.ptr.offsets;
@@ -716,9 +749,9 @@ static u32 handle_ioctl_response(const u8 **p, const u8 *end,
         o->flags = binder_td.flags;
 
         /* reset later in `set_transaction_input_data` if needed */
-        o->status = KMHAL_BINDER_TR_SG_OK;
+        o->status = KMHAL_BINDER_TXN_OK;
 
-        td->data.tr_sg.got_reply = true;
+        td->data.txn.got_reply = true;
 #if 0
         s_log_debug("Received reply");
 #endif /* 0 */
@@ -731,7 +764,7 @@ static u32 handle_ioctl_response(const u8 **p, const u8 *end,
             break;
         }
 
-        td->data.tr_sg.got_tr_complete = true;
+        td->data.txn.got_tr_complete = true;
 #if 0
         s_log_debug("Received transaction_complete");
 #endif /* 0 */

@@ -29,7 +29,7 @@ extern "C" {
  *  See `enum kmhal_hidl_android_status`.
  */
 enum kmhal_hidl_android_status
-kmhal_hidl_util_check_allocate_txn_tmps(struct kmhal_binder_transaction **txn_p,
+kmhal_hidl_util_check_allocate_txn_tmps(struct kmhal_binder_txn **txn_p,
                                         struct kmhal_hidl_parcel **parcel_p);
 
 /* Performs a binder transaction with the (packed) parcel,
@@ -66,11 +66,12 @@ kmhal_hidl_util_check_allocate_txn_tmps(struct kmhal_binder_transaction **txn_p,
  * will already contain the FREE_BUFFER command, so it should be flushed
  * before being destroyed.
  */
-enum kmhal_hidl_android_status kmhal_hidl_util_transact_and_unpack(
+enum kmhal_hidl_android_status
+kmhal_hidl_util_transact_and_unpack(
         struct kmhal_binder_ctx *binder,
-        struct kmhal_binder_transaction **txn_p,
+        struct kmhal_binder_txn **txn_p,
         struct kmhal_hidl_parcel **parcel_p,
-        struct kmhal_binder_tr_sg_args_out *out_reply,
+        struct kmhal_binder_txn_args_out *out_reply,
         bool write_free_reply
 );
 
@@ -81,7 +82,7 @@ enum kmhal_hidl_android_status kmhal_hidl_util_transact_and_unpack(
  *
  * @param parcel_p A pointer to a parcel. May be NULL.
  */
-void kmhal_hidl_util_destroy_txn_tmps(struct kmhal_binder_transaction **txn_p,
+void kmhal_hidl_util_destroy_txn_tmps(struct kmhal_binder_txn **txn_p,
                                       struct kmhal_hidl_parcel **parcel_p);
 
 #ifdef __cplusplus

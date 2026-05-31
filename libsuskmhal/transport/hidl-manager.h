@@ -19,7 +19,7 @@ extern "C" {
  *
  * @param txn The binder transaction context to write into.
  */
-void kmhal_hidl_manager_write_acquire(struct kmhal_binder_transaction *txn);
+void kmhal_hidl_manager_write_acquire(struct kmhal_binder_txn *txn);
 
 /**
  * Writes the DECREFS and RELEASE commands for the hwservicemanager handle.
@@ -27,7 +27,7 @@ void kmhal_hidl_manager_write_acquire(struct kmhal_binder_transaction *txn);
  *
  * @param txn The binder transaction context to write into.
  */
-void kmhal_hidl_manager_write_release(struct kmhal_binder_transaction *txn);
+void kmhal_hidl_manager_write_release(struct kmhal_binder_txn *txn);
 
 /**
  * Calls the hwservicemanager method:
@@ -53,7 +53,7 @@ void kmhal_hidl_manager_write_release(struct kmhal_binder_transaction *txn);
  */
 enum kmhal_hidl_android_status
 kmhal_hidl_manager_get(struct kmhal_binder_ctx *binder,
-                       struct kmhal_binder_transaction **txn_p,
+                       struct kmhal_binder_txn **txn_p,
 
                        const char *in_interface_name,
                        const char *in_instance_name,
@@ -90,7 +90,7 @@ kmhal_hidl_manager_get(struct kmhal_binder_ctx *binder,
  */
 enum kmhal_hidl_android_status kmhal_hidl_manager_list(
         struct kmhal_binder_ctx *binder,
-        struct kmhal_binder_transaction **txn_p,
+        struct kmhal_binder_txn **txn_p,
 
         const KMHAL_HIDL_VEC_OF_STRUCT(kmhal_hidl_string) **out_fqInstanceNames
 );
@@ -117,7 +117,7 @@ enum kmhal_hidl_android_status kmhal_hidl_manager_list(
  */
 enum kmhal_hidl_android_status kmhal_hidl_manager_list_by_interface(
         struct kmhal_binder_ctx *binder,
-        struct kmhal_binder_transaction **txn_p,
+        struct kmhal_binder_txn **txn_p,
 
         const char *in_interface_name,
 
