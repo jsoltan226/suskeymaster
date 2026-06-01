@@ -59,10 +59,15 @@ void ringbuffer_destroy(struct ringbuffer **buf_p)
 void ringbuffer_write_string(struct ringbuffer *buf, const char *string)
 {
     u_check_params(buf != NULL && string != NULL);
-    s_assert(atomic_load(&buf->initialized_) &&
+    if (!((atomic_load(&buf->initialized_) &&
         buf->buf != NULL && buf->buf_size >= 1 &&
-        buf->write_index <= buf->buf_size,
-        "Attempt to write to an invalid or uninitialized ringbuffer");
+        buf->write_index <= buf->buf_size)))
+    {
+        /* `core/log` depends on this function, so we can't just call
+         * `s_log` or else we'll end up in an endless recursion loop */
+        s_abort(MODULE_NAME, __func__,
+                "Attempt to write to an invalid or uninitialized ringbuffer");
+    }
 
     u64 chars_to_write = strlen(string) + 1;
     if (chars_to_write == 1)

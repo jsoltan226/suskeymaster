@@ -440,7 +440,7 @@ static int check_google_root(hidl_vec<uint8_t> const& root_der, bool *is_old_roo
 static void destroy_certs(X509 **leaf_p, STACK_OF(X509) **intermediates_p, X509 **root_p)
 {
     if (*intermediates_p != NULL) {
-        for (unsigned int i = 0; i < (unsigned int)sk_X509_num(*intermediates_p); i++) {
+        for (int i = 0; i < sk_X509_num(*intermediates_p); i++) {
             X509 *const curr = sk_X509_value(*intermediates_p, i);
             if (curr != NULL)
                 X509_free(curr);

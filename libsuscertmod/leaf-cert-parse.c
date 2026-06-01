@@ -273,14 +273,14 @@ err:
 
     if (out_subj_pubkey != NULL && ok) {
         *out_subj_pubkey = subj_pubkey;
-    } else if (out_subj_pubkey != NULL) {
+    } else if (subj_pubkey != NULL) {
         EVP_PKEY_free(subj_pubkey);
         subj_pubkey = NULL;
     }
 
     if (out_km_desc != NULL && ok) {
         *out_km_desc = km_desc;
-    } else if (out_km_desc != NULL) {
+    } else if (km_desc != NULL) {
         KM_KEY_DESC_free(km_desc);
         km_desc = NULL;
     }

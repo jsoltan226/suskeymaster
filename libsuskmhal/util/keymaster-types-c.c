@@ -3,8 +3,6 @@
 #include <openssl/asn1t.h>
 #include <openssl/crypto.h>
 
-#define MODULE_NAME "keymaster-utils"
-
 ASN1_SEQUENCE(KM_ROOT_OF_TRUST) = {
     ASN1_SIMPLE(KM_ROOT_OF_TRUST, verifiedBootKey, ASN1_OCTET_STRING),
     ASN1_SIMPLE(KM_ROOT_OF_TRUST, deviceLocked, ASN1_BOOLEAN),
