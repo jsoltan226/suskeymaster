@@ -2,8 +2,8 @@
 #include "binder.h"
 #include "status.h"
 #include "parcel.h"
+#include "txn-util.h"
 #include "hidl-types.h"
-#include "hidl-txn-util.h"
 #include <core/log.h>
 #include <core/util.h>
 #include <inttypes.h>
@@ -84,7 +84,7 @@ kmhal_hidl_manager_get(struct kmhal_binder_ctx *binder,
     struct kmhal_binder_txn_args_out reply = { 0 };
     u32 handle = (u32)-1;
 
-    if ((ret = kmhal_hidl_util_check_allocate_txn_tmps(txn_p, &parcel)) != OK)
+    if ((ret = kmhal_util_check_allocate_txn_tmps(txn_p, &parcel)) != OK)
         goto err;
 
     kmhal_parcel_write_cstring(parcel, MGR_1_0_FQNAME);
@@ -100,13 +100,13 @@ kmhal_hidl_manager_get(struct kmhal_binder_ctx *binder,
     /* We have to call `INCREFS` and `ACQUIRE` on the returned handle
      * before writing the FREE_BUFFER command */
     kmhal_parcel_pack(*txn_p, parcel, MGR_BINDER_HANDLE, MGR_CMD_GET, true);
-    ret = kmhal_hidl_util_transact_and_unpack(binder, txn_p,
-            &parcel, &reply, false);
+    ret = kmhal_util_transact_and_unpack(binder, txn_p,
+            &parcel, &reply, false, false);
     if (ret != OK)
         goto err;
 
     /* Read the returned handle... */
-    size_t off = KMHAL_PARCEL_HIDL_DATA_START_OFFSET;
+    size_t off = KMHAL_PARCEL_DATA_START_OFFSET;
     if (read_handle(parcel, &off, &handle)) {
         ret = BAD_VALUE;
         goto err;
@@ -130,7 +130,7 @@ err:
                 in_interface_name, in_instance_name,
                 ret, kmhal_android_status_toString(ret)
         );
-        kmhal_hidl_util_destroy_txn_tmps(txn_p, &parcel);
+        kmhal_util_destroy_txn_tmps(txn_p, &parcel);
     }
 
     return ret;
@@ -148,19 +148,19 @@ enum kmhal_android_status kmhal_hidl_manager_list(
     enum kmhal_android_status ret = UNKNOWN_ERROR;
     struct kmhal_parcel *parcel = NULL;
 
-    if ((ret = kmhal_hidl_util_check_allocate_txn_tmps(txn_p, &parcel)) != OK)
+    if ((ret = kmhal_util_check_allocate_txn_tmps(txn_p, &parcel)) != OK)
         goto err;
 
     kmhal_parcel_write_cstring(parcel, MGR_1_0_FQNAME);
 
     kmhal_parcel_pack(*txn_p, parcel, MGR_BINDER_HANDLE, MGR_CMD_LIST, true);
-    ret = kmhal_hidl_util_transact_and_unpack(binder, txn_p,
-            &parcel, NULL, true);
+    ret = kmhal_util_transact_and_unpack(binder, txn_p,
+            &parcel, NULL, true, false);
     if (ret != OK)
         goto err;
 
     /* Read the returned hidl_vec<hidl_string> */
-    size_t offset = KMHAL_PARCEL_HIDL_DATA_START_OFFSET;
+    size_t offset = KMHAL_PARCEL_DATA_START_OFFSET;
     if (read_hidl_vec_of_hidl_string(parcel, &offset, out_fqInstanceNames)) {
         ret = BAD_VALUE;
         goto_error("Failed to parse the reply");
@@ -173,7 +173,7 @@ err:
     if (ret != OK) {
         s_log_error(MGR_1_0_FQNAME"::list(): ret: %d (%s)",
                 ret, kmhal_android_status_toString(ret));
-        kmhal_hidl_util_destroy_txn_tmps(txn_p, &parcel);
+        kmhal_util_destroy_txn_tmps(txn_p, &parcel);
     }
 
     return ret;
@@ -200,7 +200,7 @@ enum kmhal_android_status kmhal_hidl_manager_list_by_interface(
         .owns_buffer = false
     };
 
-    if ((ret = kmhal_hidl_util_check_allocate_txn_tmps(txn_p, &parcel)) != OK)
+    if ((ret = kmhal_util_check_allocate_txn_tmps(txn_p, &parcel)) != OK)
         goto err;
 
     kmhal_parcel_write_cstring(parcel, MGR_1_0_FQNAME);
@@ -213,13 +213,13 @@ enum kmhal_android_status kmhal_hidl_manager_list_by_interface(
     kmhal_parcel_pack(*txn_p, parcel, MGR_BINDER_HANDLE,
             MGR_CMD_LIST_BY_INTERFACE, true);
 
-    ret = kmhal_hidl_util_transact_and_unpack(binder, txn_p,
-            &parcel, NULL, true);
+    ret = kmhal_util_transact_and_unpack(binder, txn_p,
+            &parcel, NULL, true, false);
     if (ret != OK)
         goto err;
 
     /* Read the returned hidl_vec<hidl_string> */
-    size_t offset = KMHAL_PARCEL_HIDL_DATA_START_OFFSET;
+    size_t offset = KMHAL_PARCEL_DATA_START_OFFSET;
     if (read_hidl_vec_of_hidl_string(parcel, &offset, out_instanceNames)) {
         ret = BAD_VALUE;
         goto_error("Failed to parse the reply");
@@ -232,7 +232,7 @@ err:
     if (ret != OK) {
         s_log_error(MGR_1_0_FQNAME"::listByInterface(\"%s\"): ret: %d (%s)",
             in_interface_name, ret, kmhal_android_status_toString(ret));
-        kmhal_hidl_util_destroy_txn_tmps(txn_p, &parcel);
+        kmhal_util_destroy_txn_tmps(txn_p, &parcel);
     }
 
     return ret;

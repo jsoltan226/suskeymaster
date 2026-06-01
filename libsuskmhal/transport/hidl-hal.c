@@ -1,10 +1,10 @@
 #include "binder.h"
 #include "status.h"
 #include "parcel.h"
+#include "txn-util.h"
 #include "hidl-hal.h"
 #include "hidl-base.h"
 #include "hidl-manager.h"
-#include "hidl-txn-util.h"
 #include <core/log.h>
 #include <core/util.h>
 #include <string.h>
@@ -86,7 +86,7 @@ kmhal_hidl_hal_sp_new_get(const char *fqname, const char *instname,
     ret->fqname = fqname;
     ret->instname = instname;
 
-    if (kmhal_hidl_util_check_allocate_txn_tmps(&ret->txn, NULL) != OK)
+    if (kmhal_util_check_allocate_txn_tmps(&ret->txn, NULL) != OK)
         goto err;
 
     kmhal_hidl_manager_write_acquire(ret->txn);
@@ -134,7 +134,7 @@ void kmhal_hidl_hal_sp_destroy(struct kmhal_hidl_hal_sp **hal_p)
         do_final_transaction = true;
 
     if (hal->handle != (u32)-1 && hal->owns_handle) {
-        if (kmhal_hidl_util_check_allocate_txn_tmps(&hal->txn, NULL) != OK) {
+        if (kmhal_util_check_allocate_txn_tmps(&hal->txn, NULL) != OK) {
             s_log_error("Failed to allocate a new binder transaction; "
                     "not dropping HAL handle reference");
             goto skip_binder_refs;
@@ -148,7 +148,7 @@ void kmhal_hidl_hal_sp_destroy(struct kmhal_hidl_hal_sp **hal_p)
     hal->owns_handle = false;
 
     if (hal->manager_acquired) {
-        if (kmhal_hidl_util_check_allocate_txn_tmps(&hal->txn, NULL) != OK) {
+        if (kmhal_util_check_allocate_txn_tmps(&hal->txn, NULL) != OK) {
             s_log_error("Failed to allocate a new binder transaction; "
                     "not dropping manager handle reference");
             goto skip_binder_refs;
@@ -213,7 +213,7 @@ kmhal_hidl_hal_call(struct kmhal_hidl_hal_sp *hal, u32 cmd,
         goto_error("Invalid argument descriptors");
 
     struct kmhal_parcel *p = NULL;
-    kmhal_hidl_util_check_allocate_txn_tmps(&hal->txn, &p);
+    kmhal_util_check_allocate_txn_tmps(&hal->txn, &p);
 
     kmhal_parcel_write_cstring(p, hal->fqname);
     for (u32 i = 0; i < n_in_args; i++) {
@@ -225,11 +225,11 @@ kmhal_hidl_hal_call(struct kmhal_hidl_hal_sp *hal, u32 cmd,
     }
     kmhal_parcel_pack(hal->txn, p, hal->handle, cmd, true);
 
-    if ((ret = kmhal_hidl_util_transact_and_unpack(hal->binder, &hal->txn, &p,
-                NULL, true)) != OK)
+    if ((ret = kmhal_util_transact_and_unpack(hal->binder, &hal->txn, &p,
+                NULL, true, false)) != OK)
         goto_error("Binder HIDL transaction failed");
 
-    size_t off = KMHAL_PARCEL_HIDL_DATA_START_OFFSET;
+    size_t off = KMHAL_PARCEL_DATA_START_OFFSET;
     for (u32 i = 0; i < n_out_args; i++) {
         const struct kmhal_hidl_hal_arg_parse_desc *const arg = &out_args[i];
 
@@ -281,7 +281,7 @@ void kmhal_hidl_hal_set_handle(struct kmhal_hidl_hal_sp *hal,
     u_check_params(hal != NULL && atomic_load(&hal->initialized_));
 
     if (hal->handle != (u32)-1 && hal->owns_handle) {
-        if (kmhal_hidl_util_check_allocate_txn_tmps(&hal->txn, NULL) != OK) {
+        if (kmhal_util_check_allocate_txn_tmps(&hal->txn, NULL) != OK) {
             s_log_error("Failed to allocate a new binder transaction; "
                     "not dropping existing HAL handle reference");
         } else {

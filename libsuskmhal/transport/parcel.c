@@ -5,6 +5,7 @@
 #include <core/int.h>
 #include <core/util.h>
 #include <core/vector.h>
+#include <uchar.h>
 #include <stddef.h>
 #include <string.h>
 #include <stdlib.h>
@@ -13,7 +14,7 @@
 #include <stdatomic.h>
 #include <linux/android/binder.h>
 
-#define MODULE_NAME "hidl-parcel"
+#define MODULE_NAME "parcel"
 
 struct parcel_obj {
     struct kmhal_parcel *parcel_bp;
@@ -39,7 +40,7 @@ struct kmhal_parcel {
 };
 
 static void parcel_destroy__(struct kmhal_parcel **parcel_p,
-        bool allow_pending_transaction);
+                             bool allow_pending_transaction);
 
 static inline binder_size_t align4(binder_size_t s);
 static inline binder_size_t align8(binder_size_t s);
@@ -48,8 +49,11 @@ static int validate_parcel_object_ref(const struct kmhal_parcel *parcel,
                                       kmhal_parcel_obj_t obj_ref);
 
 static int validate_buffer_object(const struct kmhal_parcel *parcel,
-        const struct binder_buffer_object *obj, binder_size_t size, u32 flags,
-        binder_size_t parent, binder_size_t parent_offset);
+                                  const struct binder_buffer_object *obj,
+                                  binder_size_t size,
+                                  u32 flags,
+                                  binder_size_t parent,
+                                  binder_size_t parent_offset);
 
 static int validate_parent(const struct kmhal_parcel *parcel,
                            binder_size_t parent_idx, binder_size_t child_idx);
@@ -205,6 +209,62 @@ void kmhal_parcel_write_cstring(struct kmhal_parcel *parcel,
     vector_resize(&parcel->buffer, str_offset + str_len_full);
     memcpy(parcel->buffer + str_offset, str, str_len);
     parcel->buffer[str_offset + str_len] = '\0';
+}
+
+void kmhal_parcel_write_aidl_string16(struct kmhal_parcel *parcel,
+                                      const char16_t *str16)
+{
+    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
+            str16 != NULL);
+
+    binder_size_t off = align4(vector_size(parcel->buffer));
+    i32 len = 0;
+    while (str16[len++] != u'\0') ;
+    len--;
+
+    s_assert(len >= 0, "integer overflow");
+
+    const size_t str_size = len*sizeof(char16_t) + sizeof(u'\0');
+    const size_t str_size_aligned = align4(str_size);
+
+    vector_resize(&parcel->buffer, off + sizeof(len) + str_size_aligned);
+
+    memcpy(parcel->buffer + off, &len, sizeof(i32));
+    off += sizeof(len);
+
+    memcpy(parcel->buffer + off, str16, str_size);
+    /* no need to null-terminate;
+     * we already found the u'\0` terminator while determining the length */
+}
+
+void kmhal_parcel_write_convert_aidl_string16(struct kmhal_parcel *parcel,
+                                              const char *str8)
+{
+    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
+            str8 != NULL);
+
+    const size_t len = strlen(str8);
+    if (len > INT32_MAX)
+        s_log_fatal("AIDL UTF-16 string can't be longer than 2^31 characters!");
+
+    char16_t *str16 = calloc(len + 1, sizeof(char16_t));
+    s_assert(str16 != NULL, "Failed to allocate a new UTF-16 string");
+
+    for (size_t i = 0; i < len; i++) {
+        str16[i] = INT16_C(0x00FF) & str8[i];
+    }
+    str16[len] = u'\0';
+
+    binder_size_t off = align4(vector_size(parcel->buffer));
+    const size_t str_size = len*sizeof(char16_t) + sizeof(u'\0');
+    const size_t str_size_aligned = align4(str_size);
+    vector_resize(&parcel->buffer, off + sizeof(len) + str_size_aligned);
+
+    memcpy(parcel->buffer + off, &len, sizeof(i32));
+    off += sizeof(len);
+
+    memcpy(parcel->buffer + off, str16, str_size);
+    /* No need to null-terminate; string already terminated by us */
 }
 
 kmhal_parcel_obj_t
@@ -411,7 +471,7 @@ void kmhal_parcel_pack(struct kmhal_binder_txn *txn,
 }
 
 int kmhal_parcel_unpack(struct kmhal_parcel **parcel_p,
-                             struct kmhal_binder_txn_args_out *out)
+                        struct kmhal_binder_txn_args_out *out)
 {
     u_check_params(parcel_p != NULL && *parcel_p != NULL &&
             atomic_load(&(*parcel_p)->initialized_));
@@ -453,7 +513,7 @@ int kmhal_parcel_unpack(struct kmhal_parcel **parcel_p,
 }
 
 int kmhal_parcel_peek(const struct kmhal_parcel *parcel,
-                           size_t offset, void *out, size_t len)
+                      size_t offset, void *out, size_t len)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_)
             && offset < UINT32_MAX && len < UINT32_MAX);
@@ -469,7 +529,7 @@ int kmhal_parcel_peek(const struct kmhal_parcel *parcel,
 }
 
 int kmhal_parcel_read_u32(const struct kmhal_parcel *parcel,
-                               size_t *offset_p, u32 *out)
+                          size_t *offset_p, u32 *out)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
             parcel->buffer != NULL);
@@ -489,7 +549,7 @@ int kmhal_parcel_read_u32(const struct kmhal_parcel *parcel,
 }
 
 int kmhal_parcel_read_u64(const struct kmhal_parcel *parcel,
-                               size_t *offset_p, u64 *out)
+                          size_t *offset_p, u64 *out)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
             parcel->buffer != NULL);
@@ -508,9 +568,126 @@ int kmhal_parcel_read_u64(const struct kmhal_parcel *parcel,
     return 0;
 }
 
+int kmhal_parcel_read_aidl_string16(const struct kmhal_parcel *parcel,
+                                    size_t *offset_p,
+                                    char16_t **out_p, size_t *out_size_p)
+{
+    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
+            parcel->buffer != NULL);
+    u_check_params(offset_p != NULL && *offset_p == align4(*offset_p) &&
+            *offset_p < UINT32_MAX - sizeof(u32));
+
+    if (*offset_p + sizeof(u32) > vector_size(parcel->buffer)) {
+        s_log_error("Requested *offset_p outside of parcel buffer");
+        return -1;
+    }
+
+    i32 len = 0;
+    memcpy(&len, parcel->buffer + *offset_p, sizeof(u32));
+    if (len < 0) {
+        s_log_error("Invalid UTF-16 string length");
+        return -1;
+    }
+    *offset_p += sizeof(u32);
+
+    const size_t str_size = (len + 1) * sizeof(char16_t),
+                str_size_aligned = align4(str_size);
+    if (str_size_aligned > vector_size(parcel->buffer) ||
+        *offset_p > vector_size(parcel->buffer) - str_size_aligned)
+    {
+        s_log_error("UTF-16 string overflows parcel buffer");
+        return 1;
+    }
+
+    if (*(const char16_t *)(&parcel->buffer[*offset_p + len*sizeof(char16_t)])
+            != u'\0')
+    {
+        s_log_error("UTF-16 string is not null-terminated");
+        return 1;
+    }
+
+
+    if (out_p != NULL && *out_p == NULL) {
+        *out_p = calloc(1, str_size);
+        if (*out_p == NULL) {
+            s_log_error("Failed to allocate a new UTF-16 string");
+            return 1;
+        }
+    } else if (out_p != NULL && *out_p != NULL) {
+        u_check_params(out_size_p != NULL);
+        if (*out_size_p < str_size) {
+            s_log_error("Buffer too small to fit the UTF-16 string");
+            return 1;
+        }
+    }
+
+    if (out_p != NULL)
+        memcpy(*out_p, parcel->buffer + *offset_p, str_size);
+    *offset_p += str_size_aligned;
+
+    if (out_size_p != NULL)
+        *out_size_p = str_size;
+
+    return 0;
+}
+
+int kmhal_parcel_read_convert_aidl_string16(const struct kmhal_parcel *parcel,
+                                            size_t *offset_p,
+                                            char **out_p, size_t *out_size_p)
+{
+    char16_t *str16 = NULL;
+    size_t str16size = 0;
+    int r = -1;
+
+    /* Also validates `parcel` and `offset_p` */
+
+    if (out_p == NULL) {
+        r = kmhal_parcel_read_aidl_string16(parcel, offset_p, NULL, &str16size);
+        if (r) return r;
+
+        if (out_size_p != NULL)
+            *out_size_p = str16size / 2;
+        return r;
+    } else {
+        r = kmhal_parcel_read_aidl_string16(parcel, offset_p,
+                                            &str16, &str16size);
+        if (r) return r;
+
+        /* `str16size` is guaranteed to be >= 2.
+         * See the above function, `kmhal_parcel_read_aidl_string16`. */
+        const size_t needed_size = str16size / 2;
+
+        if (*out_p != NULL) {
+            u_check_params(out_size_p != NULL);
+            if (*out_size_p < needed_size)
+                goto_error("Buffer too small "
+                        "to fit the converted UTF-16 string");
+        } else {
+            *out_p = calloc(1, needed_size);
+            if (*out_p == NULL)
+                goto_error("Failed to allocate a new UTF-8 string");
+        }
+
+        for (size_t i = 0; i < needed_size; i++)
+            (*out_p)[i] = str16[i] & INT16_C(0x00FF);
+
+        if (out_size_p != NULL) *out_size_p = needed_size;
+
+        free(str16);
+        str16 = NULL;
+        return 0;
+
+err:
+        if (str16 != NULL) {
+            free(str16);
+            str16 = NULL;
+        }
+        return 1;
+    }
+}
+
 int kmhal_parcel_read_handle(const struct kmhal_parcel *parcel,
-                                  size_t *offset_p,
-                                  struct flat_binder_object *out)
+                             size_t *offset_p, struct flat_binder_object *out)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
             parcel->buffer != NULL);
@@ -546,13 +723,13 @@ int kmhal_parcel_read_handle(const struct kmhal_parcel *parcel,
 }
 
 int kmhal_parcel_read_buffer_obj(const struct kmhal_parcel *parcel,
-                                      size_t *offset_p,
-                                      binder_size_t exp_size,
-                                      const u32 *exp_flags,
-                                      const kmhal_parcel_obj_t *exp_parent,
-                                      const binder_size_t *exp_parent_offset,
-                                      const void **out,
-                                      kmhal_parcel_obj_t *out_ref)
+                                 size_t *offset_p,
+                                 binder_size_t exp_size,
+                                 const u32 *exp_flags,
+                                 const kmhal_parcel_obj_t *exp_parent,
+                                 const binder_size_t *exp_parent_offset,
+                                 const void **out,
+                                 kmhal_parcel_obj_t *out_ref)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
             parcel->buffer != NULL);
@@ -599,12 +776,12 @@ int kmhal_parcel_read_buffer_obj(const struct kmhal_parcel *parcel,
 }
 
 int kmhal_parcel_read_embedded_buffer(const struct kmhal_parcel *p,
-                                           size_t *off_p,
-                                           kmhal_parcel_obj_t parent_ref,
-                                           binder_size_t parent_offset,
-                                           size_t expected_buf_size,
-                                           const void **out_buf,
-                                           kmhal_parcel_obj_t *out_ref)
+                                      size_t *off_p,
+                                      kmhal_parcel_obj_t parent_ref,
+                                      binder_size_t parent_offset,
+                                      size_t expected_buf_size,
+                                      const void **out_buf,
+                                      kmhal_parcel_obj_t *out_ref)
 {
     u_check_params(p != NULL && atomic_load(&p->initialized_));
     u_check_params(off_p != NULL);
@@ -696,7 +873,7 @@ void kmhal_parcel_destroy(struct kmhal_parcel **parcel_p)
 }
 
 static void parcel_destroy__(struct kmhal_parcel **parcel_p,
-        bool allow_pending_transaction)
+                             bool allow_pending_transaction)
 {
     if (parcel_p == NULL || *parcel_p == NULL ||
             !atomic_exchange(&(*parcel_p)->initialized_, false))
@@ -784,8 +961,11 @@ static int validate_parcel_object_ref(const struct kmhal_parcel *parcel,
 }
 
 static int validate_buffer_object(const struct kmhal_parcel *parcel,
-        const struct binder_buffer_object *obj, binder_size_t size, u32 flags,
-        binder_size_t parent, binder_size_t parent_offset)
+                                  const struct binder_buffer_object *obj,
+                                  binder_size_t size,
+                                  u32 flags,
+                                  binder_size_t parent,
+                                  binder_size_t parent_offset)
 {
     if (parcel == NULL) {
         s_log_error("Parcel is NULL");
@@ -880,7 +1060,9 @@ static int validate_reply(const struct kmhal_binder_txn_args_out *r)
         return 1;
     }
 
-    if (r->data_buf == NULL || r->data_size < sizeof(int32_t)) {
+    if (r->data_size > 0 &&
+            (r->data_buf == NULL || r->data_size < sizeof(int32_t)))
+    {
         s_log_error("Invalid data buffer in reply");
         return 1;
     }

@@ -2,7 +2,13 @@
 #include "dump-utils.h"
 #include "keymaster-types-c.h"
 #include <core/math.h>
+#include <stdlib.h>
+#include <strings.h>
+#include <stdatomic.h>
 #include <openssl/asn1.h>
+
+static atomic_flag g_hexdump_mode_initialized = ATOMIC_FLAG_INIT;
+static enum { C, XXD, DEFAULT = C } g_hexdump_mode = DEFAULT;
 
 void KM_dump_param_list(KM_dump_log_proc_t log_proc,
         const char *field_name, const KM_PARAM_LIST *ps,
@@ -114,6 +120,14 @@ out:
 void KM_dump_hex(KM_dump_log_proc_t log_proc, const char *field_name,
         const ASN1_OCTET_STRING *data_, uint8_t indent, bool end_without_comma)
 {
+    if (!atomic_flag_test_and_set(&g_hexdump_mode_initialized)) {
+        const char *val = getenv("SUSKEYMASTER_HEXDUMP_MODE");
+        if (val == NULL) g_hexdump_mode = C;
+        else if (!strcasecmp(val, "xxd")) g_hexdump_mode = XXD;
+        else g_hexdump_mode = DEFAULT;
+    }
+    const bool xxd_style = g_hexdump_mode == XXD;
+
     char indent_buf[1024];
     KM_DUMP_sprint_indent(indent_buf, indent);
 
@@ -139,7 +153,7 @@ void KM_dump_hex(KM_dump_log_proc_t log_proc, const char *field_name,
 
     if (n_lines > 0) {
         KM_sprint_hex_line(line_buf, KM_DUMP_HEX_LINE_BUF_SIZE, data,
-                KM_DUMP_HEX_LINE_LEN, false);
+                KM_DUMP_HEX_LINE_LEN, false, xxd_style);
         line_buf[KM_DUMP_HEX_LINE_BUF_SIZE - 1] = '\0';
         log_proc("%s" KM_DUMP_SINGLE_INDENT "%s", indent_buf, line_buf);
     }
@@ -148,7 +162,7 @@ void KM_dump_hex(KM_dump_log_proc_t log_proc, const char *field_name,
         memset(line_buf, 0, KM_DUMP_HEX_LINE_BUF_SIZE);
         KM_sprint_hex_line(line_buf, KM_DUMP_HEX_LINE_BUF_SIZE,
                 data + (i * KM_DUMP_HEX_LINE_LEN),
-                KM_DUMP_HEX_LINE_LEN, false
+                KM_DUMP_HEX_LINE_LEN, false, xxd_style
         );
         line_buf[KM_DUMP_HEX_LINE_BUF_SIZE - 1] = '\0';
         log_proc("%s" KM_DUMP_SINGLE_INDENT "%s", indent_buf, line_buf);
@@ -157,7 +171,7 @@ void KM_dump_hex(KM_dump_log_proc_t log_proc, const char *field_name,
     memset(line_buf, 0, KM_DUMP_HEX_LINE_BUF_SIZE);
     KM_sprint_hex_line(line_buf, KM_DUMP_HEX_LINE_BUF_SIZE,
             data + (n_lines * KM_DUMP_HEX_LINE_LEN),
-            remainder, true
+            remainder, true, xxd_style
     );
     line_buf[KM_DUMP_HEX_LINE_BUF_SIZE - 1] = '\0';
     log_proc("%s" KM_DUMP_SINGLE_INDENT "%s", indent_buf, line_buf);
@@ -167,15 +181,19 @@ void KM_dump_hex(KM_dump_log_proc_t log_proc, const char *field_name,
 }
 
 void KM_sprint_hex_line(char *buf, u32 buf_size,
-        const u8 *data, u32 data_size, bool end_without_comma)
+                        const u8 *data, u32 data_size,
+                        bool end_without_comma, bool xxd_style)
 {
+    const char *const no_comma_fmt = xxd_style ? "%02x" : "0x%02x";
+    const char *const with_comma_fmt = xxd_style ? "%02x" : "0x%02x, ";
+
     for (u32 i = 0; i < u_min(buf_size, data_size); i++) {
         char byte_buf[8] = { 0 };
         int n = 0;
         if (end_without_comma && i == u_min(buf_size, data_size) - 1)
-            n = snprintf(byte_buf, 8, "0x%02x", data[i]);
+            n = snprintf(byte_buf, 8, no_comma_fmt, data[i]);
         else
-            n = snprintf(byte_buf, 8, "0x%02x, ", data[i]);
+            n = snprintf(byte_buf, 8, with_comma_fmt, data[i]);
 
         if (n <= 0 || n >= 8)
             continue;

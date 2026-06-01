@@ -210,6 +210,7 @@ ErrorCode HidlSusKeymaster4_0::verifyAuthorization(uint64_t operationHandle,
     const void *token = nullptr;
 
     struct kmhal_hidl_hal_arg_write_desc in_args[] = {
+        { "operationHandle", &operationHandle, sizeof(u64), kmhal_hidl_hal_arg_write_u64 },
         { "parametersToVerify", &parametersToVerify, sizeof(hidl_vec<KeyParameter>),
             write_vec_of_key_parameter },
         { "authToken", &authToken, sizeof(HardwareAuthToken), write_hardware_auth_token },

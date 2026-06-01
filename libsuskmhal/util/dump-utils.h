@@ -71,7 +71,8 @@ KM_DUMP_DECL_FUNCTION(KM_dump_param_list, KM_PARAM_LIST, ps);
 #define KM_DUMP_HEX_LINE_LEN 8
 #define KM_DUMP_HEX_LINE_BUF_SIZE (KM_DUMP_HEX_LINE_LEN * 16)
 void KM_sprint_hex_line(char *buf, u32 buf_size,
-        const u8 *data, u32 data_size, bool end_without_comma);
+        const u8 *data, u32 data_size,
+        bool end_without_comma, bool xxd_style);
 KM_DUMP_DECL_FUNCTION(KM_dump_hex, ASN1_OCTET_STRING, data);
 
 KM_DUMP_DECL_FUNCTION(KM_dump_u64, ASN1_INTEGER, a);

@@ -26,6 +26,8 @@ COMMON_CFLAGS := -std=c11 -Wall -Wextra -pipe -fPIC -fvisibility=hidden $(COMMON
 COMMON_CXXFLAGS := -std=c++17 -Wall -Wno-switch -Wno-unknown-pragmas -pipe -fPIC -fno-exceptions -fno-rtti $(COMMON_DEFINES) $(INCLUDES)
 DEPFLAGS ?= -MMD -MP
 
+ASAN_FLAGS := -fsanitize=address
+
 LDFLAGS ?=
 ifeq ($(PLATFORM), windows)
 LDFLAGS += -mconsole

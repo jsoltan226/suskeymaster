@@ -28,6 +28,7 @@
 
 #include "binder.h"
 #include <core/int.h>
+#include <uchar.h>
 #include <stdint.h>
 #include <stddef.h>
 #include <linux/android/binder.h>
@@ -58,8 +59,10 @@ typedef u32 kmhal_parcel_obj_t;
     ((obj) != KMHAL_PARCEL_OBJ_INVALID)
 
 /* The first 4 bytes of an HIDL parcel are always the status code,
- * and so the actual data only starts after it */
-#define KMHAL_PARCEL_HIDL_DATA_START_OFFSET (sizeof(u32))
+ * and so the actual data only starts after it,
+ * while in AIDL, if there is any data returned, it is preceded by
+ * an exception code which is also 4 bytes in size */
+#define KMHAL_PARCEL_DATA_START_OFFSET (sizeof(u32))
 
 /**
  * Allocate and initialize a new empty parcel.
@@ -96,7 +99,7 @@ kmhal_parcel_new_from_reply(const struct kmhal_binder_txn_args_out *reply);
  * @param len Number of bytes to write.
  */
 void kmhal_parcel_write_bytes(struct kmhal_parcel *parcel,
-                                   const void *data, size_t len);
+                              const void *data, size_t len);
 
 /**
  * Write arbitrary data at an arbitrary offset to the parcel payload.
@@ -110,7 +113,7 @@ void kmhal_parcel_write_bytes(struct kmhal_parcel *parcel,
  * @param len Number of bytes to write.
  */
 void kmhal_parcel_patch(struct kmhal_parcel *parcel,
-                             size_t offset, const void *data, size_t len);
+                        size_t offset, const void *data, size_t len);
 
 /**
  * Append a 32-bit unsigned integer to the parcel.
@@ -138,10 +141,33 @@ void kmhal_parcel_write_u64(struct kmhal_parcel *parcel, u64 u);
  * The string contents are copied into parcel-owned memory.
  *
  * @param parcel Parcel to write into.
- * @param str Null-terminated C string.
+ * @param str Null-terminated (UTF-8) C string.
  */
-void kmhal_parcel_write_cstring(struct kmhal_parcel *parcel,
-                                     const char *str);
+void kmhal_parcel_write_cstring(struct kmhal_parcel *parcel, const char *str);
+
+/**
+ * Serialize a UTF-16 string into the parcel in the AIDL format:
+ * [length: i32][contents...: utf16 string]
+ *
+ * The string contents are copied into parcel-owned memory.
+ *
+ * @param parcel Parcel to write into.
+ * @param str Null-terminated UTF-16 string.
+ */
+void kmhal_parcel_write_aidl_string16(struct kmhal_parcel *parcel,
+                                      const char16_t *str16);
+
+/**
+ * Convert a UTF-8 string to UTF-16 and then serialize it into the parcel
+ * in the AIDL format: [length: i32][contents...: utf16 string]
+ *
+ * The converted string contents are copied into parcel-owned memory.
+ *
+ * @param parcel Parcel to write into.
+ * @param str Null-terminated (UTF-8) C string.
+ */
+void kmhal_parcel_write_convert_aidl_string16(struct kmhal_parcel *parcel,
+                                              const char *str8);
 
 /**
  * Serialize a flat_binder_objcect containing `handle` into the parcel.
@@ -152,7 +178,7 @@ void kmhal_parcel_write_cstring(struct kmhal_parcel *parcel,
  */
 kmhal_parcel_obj_t
 kmhal_parcel_write_handle(struct kmhal_parcel *parcel,
-                               const struct flat_binder_object *obj);
+                          const struct flat_binder_object *obj);
 
 /**
  * Serialize a binder_buffer_object into the parcel.
@@ -198,9 +224,9 @@ kmhal_parcel_write_buffer_obj(struct kmhal_parcel *parcel,
  */
 kmhal_parcel_obj_t
 kmhal_parcel_write_embedded_buffer(struct kmhal_parcel *parcel,
-                                        const void *buf, size_t buf_size,
-                                        kmhal_parcel_obj_t parent,
-                                        binder_size_t parent_offset);
+                                   const void *buf, size_t buf_size,
+                                   kmhal_parcel_obj_t parent,
+                                   binder_size_t parent_offset);
 
 /**
  * Get the index into the offsets array of the parcel
@@ -238,7 +264,7 @@ kmhal_parcel_obj_get(const struct kmhal_parcel *parcel, size_t idx);
  */
 kmhal_parcel_obj_t
 kmhal_parcel_obj_find_by_offset(const struct kmhal_parcel *parcel,
-                                     size_t offset);
+                                size_t offset);
 
 /**
  * Pack the parcel into a binder scatter-gather transaction.
@@ -262,7 +288,7 @@ kmhal_parcel_obj_find_by_offset(const struct kmhal_parcel *parcel,
  *
  * @param handle Target binder object handle.
  *
- * @param cmd Binder/HIDL transaction command ID.
+ * @param cmd Binder/HIDL/AIDL transaction command ID.
  *
  * @param scatter_gather Whether to use `BC_TRANSACTION_SG`
  *  instead of `BC_TRANSACTION`. Set this to `1` if any buffer objects
@@ -294,7 +320,7 @@ void kmhal_parcel_pack(struct kmhal_binder_txn *txn,
  *      negative value on API misuse or invalid state.
  */
 int kmhal_parcel_unpack(struct kmhal_parcel **parcel_p,
-                             struct kmhal_binder_txn_args_out *out);
+                        struct kmhal_binder_txn_args_out *out);
 
 /* Read arbitrary data at an arbitrary offset from the parcel's buffer.
  * The offset doesn't have to be aligned.
@@ -311,7 +337,7 @@ int kmhal_parcel_unpack(struct kmhal_parcel **parcel_p,
  * @return 0 on success, non-zero if the requested range is out of bounds.
  */
 int kmhal_parcel_peek(const struct kmhal_parcel *parcel,
-                           size_t offset, void *out, size_t len);
+                      size_t offset, void *out, size_t len);
 
 /* Read a uint32 value from the parcel's buffer.
  * The offset must be 4-byte aligned.
@@ -327,7 +353,7 @@ int kmhal_parcel_peek(const struct kmhal_parcel *parcel,
  * @return 0 on success, non-zero on failure.
  */
 int kmhal_parcel_read_u32(const struct kmhal_parcel *parcel,
-                               size_t *offset_p, u32 *out);
+                          size_t *offset_p, u32 *out);
 
 /* Read a uint64 value from the parcel's buffer.
  * The offset must be 4-byte aligned.
@@ -343,7 +369,60 @@ int kmhal_parcel_read_u32(const struct kmhal_parcel *parcel,
  * @return 0 on success, non-zero on failure.
  */
 int kmhal_parcel_read_u64(const struct kmhal_parcel *parcel,
-                               size_t *offset_p, u64 *out);
+                          size_t *offset_p, u64 *out);
+
+/* Read a UTF-16 string in the AIDL format from the parcel's buffer.
+ * The offset must be 4-byte aligned.
+ *
+ * @param parcel Parcel from which the value will be read.
+ *
+ * @param offset_p A pointer to the offset of the object. Must not be NULL.
+ *  On success, incremented to point to after the read object.
+ *  Note: The value must be 4-byte aligned.
+ *
+ * @param out_p Pointer to output pointer. `out_p` itself may be NULL.
+ *  If `*out_p` is NULL, a new string is malloced and `*out_p`
+ *  is set to point to it. In that case the caller should later free `*out_p`.
+ *
+ * @param out_size_p Pointer to output buffer size.
+ *  Cannot be NULL if `*out_p` is non-NULL
+ *  (in which case `*out_size_p` should be the size of the buffer `*out_p`).
+ *  After reading the string, this function will set `*out_size_p`
+ *  to contain the size of the string *in bytes, including the null-terminator*.
+ *
+ * @return 0 on success, non-zero on failure
+ *  or if the given buffer was too small.
+ */
+int kmhal_parcel_read_aidl_string16(const struct kmhal_parcel *parcel,
+                                    size_t *offset_p,
+                                    char16_t **out_p, size_t *out_size_p);
+
+/* Read a UTF-16 string in the AIDL format from the parcel's buffer
+ * and convert it to a normal UTF-8 C string.
+ * The offset must be 4-byte aligned.
+ *
+ * @param parcel Parcel from which the value will be read.
+ *
+ * @param offset_p A pointer to the offset of the object. Must not be NULL.
+ *  On success, incremented to point to after the read object.
+ *  Note: The value must be 4-byte aligned.
+ *
+ * @param out_p Pointer to output pointer. `out_p` itself may be NULL.
+ *  If `*out_p` is NULL, a new string is malloced and `*out_p`
+ *  is set to point to it. In that case the caller should later free `*out_p`.
+ *
+ * @param out_size_p Pointer to output buffer size.
+ *  Cannot be NULL if `*out_p` is non-NULL
+ *  (in which case `*out_size_p` should be the size of the buffer `*out_p`).
+ *  After reading & converting the string, this function will set `*out_size_p`
+ *  to contain the size of the string IN BYTES, INCLUDING THE NULL-TERMINATOR.
+ *
+ * @return 0 on success, non-zero on failure
+ *  or if the given buffer was too small.
+ */
+int kmhal_parcel_read_convert_aidl_string16(const struct kmhal_parcel *parcel,
+                                            size_t *offset_p,
+                                            char **out_p, size_t *out_size_p);
 
 /* Read a flat_binder_object from the parcel's buffer.
  *
@@ -358,8 +437,8 @@ int kmhal_parcel_read_u64(const struct kmhal_parcel *parcel,
  * @return 0 on success, non-zero on failure.
  */
 int kmhal_parcel_read_handle(const struct kmhal_parcel *parcel,
-                                  size_t *offset_p,
-                                  struct flat_binder_object *out);
+                             size_t *offset_p,
+                             struct flat_binder_object *out);
 
 /* Read a binder_buffer_object from the parcel's buffer.
  *
@@ -388,13 +467,13 @@ int kmhal_parcel_read_handle(const struct kmhal_parcel *parcel,
  * @return 0 on success, non-zero on failure.
  */
 int kmhal_parcel_read_buffer_obj(const struct kmhal_parcel *parcel,
-                                      size_t *offset_p,
-                                      binder_size_t exp_size,
-                                      const u32 *exp_flags,
-                                      const kmhal_parcel_obj_t *exp_parent,
-                                      const binder_size_t *exp_parent_offset,
-                                      const void **out,
-                                      kmhal_parcel_obj_t *out_ref);
+                                 size_t *offset_p,
+                                 binder_size_t exp_size,
+                                 const u32 *exp_flags,
+                                 const kmhal_parcel_obj_t *exp_parent,
+                                 const binder_size_t *exp_parent_offset,
+                                 const void **out,
+                                 kmhal_parcel_obj_t *out_ref);
 
 /**
  * Retrieve an embedded buffer referenced by a parent buffer object.

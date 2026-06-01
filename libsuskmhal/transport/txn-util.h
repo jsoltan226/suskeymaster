@@ -30,8 +30,8 @@ extern "C" {
  *  See `enum kmhal_android_status`.
  */
 enum kmhal_android_status
-kmhal_hidl_util_check_allocate_txn_tmps(struct kmhal_binder_txn **txn_p,
-                                        struct kmhal_parcel **parcel_p);
+kmhal_util_check_allocate_txn_tmps(struct kmhal_binder_txn **txn_p,
+                                   struct kmhal_parcel **parcel_p);
 
 /* Performs a binder transaction with the (packed) parcel,
  * unpacks the result and checks for any errors.
@@ -55,26 +55,27 @@ kmhal_hidl_util_check_allocate_txn_tmps(struct kmhal_binder_txn **txn_p,
  * @param write_free_reply Whether to queue the FREE_BUFFER command
  *  (for the reply buffer) into the new transaction context.
  *
+ * @param check_aidl_ex Whether to try to read the exception code
+ *  returned by an AIDL transation. Set to `false` for HIDL transactions.
+ *
  * @return `OK` on success, anything else on failure.
  *  Note: On success, only the parcel should be destroyed,
  *  while on failure, both `txn_p` and `parcel_p` should be passed to
- *  `kmhal_hidl_util_destroy_txn_tmps`.
+ *  `kmhal_util_destroy_txn_tmps`.
  *
  * Note: In any case, `txn_p` and `parcel_p` should later be freed
- * with `kmhal_hidl_util_destroy_txn_tmps` as needed.
+ * with `kmhal_util_destroy_txn_tmps` as needed.
  * The parcel should always get destroyed after the transaction,
  * but `txn_p` - on success and if `write_free_reply` is set -
  * will already contain the FREE_BUFFER command, so it should be flushed
  * before being destroyed.
  */
 enum kmhal_android_status
-kmhal_hidl_util_transact_and_unpack(
-        struct kmhal_binder_ctx *binder,
-        struct kmhal_binder_txn **txn_p,
-        struct kmhal_parcel **parcel_p,
-        struct kmhal_binder_txn_args_out *out_reply,
-        bool write_free_reply
-);
+kmhal_util_transact_and_unpack(struct kmhal_binder_ctx *binder,
+                               struct kmhal_binder_txn **txn_p,
+                               struct kmhal_parcel **parcel_p,
+                               struct kmhal_binder_txn_args_out *out_reply,
+                               bool write_free_reply, bool check_aidl_ex);
 
 /*
  * Destroys the binder transaction context and parcel, if they exist.
@@ -83,8 +84,8 @@ kmhal_hidl_util_transact_and_unpack(
  *
  * @param parcel_p A pointer to a parcel. May be NULL.
  */
-void kmhal_hidl_util_destroy_txn_tmps(struct kmhal_binder_txn **txn_p,
-                                      struct kmhal_parcel **parcel_p);
+void kmhal_util_destroy_txn_tmps(struct kmhal_binder_txn **txn_p,
+                                 struct kmhal_parcel **parcel_p);
 
 #ifdef __cplusplus
 } /* extern "C" */

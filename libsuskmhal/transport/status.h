@@ -33,4 +33,24 @@ const char * kmhal_android_status_toString(i32 s);
 
 enum kmhal_android_status kmhal_android_status_prune(i32 s);
 
+/* frameworks/native/libs/binder/include/binder/Status.h */
+enum kmhal_aidl_exception {
+    EX_NONE = 0,
+    EX_SECURITY = -1,
+    EX_BAD_PARCELABLE = -2,
+    EX_ILLEGAL_ARGUMENT = -3,
+    EX_NULL_POINTER = -4,
+    EX_ILLEGAL_STATE = -5,
+    EX_NETWORK_MAIN_THREAD = -6,
+    EX_UNSUPPORTED_OPERATION = -7,
+    EX_SERVICE_SPECIFIC = -8,
+    EX_PARCELABLE = -9,
+    EX_HAS_NOTED_APPOPS_REPLY_HEADER = -127,
+    EX_HAS_REPLY_HEADER = -128,
+    EX_TRANSACTION_FAILED = -129,
+};
+const char * kmhal_aidl_exception_toString(i32 ex);
+
+enum kmhal_android_status kmhal_aidl_exception_to_android_status(i32 ex);
+
 #endif /* SUSKEYMASTER_KMHAL_TRANSPORT_STATUS_H_ */

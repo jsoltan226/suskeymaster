@@ -2,8 +2,8 @@
 #include "binder.h"
 #include "status.h"
 #include "parcel.h"
+#include "txn-util.h"
 #include "hidl-types.h"
-#include "hidl-txn-util.h"
 #include <core/log.h>
 #include <core/util.h>
 #include <string.h>
@@ -22,7 +22,7 @@ kmhal_hidl_base_ping(struct kmhal_binder_ctx *binder,
     struct kmhal_parcel *parcel = NULL;
     struct kmhal_binder_txn_args_out reply = { 0 };
 
-    if ((ret = kmhal_hidl_util_check_allocate_txn_tmps(txn_p, &parcel)) != OK)
+    if ((ret = kmhal_util_check_allocate_txn_tmps(txn_p, &parcel)) != OK)
         goto err;
 
     kmhal_parcel_write_cstring(parcel, KMHAL_HIDL_BASE_FQNAME);
@@ -60,7 +60,7 @@ kmhal_hidl_base_ping(struct kmhal_binder_ctx *binder,
     }
 
 err:
-    kmhal_hidl_util_destroy_txn_tmps(txn_p, &parcel);
+    kmhal_util_destroy_txn_tmps(txn_p, &parcel);
     return ret;
 }
 
@@ -75,7 +75,7 @@ kmhal_hidl_base_get_descriptor(struct kmhal_binder_ctx *binder,
     enum kmhal_android_status ret = UNKNOWN_ERROR;
     struct kmhal_parcel *parcel = NULL;
 
-    if ((ret = kmhal_hidl_util_check_allocate_txn_tmps(txn_p, &parcel)) != OK)
+    if ((ret = kmhal_util_check_allocate_txn_tmps(txn_p, &parcel)) != OK)
         goto err;
 
     kmhal_parcel_write_cstring(parcel, KMHAL_HIDL_BASE_FQNAME);
@@ -83,15 +83,15 @@ kmhal_hidl_base_get_descriptor(struct kmhal_binder_ctx *binder,
     kmhal_parcel_pack(*txn_p, parcel, handle,
             HIDL_GET_DESCRIPTOR_TRANSACTION, true);
 
-    if ((ret = kmhal_hidl_util_transact_and_unpack(binder, txn_p,
-                &parcel, NULL, true)) != OK)
+    if ((ret = kmhal_util_transact_and_unpack(binder, txn_p,
+                &parcel, NULL, true, false)) != OK)
     {
         ret = FAILED_TRANSACTION;
         goto_error("The binder trasaction failed");
     }
 
     {
-        size_t off = KMHAL_PARCEL_HIDL_DATA_START_OFFSET;
+        size_t off = KMHAL_PARCEL_DATA_START_OFFSET;
 
         if (kmhal_hidl_string_read(out_p, parcel, &off, NULL)) {
             ret = BAD_VALUE;
@@ -102,7 +102,7 @@ kmhal_hidl_base_get_descriptor(struct kmhal_binder_ctx *binder,
 
 err:
     if (ret != OK)
-        kmhal_hidl_util_destroy_txn_tmps(txn_p, &parcel);
+        kmhal_util_destroy_txn_tmps(txn_p, &parcel);
     else
         kmhal_parcel_destroy(&parcel);
 
