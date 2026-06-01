@@ -2,6 +2,7 @@
 #define SUSKEYMASTER_KMHAL_UTIL_DUMP_H_
 
 #include "keymaster-types-c.h"
+#include <core/math.h>
 #include <limits.h>
 
 #ifdef __cplusplus
@@ -68,8 +69,10 @@ typedef void (*KM_dump_log_proc_t)(const char *fmt, ...);
 
 KM_DUMP_DECL_FUNCTION(KM_dump_param_list, KM_PARAM_LIST, ps);
 
-#define KM_DUMP_HEX_LINE_LEN 8
-#define KM_DUMP_HEX_LINE_BUF_SIZE (KM_DUMP_HEX_LINE_LEN * 16)
+#define KM_DUMP_HEX_C_STYLE_LINE_LEN 8
+#define KM_DUMP_HEX_XXD_STYLE_LINE_LEN 16
+#define KM_DUMP_HEX_LINE_BUF_SIZE \
+    (u_max(KM_DUMP_HEX_C_STYLE_LINE_LEN, KM_DUMP_HEX_XXD_STYLE_LINE_LEN) * 16)
 void KM_sprint_hex_line(char *buf, u32 buf_size,
         const u8 *data, u32 data_size,
         bool end_without_comma, bool xxd_style);
