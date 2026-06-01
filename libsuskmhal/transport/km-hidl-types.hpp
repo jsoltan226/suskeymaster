@@ -3,16 +3,16 @@
 
 #ifndef SUSKEYMASTER_BUILD_HOST
 
+#include "parcel.h"
 #include "hidl-types.h"
-#include "hidl-parcel.h"
 #include "../util/keymaster-types-c.h"
 #include <core/int.h>
 #include <core/log.h>
 #include <cstddef>
 #include <cstring>
 
-template<typename T> void write_vec_of_primitive(struct kmhal_hidl_parcel *p,
-                                                      const void *data, size_t size)
+template<typename T> void write_vec_of_primitive(struct kmhal_parcel *p,
+                                                 const void *data, size_t size)
 {
     if (data == NULL || size != sizeof(struct kmhal_hidl_vec))
         s_abort("keymaster-hidl-types", __func__, "Invalid parameters");
@@ -20,10 +20,10 @@ template<typename T> void write_vec_of_primitive(struct kmhal_hidl_parcel *p,
     const struct kmhal_hidl_vec *const vec_p =
         reinterpret_cast<const struct kmhal_hidl_vec *>(data);
 
-    kmhal_hidl_vec_write(p, vec_p, sizeof(T), KMHAL_HIDL_PARCEL_OBJ_INVALID, 0, nullptr);
+    kmhal_hidl_vec_write(p, vec_p, sizeof(T), KMHAL_PARCEL_OBJ_INVALID, 0, nullptr);
 }
 
-template<typename T> int read_vec_of_primitive(const struct kmhal_hidl_parcel *p,
+template<typename T> int read_vec_of_primitive(const struct kmhal_parcel *p,
                                                size_t *off_p,
                                                const void **out_p, size_t out_size)
 {
@@ -36,25 +36,25 @@ template<typename T> int read_vec_of_primitive(const struct kmhal_hidl_parcel *p
             sizeof(T), p, off_p, nullptr);
 }
 
-template<typename T> void write_vec_of_vec_of_primitive(struct kmhal_hidl_parcel *p,
-                                                             const void *data, size_t size)
+template<typename T> void write_vec_of_vec_of_primitive(struct kmhal_parcel *p,
+                                                        const void *data, size_t size)
 {
     if (data == NULL || size != sizeof(struct kmhal_hidl_vec))
         s_abort("keymaster-hidl-types", __func__, "Invalid parameters");
 
     const struct kmhal_hidl_vec vec = *(reinterpret_cast<const struct kmhal_hidl_vec *>(data));
 
-    kmhal_hidl_parcel_obj_t ref =
-    kmhal_hidl_parcel_write_buffer_obj(p, vec.buffer, vec.size * sizeof(struct kmhal_hidl_vec), 0,
-            KMHAL_HIDL_PARCEL_OBJ_INVALID, 0);
+    kmhal_parcel_obj_t ref =
+    kmhal_parcel_write_buffer_obj(p, vec.buffer, vec.size * sizeof(struct kmhal_hidl_vec), 0,
+            KMHAL_PARCEL_OBJ_INVALID, 0);
 
     for (u32 i = 0; i < vec.size; i++) {
-        kmhal_hidl_parcel_write_embedded_buffer(p, vec.buffer,
+        kmhal_parcel_write_embedded_buffer(p, vec.buffer,
                 sizeof(T) * vec.size, ref, i * vec.size);
     }
 }
 
-template<typename T> int read_vec_of_vec_of_primitive(const struct kmhal_hidl_parcel *p,
+template<typename T> int read_vec_of_vec_of_primitive(const struct kmhal_parcel *p,
                                                       size_t *off_p,
                                                       const void **out_p, size_t out_size)
 {
@@ -64,7 +64,7 @@ template<typename T> int read_vec_of_vec_of_primitive(const struct kmhal_hidl_pa
     }
 
     const struct kmhal_hidl_vec *vec_p = nullptr;
-    kmhal_hidl_parcel_obj_t ref;
+    kmhal_parcel_obj_t ref;
     if (kmhal_hidl_vec_read(reinterpret_cast<const struct kmhal_hidl_vec **>(out_p),
                 sizeof(struct kmhal_hidl_vec), p, off_p, &ref))
     {
@@ -93,14 +93,14 @@ template<typename T> int read_vec_of_vec_of_primitive(const struct kmhal_hidl_pa
 }
 
 static inline
-void write_key_parameter(struct kmhal_hidl_parcel *p,
+void write_key_parameter(struct kmhal_parcel *p,
                          const void *data, size_t size)
 {
     if (data == NULL || size != sizeof(struct KM_KeyParameter))
         s_abort("keymaster-hidl-types", __func__, "Invalid parameters");
 
-    kmhal_hidl_parcel_obj_t ref =
-    kmhal_hidl_parcel_write_buffer_obj(p, data, size, 0, KMHAL_HIDL_PARCEL_OBJ_INVALID, 0);
+    kmhal_parcel_obj_t ref =
+    kmhal_parcel_write_buffer_obj(p, data, size, 0, KMHAL_PARCEL_OBJ_INVALID, 0);
 
     const struct KM_KeyParameter *const kp_p =
         reinterpret_cast<const struct KM_KeyParameter *>(data);
@@ -111,7 +111,7 @@ void write_key_parameter(struct kmhal_hidl_parcel *p,
 }
 
 static inline
-int read_key_parameter(const struct kmhal_hidl_parcel *p,
+int read_key_parameter(const struct kmhal_parcel *p,
                        size_t *off_p,
                        const void **out_p, size_t out_size)
 {
@@ -120,10 +120,10 @@ int read_key_parameter(const struct kmhal_hidl_parcel *p,
         return -1;
     }
 
-    kmhal_hidl_parcel_obj_t ref;
+    kmhal_parcel_obj_t ref;
 
     u32 exp_flags = 0;
-    if (kmhal_hidl_parcel_read_buffer_obj(p, off_p, sizeof(struct KM_KeyParameter),
+    if (kmhal_parcel_read_buffer_obj(p, off_p, sizeof(struct KM_KeyParameter),
                 &exp_flags, nullptr, nullptr, out_p, &ref))
     {
         s_log(S_LOG_ERROR, "keymaster-hidl-types",
@@ -147,7 +147,7 @@ int read_key_parameter(const struct kmhal_hidl_parcel *p,
 }
 
 static inline
-void write_vec_of_key_parameter(struct kmhal_hidl_parcel *p,
+void write_vec_of_key_parameter(struct kmhal_parcel *p,
                                 const void *data, size_t size)
 {
     if (data == NULL || size != sizeof(struct kmhal_hidl_vec))
@@ -155,9 +155,9 @@ void write_vec_of_key_parameter(struct kmhal_hidl_parcel *p,
 
     const struct kmhal_hidl_vec *vec_p = reinterpret_cast<const struct kmhal_hidl_vec *>(data);
 
-    kmhal_hidl_parcel_obj_t vec_ref =
+    kmhal_parcel_obj_t vec_ref =
     kmhal_hidl_vec_write(p, vec_p, sizeof(struct KM_KeyParameter),
-            KMHAL_HIDL_PARCEL_OBJ_INVALID, 0, nullptr);
+            KMHAL_PARCEL_OBJ_INVALID, 0, nullptr);
 
     for (u32 i = 0; i < vec_p->size; i++) {
         const struct KM_KeyParameter *const curr =
@@ -172,7 +172,7 @@ void write_vec_of_key_parameter(struct kmhal_hidl_parcel *p,
 }
 
 static inline
-int read_vec_of_key_parameter(const struct kmhal_hidl_parcel *p,
+int read_vec_of_key_parameter(const struct kmhal_parcel *p,
                               size_t *off_p,
                               const void **out_p, size_t out_size)
 {
@@ -181,7 +181,7 @@ int read_vec_of_key_parameter(const struct kmhal_hidl_parcel *p,
         return -1;
     }
 
-    kmhal_hidl_parcel_obj_t vec_ref;
+    kmhal_parcel_obj_t vec_ref;
 
     if (kmhal_hidl_vec_read(reinterpret_cast<const struct kmhal_hidl_vec **>(out_p),
                 sizeof(struct KM_KeyParameter), p, off_p, &vec_ref))
@@ -216,20 +216,20 @@ int read_vec_of_key_parameter(const struct kmhal_hidl_parcel *p,
 }
 
 static inline
-void write_key_characteristics(struct kmhal_hidl_parcel *p,
+void write_key_characteristics(struct kmhal_parcel *p,
                                const void *data, size_t size)
 {
     if (data == NULL || size != sizeof(struct KM_KeyCharacteristics))
         s_abort("keymaster-hidl-types", __func__, "Invalid parameters");
 
-    kmhal_hidl_parcel_obj_t kc_ref =
-    kmhal_hidl_parcel_write_buffer_obj(p, data, size,
-            0, KMHAL_HIDL_PARCEL_OBJ_INVALID, 0);
+    kmhal_parcel_obj_t kc_ref =
+    kmhal_parcel_write_buffer_obj(p, data, size,
+            0, KMHAL_PARCEL_OBJ_INVALID, 0);
 
     const struct KM_KeyCharacteristics *kc_p =
         reinterpret_cast<const struct KM_KeyCharacteristics *>(data);
 
-    kmhal_hidl_parcel_obj_t sw_ref =
+    kmhal_parcel_obj_t sw_ref =
     kmhal_hidl_vec_write_embedded(p,
             reinterpret_cast<const struct kmhal_hidl_vec *>(&kc_p->softwareEnforced),
             sizeof(struct KM_KeyParameter), kc_ref,
@@ -245,7 +245,7 @@ void write_key_characteristics(struct kmhal_hidl_parcel *p,
         );
     }
 
-    kmhal_hidl_parcel_obj_t hw_ref =
+    kmhal_parcel_obj_t hw_ref =
     kmhal_hidl_vec_write_embedded(p,
             reinterpret_cast<const struct kmhal_hidl_vec *>(&kc_p->hardwareEnforced),
             sizeof(struct KM_KeyParameter), kc_ref,
@@ -263,7 +263,7 @@ void write_key_characteristics(struct kmhal_hidl_parcel *p,
 }
 
 static inline
-int read_key_characteristics(const struct kmhal_hidl_parcel *p,
+int read_key_characteristics(const struct kmhal_parcel *p,
                              size_t *off_p,
                              const void **out_p, size_t out_size)
 {
@@ -272,10 +272,10 @@ int read_key_characteristics(const struct kmhal_hidl_parcel *p,
         return -1;
     }
 
-    kmhal_hidl_parcel_obj_t kc_ref;
+    kmhal_parcel_obj_t kc_ref;
 
     u32 exp_flags = 0;
-    if (kmhal_hidl_parcel_read_buffer_obj(p, off_p, sizeof(struct KM_KeyCharacteristics),
+    if (kmhal_parcel_read_buffer_obj(p, off_p, sizeof(struct KM_KeyCharacteristics),
                 &exp_flags, nullptr, nullptr, out_p, &kc_ref))
     {
         s_log(S_LOG_ERROR, "keymaster-hidl-types",
@@ -286,7 +286,7 @@ int read_key_characteristics(const struct kmhal_hidl_parcel *p,
     const struct KM_KeyCharacteristics *const kc_p =
         reinterpret_cast<const struct KM_KeyCharacteristics *>(*out_p);
 
-    kmhal_hidl_parcel_obj_t sw_ref;
+    kmhal_parcel_obj_t sw_ref;
     if (kmhal_hidl_vec_read_embedded(nullptr, &sw_ref, p, off_p,
                 reinterpret_cast<const struct kmhal_hidl_vec *>(&kc_p->softwareEnforced),
                 sizeof(struct KM_KeyParameter), kc_ref,
@@ -317,7 +317,7 @@ int read_key_characteristics(const struct kmhal_hidl_parcel *p,
         }
     }
 
-    kmhal_hidl_parcel_obj_t hw_ref;
+    kmhal_parcel_obj_t hw_ref;
     if (kmhal_hidl_vec_read_embedded(nullptr, &hw_ref, p, off_p,
                 reinterpret_cast<const struct kmhal_hidl_vec *>(&kc_p->hardwareEnforced),
                 sizeof(struct KM_KeyParameter), kc_ref,
@@ -351,16 +351,16 @@ int read_key_characteristics(const struct kmhal_hidl_parcel *p,
 }
 
 static inline
-void write_hmac_sharing_parameters(struct kmhal_hidl_parcel *p,
+void write_hmac_sharing_parameters(struct kmhal_parcel *p,
                                    const void *data, size_t size)
 {
     if (data == NULL || size != sizeof(struct KM_HmacSharingParameters))
         s_abort("keymaster-hidl-types", __func__, "Invalid parameters");
 
 
-    kmhal_hidl_parcel_obj_t hsp_ref =
-    kmhal_hidl_parcel_write_buffer_obj(p, data, size,
-            0, KMHAL_HIDL_PARCEL_OBJ_INVALID, 0);
+    kmhal_parcel_obj_t hsp_ref =
+    kmhal_parcel_write_buffer_obj(p, data, size,
+            0, KMHAL_PARCEL_OBJ_INVALID, 0);
 
     const struct KM_HmacSharingParameters *hsp_p =
         reinterpret_cast<const struct KM_HmacSharingParameters *>(data);
@@ -370,17 +370,17 @@ void write_hmac_sharing_parameters(struct kmhal_hidl_parcel *p,
 }
 
 static inline
-int read_hmac_sharing_parameters(const struct kmhal_hidl_parcel *p,
+int read_hmac_sharing_parameters(const struct kmhal_parcel *p,
                                  size_t *off_p,
                                  const void **out_p, size_t out_size)
 {
     if (out_p == NULL || out_size != sizeof(struct KM_HmacSharingParameters))
         s_abort("keymaster-hidl-types", __func__, "Invalid parameters");
 
-    kmhal_hidl_parcel_obj_t hsp_ref;
+    kmhal_parcel_obj_t hsp_ref;
 
     u32 exp_flags = 0;
-    if (kmhal_hidl_parcel_read_buffer_obj(p, off_p, sizeof(struct KM_HmacSharingParameters),
+    if (kmhal_parcel_read_buffer_obj(p, off_p, sizeof(struct KM_HmacSharingParameters),
                 &exp_flags, nullptr, nullptr, out_p, &hsp_ref))
     {
         s_log(S_LOG_ERROR, "keymaster-hidl-types",
@@ -404,7 +404,7 @@ int read_hmac_sharing_parameters(const struct kmhal_hidl_parcel *p,
 }
 
 static inline
-void write_vec_of_hmac_sharing_parameters(struct kmhal_hidl_parcel *p,
+void write_vec_of_hmac_sharing_parameters(struct kmhal_parcel *p,
                                           const void *data, size_t size)
 {
     if (data == NULL || size != sizeof(struct kmhal_hidl_vec))
@@ -412,9 +412,9 @@ void write_vec_of_hmac_sharing_parameters(struct kmhal_hidl_parcel *p,
 
     const struct kmhal_hidl_vec *vec_p = reinterpret_cast<const struct kmhal_hidl_vec *>(data);
 
-    kmhal_hidl_parcel_obj_t vec_ref =
+    kmhal_parcel_obj_t vec_ref =
     kmhal_hidl_vec_write(p, vec_p, sizeof(struct KM_HmacSharingParameters),
-            KMHAL_HIDL_PARCEL_OBJ_INVALID, 0, nullptr);
+            KMHAL_PARCEL_OBJ_INVALID, 0, nullptr);
 
     for (u32 i = 0; i < vec_p->size; i++) {
         const struct KM_HmacSharingParameters *const curr =
@@ -430,7 +430,7 @@ void write_vec_of_hmac_sharing_parameters(struct kmhal_hidl_parcel *p,
 }
 
 static inline
-int read_vec_of_hmac_sharing_parameters(const struct kmhal_hidl_parcel *p,
+int read_vec_of_hmac_sharing_parameters(const struct kmhal_parcel *p,
                                         size_t *off_p,
                                         const void **out_p, size_t out_size)
 {
@@ -439,7 +439,7 @@ int read_vec_of_hmac_sharing_parameters(const struct kmhal_hidl_parcel *p,
         return -1;
     }
 
-    kmhal_hidl_parcel_obj_t vec_ref;
+    kmhal_parcel_obj_t vec_ref;
 
     if (kmhal_hidl_vec_read(reinterpret_cast<const struct kmhal_hidl_vec **>(out_p),
                 sizeof(struct KM_HmacSharingParameters), p, off_p, &vec_ref))
@@ -476,16 +476,16 @@ int read_vec_of_hmac_sharing_parameters(const struct kmhal_hidl_parcel *p,
 }
 
 static inline
-void write_hardware_auth_token(struct kmhal_hidl_parcel *p,
+void write_hardware_auth_token(struct kmhal_parcel *p,
                                const void *data, size_t size)
 {
     if (data == NULL || size != sizeof(struct KM_HardwareAuthToken))
         s_abort("keymaster-hidl-types", __func__, "Invalid parameters");
 
 
-    kmhal_hidl_parcel_obj_t hat_ref =
-    kmhal_hidl_parcel_write_buffer_obj(p, data, size,
-            0, KMHAL_HIDL_PARCEL_OBJ_INVALID, 0);
+    kmhal_parcel_obj_t hat_ref =
+    kmhal_parcel_write_buffer_obj(p, data, size,
+            0, KMHAL_PARCEL_OBJ_INVALID, 0);
 
     const struct KM_HardwareAuthToken *hat_p =
         reinterpret_cast<const struct KM_HardwareAuthToken *>(data);
@@ -495,17 +495,17 @@ void write_hardware_auth_token(struct kmhal_hidl_parcel *p,
 }
 
 static inline
-int read_hardware_auth_token(const struct kmhal_hidl_parcel *p,
+int read_hardware_auth_token(const struct kmhal_parcel *p,
                              size_t *off_p,
                              const void **out_p, size_t out_size)
 {
     if (out_p == NULL || out_size != sizeof(struct KM_HardwareAuthToken))
         s_abort("keymaster-hidl-types", __func__, "Invalid parameters");
 
-    kmhal_hidl_parcel_obj_t hat_ref;
+    kmhal_parcel_obj_t hat_ref;
 
     u32 exp_flags = 0;
-    if (kmhal_hidl_parcel_read_buffer_obj(p, off_p, sizeof(struct KM_HardwareAuthToken),
+    if (kmhal_parcel_read_buffer_obj(p, off_p, sizeof(struct KM_HardwareAuthToken),
                 &exp_flags, nullptr, nullptr, out_p, &hat_ref))
     {
         s_log(S_LOG_ERROR, "keymaster-hidl-types",
@@ -529,21 +529,21 @@ int read_hardware_auth_token(const struct kmhal_hidl_parcel *p,
 }
 
 static inline
-void write_verification_token(struct kmhal_hidl_parcel *p,
+void write_verification_token(struct kmhal_parcel *p,
                               const void *data, size_t size)
 {
     if (data == NULL || size != sizeof(struct KM_HardwareAuthToken))
         s_abort("keymaster-hidl-types", __func__, "Invalid parameters");
 
 
-    kmhal_hidl_parcel_obj_t vt_ref =
-    kmhal_hidl_parcel_write_buffer_obj(p, data, size,
-            0, KMHAL_HIDL_PARCEL_OBJ_INVALID, 0);
+    kmhal_parcel_obj_t vt_ref =
+    kmhal_parcel_write_buffer_obj(p, data, size,
+            0, KMHAL_PARCEL_OBJ_INVALID, 0);
 
     const struct KM_VerificationToken *vt_p =
         reinterpret_cast<const struct KM_VerificationToken *>(data);
 
-    kmhal_hidl_parcel_obj_t pv_ref =
+    kmhal_parcel_obj_t pv_ref =
     kmhal_hidl_vec_write_embedded(p,
             reinterpret_cast<const struct kmhal_hidl_vec *>(&vt_p->parametersVerified),
             sizeof(struct KM_KeyParameter), vt_ref,
@@ -565,17 +565,17 @@ void write_verification_token(struct kmhal_hidl_parcel *p,
 }
 
 static inline
-int read_verification_token(const struct kmhal_hidl_parcel *p,
+int read_verification_token(const struct kmhal_parcel *p,
                             size_t *off_p,
                             const void **out_p, size_t out_size)
 {
     if (out_p == NULL || out_size != sizeof(struct KM_VerificationToken))
         s_abort("keymaster-hidl-types", __func__, "Invalid parameters");
 
-    kmhal_hidl_parcel_obj_t vt_ref;
+    kmhal_parcel_obj_t vt_ref;
 
     u32 exp_flags = 0;
-    if (kmhal_hidl_parcel_read_buffer_obj(p, off_p, sizeof(struct KM_VerificationToken),
+    if (kmhal_parcel_read_buffer_obj(p, off_p, sizeof(struct KM_VerificationToken),
                 &exp_flags, nullptr, nullptr, out_p, &vt_ref))
     {
         s_log(S_LOG_ERROR, "keymaster-hidl-types",
@@ -586,7 +586,7 @@ int read_verification_token(const struct kmhal_hidl_parcel *p,
     const struct KM_VerificationToken *vt_p =
         reinterpret_cast<const struct KM_VerificationToken *>(*out_p);
 
-    kmhal_hidl_parcel_obj_t pv_ref;
+    kmhal_parcel_obj_t pv_ref;
 
     if (kmhal_hidl_vec_read_embedded(nullptr, &pv_ref, p, off_p,
                 reinterpret_cast<const struct kmhal_hidl_vec *>(&vt_p->mac),

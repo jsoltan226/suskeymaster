@@ -1,7 +1,7 @@
 #include "hidl-txn-util.h"
 #include "binder.h"
-#include "hidl-base.h"
-#include "hidl-parcel.h"
+#include "status.h"
+#include "parcel.h"
 #include <core/log.h>
 #include <string.h>
 #include <inttypes.h>
@@ -9,9 +9,9 @@
 
 #define MODULE_NAME "hidl-txn-util"
 
-enum kmhal_hidl_android_status
+enum kmhal_android_status
 kmhal_hidl_util_check_allocate_txn_tmps(struct kmhal_binder_txn **txn_p,
-                                        struct kmhal_hidl_parcel **parcel_p)
+                                        struct kmhal_parcel **parcel_p)
 {
     if (txn_p != NULL && *txn_p == NULL) {
         *txn_p = kmhal_binder_txn_new();
@@ -22,7 +22,7 @@ kmhal_hidl_util_check_allocate_txn_tmps(struct kmhal_binder_txn **txn_p,
     }
 
     if (parcel_p != NULL && *parcel_p == NULL) {
-        *parcel_p = kmhal_hidl_parcel_new();
+        *parcel_p = kmhal_parcel_new();
         if (*parcel_p == NULL) {
             s_log_error("Failed to allocate a new parcel");
             return NO_MEMORY;
@@ -32,22 +32,22 @@ kmhal_hidl_util_check_allocate_txn_tmps(struct kmhal_binder_txn **txn_p,
     return OK;
 }
 
-enum kmhal_hidl_android_status kmhal_hidl_util_transact_and_unpack(
+enum kmhal_android_status kmhal_hidl_util_transact_and_unpack(
         struct kmhal_binder_ctx *binder,
         struct kmhal_binder_txn **txn_p,
-        struct kmhal_hidl_parcel **parcel_p,
+        struct kmhal_parcel **parcel_p,
         struct kmhal_binder_txn_args_out *out_reply,
         bool write_free_reply
 )
 {
-    enum kmhal_hidl_android_status ret = UNKNOWN_ERROR;
+    enum kmhal_android_status ret = UNKNOWN_ERROR;
     struct kmhal_binder_txn_args_out reply;
 
     if (!kmhal_binder_ctx_ok(binder)) {
         s_log_error("Invalid binder device context");
         return UNEXPECTED_NULL;
     } else if (txn_p == NULL || *txn_p == NULL) {
-        s_log_error("Binder transaction contex is NULL");
+        s_log_error("Binder transaction context is NULL");
         return UNEXPECTED_NULL;
     } else if (parcel_p == NULL || *parcel_p == NULL) {
         s_log_error("Parcel is NULL");
@@ -55,12 +55,12 @@ enum kmhal_hidl_android_status kmhal_hidl_util_transact_and_unpack(
     }
 
     if (kmhal_binder_do_write_read_ioctl(binder, txn_p)) {
-        (void) kmhal_hidl_parcel_unpack(parcel_p, NULL);
+        (void) kmhal_parcel_unpack(parcel_p, NULL);
         s_log_error("Binder WRITE_READ ioctl failed");
         return FAILED_TRANSACTION;
     }
 
-    if (kmhal_hidl_parcel_unpack(parcel_p, &reply)) {
+    if (kmhal_parcel_unpack(parcel_p, &reply)) {
         s_log_error("Failed to unpack parcel after transaction");
         return FAILED_TRANSACTION;
     } else if (reply.status != KMHAL_BINDER_TXN_OK) {
@@ -75,8 +75,8 @@ enum kmhal_hidl_android_status kmhal_hidl_util_transact_and_unpack(
         memcpy(&status, reply.data_buf, sizeof(i32));
 
         s_log_error("Got status code: %"PRIi32" (%s)",
-                status, kmhal_hidl_android_status_toString(status));
-        return (enum kmhal_hidl_android_status)status;
+                status, kmhal_android_status_toString(status));
+        return kmhal_android_status_prune(status);
     }
 
     if ((ret = kmhal_hidl_util_check_allocate_txn_tmps(txn_p, NULL)) != OK)
@@ -85,7 +85,7 @@ enum kmhal_hidl_android_status kmhal_hidl_util_transact_and_unpack(
     if (write_free_reply)
         kmhal_binder_write_free_reply(*txn_p, reply.data_buf);
 
-    if ((*parcel_p = kmhal_hidl_parcel_new_from_reply(&reply)) == NULL) {
+    if ((*parcel_p = kmhal_parcel_new_from_reply(&reply)) == NULL) {
         s_log_error("Failed to initialize a new parcel from the reply");
         return BAD_VALUE;
     }
@@ -97,8 +97,8 @@ enum kmhal_hidl_android_status kmhal_hidl_util_transact_and_unpack(
 }
 
 void kmhal_hidl_util_destroy_txn_tmps(struct kmhal_binder_txn **txn_p,
-                                      struct kmhal_hidl_parcel **parcel_p)
+                                      struct kmhal_parcel **parcel_p)
 {
     kmhal_binder_txn_destroy(txn_p);
-    kmhal_hidl_parcel_destroy(parcel_p);
+    kmhal_parcel_destroy(parcel_p);
 }

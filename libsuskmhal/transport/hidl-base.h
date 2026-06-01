@@ -1,6 +1,7 @@
 #ifndef SUSKEYMASTER_KMHAL_HIDL_BASE_H_
 #define SUSKEYMASTER_KMHAL_HIDL_BASE_H_
 
+#include "status.h"
 #include "hidl-types.h"
 #include <core/int.h>
 #include <errno.h>
@@ -8,33 +9,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
-
-struct kmhal_hidl_hal_sp;
-
-/* Stolen from AOSP: system/core/libutils/include/utils/Errors.h */
-enum kmhal_hidl_android_status {
-    OK                  = 0,
-    NO_ERROR            = OK,
-    UNKNOWN_ERROR       = INT32_MIN,
-    NO_MEMORY           = -ENOMEM,
-    INVALID_OPERATION   = -ENOSYS,
-    BAD_VALUE           = -EINVAL,
-    BAD_TYPE            = (UNKNOWN_ERROR + 1),
-    NAME_NOT_FOUND      = -ENOENT,
-    PERMISSION_DENIED   = -EPERM,
-    NO_INIT             = -ENODEV,
-    ALREADY_EXISTS      = -EEXIST,
-    DEAD_OBJECT         = -EPIPE,
-    FAILED_TRANSACTION  = (UNKNOWN_ERROR + 2),
-    BAD_INDEX           = -EOVERFLOW,
-    NOT_ENOUGH_DATA     = -ENODATA,
-    WOULD_BLOCK         = -EWOULDBLOCK,
-    TIMED_OUT           = -ETIMEDOUT,
-    UNKNOWN_TRANSACTION = -EBADMSG,
-    FDS_NOT_ALLOWED     = (UNKNOWN_ERROR + 7),
-    UNEXPECTED_NULL     = (UNKNOWN_ERROR + 8),
-};
-const char * kmhal_hidl_android_status_toString(i32 s);
 
 #define KMHAL_HIDL_BASE_FQNAME "android.hidl.base@1.0::IBase"
 
@@ -70,12 +44,12 @@ enum kmhal_hidl_transaction_ids {
     HIDL_FLAG_CLEAR_BUF          = 0x00000020,
 };
 
-enum kmhal_hidl_android_status
+enum kmhal_android_status
 kmhal_hidl_base_ping(struct kmhal_binder_ctx *binder,
                      struct kmhal_binder_txn **txn_p,
                      u32 handle);
 
-enum kmhal_hidl_android_status
+enum kmhal_android_status
 kmhal_hidl_base_get_descriptor(struct kmhal_binder_ctx *binder,
                                struct kmhal_binder_txn **txn_p,
                                u32 handle,

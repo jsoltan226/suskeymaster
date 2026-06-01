@@ -75,6 +75,9 @@ struct kmhal_binder_ctx {
     /* The binder driver device file descriptor */
     int fd;
 
+    /* Path to the opened binder device */
+    const char *dev_path;
+
     /* The binder transaction data read buffer
      * (of size `KMHAL_BINDER_READ_BUF_SIZE`).
      * The kernel will write transaction results to this buffer,
@@ -120,13 +123,17 @@ struct domain_order {
     ),                                                              \
 }
 
+#define BINDER_DOMAIN_BINDER UINT32_C(0)
+#define BINDER_DOMAIN_HWBINDER UINT32_C(1)
+#define BINDER_DOMAIN_VNDBINDER UINT32_C(2)
+
 struct kmhal_binder_ctx *
 kmhal_binder_open(kmhal_binder_domain_ordered_mask_t domains_to_try)
 {
     struct domain_order domains[N_DOMAINS] = {
-        DOMAIN_ORDER(domains_to_try, KMHAL_BINDER),
-        DOMAIN_ORDER(domains_to_try, KMHAL_HWBINDER),
-        DOMAIN_ORDER(domains_to_try, KMHAL_VNDBINDER),
+        DOMAIN_ORDER(domains_to_try, BINDER_DOMAIN_BINDER),
+        DOMAIN_ORDER(domains_to_try, BINDER_DOMAIN_HWBINDER),
+        DOMAIN_ORDER(domains_to_try, BINDER_DOMAIN_VNDBINDER),
     };
 
     struct domain_order * domain_ptrs[N_DOMAINS] =
@@ -164,11 +171,12 @@ struct kmhal_binder_ctx * kmhal_binder_open_dev(const char *dev_path)
 
     struct kmhal_binder_ctx *ret = NULL;
 
-    ret = malloc(sizeof(struct kmhal_binder_ctx));
+    ret = calloc(1, sizeof(struct kmhal_binder_ctx));
     if (ret == NULL)
         goto_error("Failed to allocate a new binder context");
     atomic_store(&ret->initialized_, false);
     ret->fd = -1;
+    ret->dev_path = NULL;
     ret->td_map = MAP_FAILED;
     ret->fail_flags = FAIL_INIT;
     ret->ioctl_lock = (pthread_mutex_t){ 0 };
@@ -182,6 +190,7 @@ struct kmhal_binder_ctx * kmhal_binder_open_dev(const char *dev_path)
     if (ret->fd == -1)
         goto_error("Failed to open binder device \"%s\": %d (%s)",
                 dev_path, errno, strerror(errno));
+    ret->dev_path = dev_path;
 
     /* Check binder protocol version */
     {
@@ -237,6 +246,32 @@ struct kmhal_binder_txn * kmhal_binder_txn_new(void)
     return ret;
 }
 
+const char * kmhal_binder_get_dev_path(const struct kmhal_binder_ctx *ctx)
+{
+    if (ctx == NULL || !atomic_load(&ctx->initialized_)) {
+        s_log_error("Binder context is invalid or NULL!");
+        return NULL;
+    } else if (ctx->dev_path == NULL) {
+        s_log_error("Binder context's dev_path is NULL!");
+        return NULL;
+    }
+
+    return ctx->dev_path;
+}
+
+int kmhal_binder_get_fd(const struct kmhal_binder_ctx *ctx)
+{
+    if (ctx == NULL || !atomic_load(&ctx->initialized_)) {
+        s_log_error("Binder context is invalid or NULL!");
+        return -1;
+    } else if (ctx->fd == -1) {
+        s_log_error("Binder context's fd is invalid!");
+        return -1;
+    }
+
+    return ctx->fd;
+}
+
 bool kmhal_binder_ctx_ok(const struct kmhal_binder_ctx *ctx)
 {
     return ctx != NULL &&
@@ -244,29 +279,25 @@ bool kmhal_binder_ctx_ok(const struct kmhal_binder_ctx *ctx)
         ctx->fail_flags == 0;
 }
 
-void kmhal_binder_write_acquire(struct kmhal_binder_txn *txn,
-                                u32 handle)
+void kmhal_binder_write_acquire(struct kmhal_binder_txn *txn, u32 handle)
 {
     u_check_params(txn != NULL && txn->buf != NULL);
     write_generic_ref_cmd(BC_ACQUIRE, &txn->buf, handle);
 }
 
-void kmhal_binder_write_increfs(struct kmhal_binder_txn *txn,
-                                u32 handle)
+void kmhal_binder_write_increfs(struct kmhal_binder_txn *txn, u32 handle)
 {
     u_check_params(txn != NULL && txn->buf != NULL);
     write_generic_ref_cmd(BC_INCREFS, &txn->buf, handle);
 }
 
-void kmhal_binder_write_release(struct kmhal_binder_txn *txn,
-                                u32 handle)
+void kmhal_binder_write_release(struct kmhal_binder_txn *txn, u32 handle)
 {
     u_check_params(txn != NULL && txn->buf != NULL);
     write_generic_ref_cmd(BC_RELEASE, &txn->buf, handle);
 }
 
-void kmhal_binder_write_decrefs(struct kmhal_binder_txn *txn,
-                                u32 handle)
+void kmhal_binder_write_decrefs(struct kmhal_binder_txn *txn, u32 handle)
 {
     u_check_params(txn != NULL && txn->buf != NULL);
     write_generic_ref_cmd(BC_DECREFS, &txn->buf, handle);
@@ -431,6 +462,7 @@ void kmhal_binder_close(struct kmhal_binder_ctx **ctx_p)
         }
         ctx->fd = -1;
     }
+    ctx->dev_path = NULL;
 
     /* Print out the fail flags if something more that `FAIL_INIT` is set */
     if (ctx->fail_flags && ctx->fail_flags != FAIL_INIT) {
@@ -476,12 +508,12 @@ static void bubble_sort_domain_ptrs(struct domain_order * d_ptrs[N_DOMAINS])
     }
 }
 
-static const char *domain_to_device_name(enum kmhal_binder_domain d)
+static const char *domain_to_device_name(u32 d)
 {
     switch (d) {
-    case KMHAL_BINDER: return "/dev/binder";
-    case KMHAL_HWBINDER: return "/dev/hwbinder";
-    case KMHAL_VNDBINDER: return "/dev/vndbinder";
+    case BINDER_DOMAIN_BINDER: return "/dev/binder";
+    case BINDER_DOMAIN_HWBINDER: return "/dev/hwbinder";
+    case BINDER_DOMAIN_VNDBINDER: return "/dev/vndbinder";
     default: return NULL;
     }
 }

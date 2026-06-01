@@ -1,6 +1,6 @@
-#include "hidl-parcel.h"
+#include "parcel.h"
 #include "binder.h"
-#include "hidl-base.h"
+#include "status.h"
 #include <core/log.h>
 #include <core/int.h>
 #include <core/util.h>
@@ -16,7 +16,7 @@
 #define MODULE_NAME "hidl-parcel"
 
 struct parcel_obj {
-    struct kmhal_hidl_parcel *parcel_bp;
+    struct kmhal_parcel *parcel_bp;
     size_t self_idx;
 
     binder_size_t off;
@@ -25,7 +25,7 @@ struct parcel_obj {
     bool has_parent;
 };
 
-struct kmhal_hidl_parcel {
+struct kmhal_parcel {
     _Atomic bool initialized_;
 
     VECTOR(u8) buffer;
@@ -38,29 +38,29 @@ struct kmhal_hidl_parcel {
     struct kmhal_binder_txn_args txn_arg;
 };
 
-static void parcel_destroy__(struct kmhal_hidl_parcel **parcel_p,
+static void parcel_destroy__(struct kmhal_parcel **parcel_p,
         bool allow_pending_transaction);
 
 static inline binder_size_t align4(binder_size_t s);
 static inline binder_size_t align8(binder_size_t s);
 
-static int validate_parcel_object_ref(const struct kmhal_hidl_parcel *parcel,
-                                      kmhal_hidl_parcel_obj_t obj_ref);
+static int validate_parcel_object_ref(const struct kmhal_parcel *parcel,
+                                      kmhal_parcel_obj_t obj_ref);
 
-static int validate_buffer_object(const struct kmhal_hidl_parcel *parcel,
+static int validate_buffer_object(const struct kmhal_parcel *parcel,
         const struct binder_buffer_object *obj, binder_size_t size, u32 flags,
         binder_size_t parent, binder_size_t parent_offset);
 
-static int validate_parent(const struct kmhal_hidl_parcel *parcel,
+static int validate_parent(const struct kmhal_parcel *parcel,
                            binder_size_t parent_idx, binder_size_t child_idx);
 
 static int validate_reply(const struct kmhal_binder_txn_args_out *r);
 
-struct kmhal_hidl_parcel * kmhal_hidl_parcel_new(void)
+struct kmhal_parcel * kmhal_parcel_new(void)
 {
-    struct kmhal_hidl_parcel *ret = NULL;
+    struct kmhal_parcel *ret = NULL;
 
-    ret = calloc(1, sizeof(struct kmhal_hidl_parcel));
+    ret = calloc(1, sizeof(struct kmhal_parcel));
     if (ret == NULL)
         goto_error("Failed to allocate a new parcel struct");
     atomic_store(&ret->initialized_, true);
@@ -78,22 +78,21 @@ struct kmhal_hidl_parcel * kmhal_hidl_parcel_new(void)
 
 err:
     if (ret != NULL)
-        kmhal_hidl_parcel_destroy(&ret);
+        kmhal_parcel_destroy(&ret);
 
     return NULL;
 }
 
-struct kmhal_hidl_parcel * kmhal_hidl_parcel_new_from_reply(
-        const struct kmhal_binder_txn_args_out *reply
-)
+struct kmhal_parcel *
+kmhal_parcel_new_from_reply(const struct kmhal_binder_txn_args_out *reply)
 {
     (void) reply;
-    struct kmhal_hidl_parcel *ret = NULL;
+    struct kmhal_parcel *ret = NULL;
 
     if (validate_reply(reply))
         goto_error("Invalid or failed reply");
 
-    ret = kmhal_hidl_parcel_new();
+    ret = kmhal_parcel_new();
     if (ret == NULL)
         goto err;
 
@@ -139,13 +138,13 @@ struct kmhal_hidl_parcel * kmhal_hidl_parcel_new_from_reply(
 
 err:
     if (ret != NULL)
-        kmhal_hidl_parcel_destroy(&ret);
+        kmhal_parcel_destroy(&ret);
 
     return NULL;
 }
 
-void kmhal_hidl_parcel_write_bytes(struct kmhal_hidl_parcel *parcel,
-        const void *data, size_t len)
+void kmhal_parcel_write_bytes(struct kmhal_parcel *parcel,
+                              const void *data, size_t len)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
             (data != NULL || len == 0) && len < UINT32_MAX);
@@ -159,8 +158,8 @@ void kmhal_hidl_parcel_write_bytes(struct kmhal_hidl_parcel *parcel,
     memcpy(parcel->buffer + offset, data, len);
 }
 
-void kmhal_hidl_parcel_patch(struct kmhal_hidl_parcel *parcel,
-                             size_t offset, const void *data, size_t len)
+void kmhal_parcel_patch(struct kmhal_parcel *parcel,
+                        size_t offset, const void *data, size_t len)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
             (data != NULL || len == 0) &&
@@ -174,13 +173,13 @@ void kmhal_hidl_parcel_patch(struct kmhal_hidl_parcel *parcel,
     memcpy(parcel->buffer + offset, data, len);
 }
 
-void kmhal_hidl_parcel_write_u32(struct kmhal_hidl_parcel *parcel, u32 u)
+void kmhal_parcel_write_u32(struct kmhal_parcel *parcel, u32 u)
 {
     u32 u_ = u;
-    kmhal_hidl_parcel_write_bytes(parcel, &u_, sizeof(u32));
+    kmhal_parcel_write_bytes(parcel, &u_, sizeof(u32));
 }
 
-void kmhal_hidl_parcel_write_u64(struct kmhal_hidl_parcel *parcel, u64 u)
+void kmhal_parcel_write_u64(struct kmhal_parcel *parcel, u64 u)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
 
@@ -193,8 +192,8 @@ void kmhal_hidl_parcel_write_u64(struct kmhal_hidl_parcel *parcel, u64 u)
     memcpy(parcel->buffer + off, &u_, sizeof(u64));
 }
 
-void kmhal_hidl_parcel_write_cstring(struct kmhal_hidl_parcel *parcel,
-                                     const char *str)
+void kmhal_parcel_write_cstring(struct kmhal_parcel *parcel,
+                                const char *str)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
             str != NULL);
@@ -208,9 +207,9 @@ void kmhal_hidl_parcel_write_cstring(struct kmhal_hidl_parcel *parcel,
     parcel->buffer[str_offset + str_len] = '\0';
 }
 
-kmhal_hidl_parcel_obj_t
-kmhal_hidl_parcel_write_handle(struct kmhal_hidl_parcel *parcel,
-                               const struct flat_binder_object *obj)
+kmhal_parcel_obj_t
+kmhal_parcel_write_handle(struct kmhal_parcel *parcel,
+                          const struct flat_binder_object *obj)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
     u_check_params(obj != NULL && (
@@ -236,14 +235,14 @@ kmhal_hidl_parcel_write_handle(struct kmhal_hidl_parcel *parcel,
             .has_parent = false
     });
 
-    return (kmhal_hidl_parcel_obj_t)new_idx;
+    return (kmhal_parcel_obj_t)new_idx;
 }
 
-kmhal_hidl_parcel_obj_t
-kmhal_hidl_parcel_write_buffer_obj(struct kmhal_hidl_parcel *parcel,
-                                   const void *buffer, size_t buffer_size,
-                                   u32 flags, kmhal_hidl_parcel_obj_t parent,
-                                   binder_size_t parent_offset)
+kmhal_parcel_obj_t
+kmhal_parcel_write_buffer_obj(struct kmhal_parcel *parcel,
+                              const void *buffer, size_t buffer_size,
+                              u32 flags, kmhal_parcel_obj_t parent,
+                              binder_size_t parent_offset)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
 
@@ -286,14 +285,14 @@ kmhal_hidl_parcel_write_buffer_obj(struct kmhal_hidl_parcel *parcel,
         parcel->sg_buffers_size += align8(obj.length);
     }
 
-    return (kmhal_hidl_parcel_obj_t)new_idx;
+    return (kmhal_parcel_obj_t)new_idx;
 }
 
-kmhal_hidl_parcel_obj_t
-kmhal_hidl_parcel_write_embedded_buffer(struct kmhal_hidl_parcel *parcel,
-                                        const void *buf, size_t buf_size,
-                                        kmhal_hidl_parcel_obj_t parent,
-                                        binder_size_t parent_offset)
+kmhal_parcel_obj_t
+kmhal_parcel_write_embedded_buffer(struct kmhal_parcel *parcel,
+                                   const void *buf, size_t buf_size,
+                                   kmhal_parcel_obj_t parent,
+                                   binder_size_t parent_offset)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
     u_check_params(buf != NULL || buf_size == 0);
@@ -301,27 +300,27 @@ kmhal_hidl_parcel_write_embedded_buffer(struct kmhal_hidl_parcel *parcel,
 
     const binder_size_t parent_idx = (binder_size_t)parent;
 
-    return kmhal_hidl_parcel_write_buffer_obj(parcel, buf, buf_size,
+    return kmhal_parcel_write_buffer_obj(parcel, buf, buf_size,
             BINDER_BUFFER_FLAG_HAS_PARENT, parent_idx, parent_offset);
 }
 
-size_t kmhal_hidl_parcel_obj_idx(kmhal_hidl_parcel_obj_t obj)
+size_t kmhal_parcel_obj_idx(kmhal_parcel_obj_t obj)
 {
-    u_check_params(KMHAL_HIDL_PARCEL_OBJ_IS_VALID(obj));
+    u_check_params(KMHAL_PARCEL_OBJ_IS_VALID(obj));
     return (size_t)obj;
 }
 
-kmhal_hidl_parcel_obj_t
-kmhal_hidl_parcel_obj_get(const struct kmhal_hidl_parcel *parcel, size_t idx)
+kmhal_parcel_obj_t
+kmhal_parcel_obj_get(const struct kmhal_parcel *parcel, size_t idx)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
 
     if (idx >= vector_size(parcel->objects)) {
         s_log_error("Invalid object offset index %zu", idx);
-        return KMHAL_HIDL_PARCEL_OBJ_INVALID;
+        return KMHAL_PARCEL_OBJ_INVALID;
     }
 
-    return (kmhal_hidl_parcel_obj_t)idx;
+    return (kmhal_parcel_obj_t)idx;
 }
 
 static int cmp_objs_offsets(const void *obj1_, const void *obj2_)
@@ -334,9 +333,9 @@ static int cmp_objs_offsets(const void *obj1_, const void *obj2_)
     return (int)obj1->off - (int)obj2->off;
 }
 
-kmhal_hidl_parcel_obj_t
-kmhal_hidl_parcel_obj_find_by_offset(const struct kmhal_hidl_parcel *parcel,
-                                     size_t offset)
+kmhal_parcel_obj_t
+kmhal_parcel_obj_find_by_offset(const struct kmhal_parcel *parcel,
+                                size_t offset)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
 
@@ -345,10 +344,10 @@ kmhal_hidl_parcel_obj_find_by_offset(const struct kmhal_hidl_parcel *parcel,
             sizeof(struct binder_buffer_object))
     {
         s_log_error("Binder buffer object offset out of bounds");
-        return KMHAL_HIDL_PARCEL_OBJ_INVALID;
+        return KMHAL_PARCEL_OBJ_INVALID;
     } else if (offset != align4(offset)) {
         s_log_error("Offset not aligned");
-        return KMHAL_HIDL_PARCEL_OBJ_INVALID;
+        return KMHAL_PARCEL_OBJ_INVALID;
     }
 
     struct parcel_obj key = { .off = offset };
@@ -358,19 +357,22 @@ kmhal_hidl_parcel_obj_find_by_offset(const struct kmhal_hidl_parcel *parcel,
             sizeof(struct parcel_obj), cmp_objs_offsets);
     if (found == NULL) {
         /* s_log_error("Object with offset %zu not found in parcel", offset); */
-        return KMHAL_HIDL_PARCEL_OBJ_INVALID;
+        return KMHAL_PARCEL_OBJ_INVALID;
     }
 
-    const kmhal_hidl_parcel_obj_t r = (kmhal_hidl_parcel_obj_t)found->self_idx;
+    const kmhal_parcel_obj_t r = (kmhal_parcel_obj_t)found->self_idx;
     return r;
 }
 
-void kmhal_hidl_parcel_pack(struct kmhal_binder_txn *txn,
-                            struct kmhal_hidl_parcel *parcel,
-                            u32 handle, u32 cmd)
+void kmhal_parcel_pack(struct kmhal_binder_txn *txn,
+                       struct kmhal_parcel *parcel,
+                       u32 handle, u32 cmd, int scatter_gather)
 {
     u_check_params(txn != NULL &&
             parcel != NULL && atomic_load(&parcel->initialized_));
+
+    if (scatter_gather < 0)
+        scatter_gather = (parcel->sg_buffers_size > 0);
 
     const bool prev_pending = atomic_exchange(&parcel->txn_pending, true);
     s_assert(!prev_pending, "Attempt to queue parcel for transaction twice");
@@ -398,15 +400,22 @@ void kmhal_hidl_parcel_pack(struct kmhal_binder_txn *txn,
         .out_reply = { 0 }
     };
 
-    kmhal_binder_write_transact_sg(&parcel->txn_arg);
+    if (scatter_gather) {
+        kmhal_binder_write_transact_sg(&parcel->txn_arg);
+    } else {
+        if (parcel->sg_buffers_size > 0)
+            s_log_warn("Normal transaction requested but sg_buffers_size > 0");
+
+        kmhal_binder_write_transact(&parcel->txn_arg);
+    }
 }
 
-int kmhal_hidl_parcel_unpack(struct kmhal_hidl_parcel **parcel_p,
+int kmhal_parcel_unpack(struct kmhal_parcel **parcel_p,
                              struct kmhal_binder_txn_args_out *out)
 {
     u_check_params(parcel_p != NULL && *parcel_p != NULL &&
             atomic_load(&(*parcel_p)->initialized_));
-    struct kmhal_hidl_parcel *const parcel = *parcel_p;
+    struct kmhal_parcel *const parcel = *parcel_p;
 
     if (!atomic_load(&parcel->txn_pending)) {
         s_log_error("Parcel has no pending transaction to unpack!");
@@ -443,7 +452,7 @@ int kmhal_hidl_parcel_unpack(struct kmhal_hidl_parcel **parcel_p,
     return 0;
 }
 
-int kmhal_hidl_parcel_peek(const struct kmhal_hidl_parcel *parcel,
+int kmhal_parcel_peek(const struct kmhal_parcel *parcel,
                            size_t offset, void *out, size_t len)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_)
@@ -459,7 +468,7 @@ int kmhal_hidl_parcel_peek(const struct kmhal_hidl_parcel *parcel,
     return 0;
 }
 
-int kmhal_hidl_parcel_read_u32(const struct kmhal_hidl_parcel *parcel,
+int kmhal_parcel_read_u32(const struct kmhal_parcel *parcel,
                                size_t *offset_p, u32 *out)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
@@ -479,7 +488,7 @@ int kmhal_hidl_parcel_read_u32(const struct kmhal_hidl_parcel *parcel,
     return 0;
 }
 
-int kmhal_hidl_parcel_read_u64(const struct kmhal_hidl_parcel *parcel,
+int kmhal_parcel_read_u64(const struct kmhal_parcel *parcel,
                                size_t *offset_p, u64 *out)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
@@ -499,7 +508,7 @@ int kmhal_hidl_parcel_read_u64(const struct kmhal_hidl_parcel *parcel,
     return 0;
 }
 
-int kmhal_hidl_parcel_read_handle(const struct kmhal_hidl_parcel *parcel,
+int kmhal_parcel_read_handle(const struct kmhal_parcel *parcel,
                                   size_t *offset_p,
                                   struct flat_binder_object *out)
 {
@@ -536,14 +545,14 @@ int kmhal_hidl_parcel_read_handle(const struct kmhal_hidl_parcel *parcel,
     return 0;
 }
 
-int kmhal_hidl_parcel_read_buffer_obj(const struct kmhal_hidl_parcel *parcel,
+int kmhal_parcel_read_buffer_obj(const struct kmhal_parcel *parcel,
                                       size_t *offset_p,
                                       binder_size_t exp_size,
                                       const u32 *exp_flags,
-                                      const kmhal_hidl_parcel_obj_t *exp_parent,
+                                      const kmhal_parcel_obj_t *exp_parent,
                                       const binder_size_t *exp_parent_offset,
                                       const void **out,
-                                      kmhal_hidl_parcel_obj_t *out_ref)
+                                      kmhal_parcel_obj_t *out_ref)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
             parcel->buffer != NULL);
@@ -560,7 +569,7 @@ int kmhal_hidl_parcel_read_buffer_obj(const struct kmhal_hidl_parcel *parcel,
     struct binder_buffer_object tmp;
     memcpy(&tmp, parcel->buffer + off, sizeof(struct binder_buffer_object));
 
-    kmhal_hidl_parcel_obj_t ref = KMHAL_HIDL_PARCEL_OBJ_INVALID;
+    kmhal_parcel_obj_t ref = KMHAL_PARCEL_OBJ_INVALID;
 
     u32 flags = exp_flags != NULL ? *exp_flags : tmp.flags;
     binder_size_t parent = exp_parent != NULL ? *exp_parent : tmp.parent;
@@ -575,8 +584,8 @@ int kmhal_hidl_parcel_read_buffer_obj(const struct kmhal_hidl_parcel *parcel,
     }
 
     if (tmp.buffer) {
-        ref = kmhal_hidl_parcel_obj_find_by_offset(parcel, off);
-        if (!KMHAL_HIDL_PARCEL_OBJ_IS_VALID(ref)) {
+        ref = kmhal_parcel_obj_find_by_offset(parcel, off);
+        if (!KMHAL_PARCEL_OBJ_IS_VALID(ref)) {
             s_log_error("Object at offset %zu not found in parcel", off);
             return 1;
         }
@@ -589,13 +598,13 @@ int kmhal_hidl_parcel_read_buffer_obj(const struct kmhal_hidl_parcel *parcel,
     return 0;
 }
 
-int kmhal_hidl_parcel_read_embedded_buffer(const struct kmhal_hidl_parcel *p,
+int kmhal_parcel_read_embedded_buffer(const struct kmhal_parcel *p,
                                            size_t *off_p,
-                                           kmhal_hidl_parcel_obj_t parent_ref,
+                                           kmhal_parcel_obj_t parent_ref,
                                            binder_size_t parent_offset,
                                            size_t expected_buf_size,
                                            const void **out_buf,
-                                           kmhal_hidl_parcel_obj_t *out_ref)
+                                           kmhal_parcel_obj_t *out_ref)
 {
     u_check_params(p != NULL && atomic_load(&p->initialized_));
     u_check_params(off_p != NULL);
@@ -638,11 +647,11 @@ int kmhal_hidl_parcel_read_embedded_buffer(const struct kmhal_hidl_parcel *p,
         return 1;
     }
 
-    kmhal_hidl_parcel_obj_t child_ref = KMHAL_HIDL_PARCEL_OBJ_INVALID;
+    kmhal_parcel_obj_t child_ref = KMHAL_PARCEL_OBJ_INVALID;
 
     if (child_buffer_ptr) {
-        child_ref = kmhal_hidl_parcel_obj_find_by_offset(p, *off_p);
-        if (!KMHAL_HIDL_PARCEL_OBJ_IS_VALID(child_ref)) {
+        child_ref = kmhal_parcel_obj_find_by_offset(p, *off_p);
+        if (!KMHAL_PARCEL_OBJ_IS_VALID(child_ref)) {
             s_log_error("Couldn't find embedded buffer object");
             return 1;
         }
@@ -655,7 +664,7 @@ int kmhal_hidl_parcel_read_embedded_buffer(const struct kmhal_hidl_parcel *p,
         }
 
         /* If the offset was found in the `offsets` array of the parcel
-         * using `kmhal_hidl_parcel_obj_find_by_offset`,
+         * using `kmhal_parcel_obj_find_by_offset`,
          * we have a guarantee that it's valid */
         struct binder_buffer_object child_obj;
         memcpy(&child_obj, p->buffer + child->off, sizeof(child_obj));
@@ -681,19 +690,19 @@ int kmhal_hidl_parcel_read_embedded_buffer(const struct kmhal_hidl_parcel *p,
     return 0;
 }
 
-void kmhal_hidl_parcel_destroy(struct kmhal_hidl_parcel **parcel_p)
+void kmhal_parcel_destroy(struct kmhal_parcel **parcel_p)
 {
     parcel_destroy__(parcel_p, false);
 }
 
-static void parcel_destroy__(struct kmhal_hidl_parcel **parcel_p,
+static void parcel_destroy__(struct kmhal_parcel **parcel_p,
         bool allow_pending_transaction)
 {
     if (parcel_p == NULL || *parcel_p == NULL ||
             !atomic_exchange(&(*parcel_p)->initialized_, false))
         return;
 
-    struct kmhal_hidl_parcel *const parcel = *parcel_p;
+    struct kmhal_parcel *const parcel = *parcel_p;
 
     const bool txn_pending = atomic_exchange(&parcel->txn_pending, false);
     if (!allow_pending_transaction && txn_pending) {
@@ -701,7 +710,7 @@ static void parcel_destroy__(struct kmhal_hidl_parcel **parcel_p,
         default:
         case KMHAL_BINDER_TXN_PENDING:
         case KMHAL_BINDER_TXN_UNINITIALIZED:
-            s_abort(MODULE_NAME, "kmhal_hidl_parcel_destroy",
+            s_abort(MODULE_NAME, "kmhal_parcel_destroy",
                     "Attempt to destroy parcel with a pending transaction");
         case KMHAL_BINDER_TXN_OK:
         case KMHAL_BINDER_TXN_FAILED:
@@ -731,15 +740,15 @@ static inline binder_size_t align8(binder_size_t s)
     return (s + UINT64_C(7)) & ~UINT64_C(7);
 }
 
-static int validate_parcel_object_ref(const struct kmhal_hidl_parcel *parcel,
-                                      kmhal_hidl_parcel_obj_t obj_ref)
+static int validate_parcel_object_ref(const struct kmhal_parcel *parcel,
+                                      kmhal_parcel_obj_t obj_ref)
 {
     if (parcel == NULL) {
         s_log_error("Parcel is NULL");
         return -1;
     }
 
-    if (!KMHAL_HIDL_PARCEL_OBJ_IS_VALID(obj_ref)) {
+    if (!KMHAL_PARCEL_OBJ_IS_VALID(obj_ref)) {
         s_log_error("Invalid object reference");
         return -1;
     }
@@ -774,7 +783,7 @@ static int validate_parcel_object_ref(const struct kmhal_hidl_parcel *parcel,
     return 0;
 }
 
-static int validate_buffer_object(const struct kmhal_hidl_parcel *parcel,
+static int validate_buffer_object(const struct kmhal_parcel *parcel,
         const struct binder_buffer_object *obj, binder_size_t size, u32 flags,
         binder_size_t parent, binder_size_t parent_offset)
 {
@@ -818,7 +827,7 @@ static int validate_buffer_object(const struct kmhal_hidl_parcel *parcel,
     return 0;
 }
 
-static int validate_parent(const struct kmhal_hidl_parcel *parcel,
+static int validate_parent(const struct kmhal_parcel *parcel,
                            binder_size_t parent_idx, binder_size_t child_idx)
 {
     const size_t idx = (size_t)parent_idx;
@@ -827,8 +836,7 @@ static int validate_parent(const struct kmhal_hidl_parcel *parcel,
         return -1;
     }
 
-    const kmhal_hidl_parcel_obj_t parent_ref =
-        (kmhal_hidl_parcel_obj_t)parent_idx;
+    const kmhal_parcel_obj_t parent_ref = (kmhal_parcel_obj_t)parent_idx;
 
     if (validate_parcel_object_ref(parcel, parent_ref)) {
         s_log_error("Parent object invalid");
@@ -984,13 +992,13 @@ bad_offset:
 
     if (r->flags & TF_STATUS_CODE) {
         s_log_error("Reply is a status code: %d (%s)",
-                status, kmhal_hidl_android_status_toString(status));
+                status, kmhal_android_status_toString(status));
         return 1;
     }
 
     if (status != 0) {
         s_log_error("Non-zero status in reply buffer: %d (%s)",
-                status, kmhal_hidl_android_status_toString(status));
+                status, kmhal_android_status_toString(status));
         return 1;
     }
 

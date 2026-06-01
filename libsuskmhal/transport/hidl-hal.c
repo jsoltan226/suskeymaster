@@ -1,8 +1,9 @@
 #include "binder.h"
+#include "status.h"
+#include "parcel.h"
 #include "hidl-hal.h"
 #include "hidl-base.h"
 #include "hidl-manager.h"
-#include "hidl-parcel.h"
 #include "hidl-txn-util.h"
 #include <core/log.h>
 #include <core/util.h>
@@ -30,7 +31,7 @@ struct kmhal_hidl_hal_sp {
     const char *instname;
 };
 
-static enum kmhal_hidl_android_status
+static enum kmhal_android_status
 validate_arg_descs(const struct kmhal_hidl_hal_arg_write_desc *in_args,
                    u32 n_in_args,
                    struct kmhal_hidl_hal_arg_parse_desc *out_args,
@@ -73,9 +74,9 @@ kmhal_hidl_hal_sp_new_get(const char *fqname, const char *instname,
         goto err;
 
     if (opt_existing_binder == NULL) {
-        ret->binder = kmhal_binder_open(KMHAL_BINDER_DEFAULT_ORDER);
+        ret->binder = kmhal_binder_open(KMHAL_BINDER_DEV_HWBINDER);
         if (ret->binder == NULL)
-            goto_error("Failed to open binder device");
+            goto_error("Failed to open hardware binder device");
         ret->owns_binder = true;
     } else {
         ret->binder = opt_existing_binder;
@@ -186,7 +187,7 @@ skip_binder_refs:
     *hal_p = NULL;
 }
 
-enum kmhal_hidl_android_status
+enum kmhal_android_status
 kmhal_hidl_hal_ping(struct kmhal_hidl_hal_sp *hal)
 {
     if (hal == NULL || !atomic_load(&hal->initialized_)) {
@@ -197,7 +198,7 @@ kmhal_hidl_hal_ping(struct kmhal_hidl_hal_sp *hal)
     return kmhal_hidl_base_ping(hal->binder, &hal->txn, hal->handle);
 }
 
-enum kmhal_hidl_android_status
+enum kmhal_android_status
 kmhal_hidl_hal_call(struct kmhal_hidl_hal_sp *hal, u32 cmd,
                     const struct kmhal_hidl_hal_arg_write_desc *in_args,
                     u32 n_in_args,
@@ -205,16 +206,16 @@ kmhal_hidl_hal_call(struct kmhal_hidl_hal_sp *hal, u32 cmd,
                     u32 n_out_args)
 {
     u_check_params(hal != NULL);
-    enum kmhal_hidl_android_status ret = UNKNOWN_ERROR;
+    enum kmhal_android_status ret = UNKNOWN_ERROR;
 
     if ((ret = validate_arg_descs(in_args, n_in_args, out_args, n_out_args))
             != OK)
         goto_error("Invalid argument descriptors");
 
-    struct kmhal_hidl_parcel *p = NULL;
+    struct kmhal_parcel *p = NULL;
     kmhal_hidl_util_check_allocate_txn_tmps(&hal->txn, &p);
 
-    kmhal_hidl_parcel_write_cstring(p, hal->fqname);
+    kmhal_parcel_write_cstring(p, hal->fqname);
     for (u32 i = 0; i < n_in_args; i++) {
         const struct kmhal_hidl_hal_arg_write_desc *const arg = &in_args[i];
         if (arg->size == 0)
@@ -222,13 +223,13 @@ kmhal_hidl_hal_call(struct kmhal_hidl_hal_sp *hal, u32 cmd,
 
         arg->write_proc(p, arg->data, arg->size);
     }
-    kmhal_hidl_parcel_pack(hal->txn, p, hal->handle, cmd);
+    kmhal_parcel_pack(hal->txn, p, hal->handle, cmd, true);
 
     if ((ret = kmhal_hidl_util_transact_and_unpack(hal->binder, &hal->txn, &p,
                 NULL, true)) != OK)
         goto_error("Binder HIDL transaction failed");
 
-    size_t off = KMHAL_HIDL_PARCEL_DATA_START_OFFSET;
+    size_t off = KMHAL_PARCEL_HIDL_DATA_START_OFFSET;
     for (u32 i = 0; i < n_out_args; i++) {
         const struct kmhal_hidl_hal_arg_parse_desc *const arg = &out_args[i];
 
@@ -240,7 +241,7 @@ kmhal_hidl_hal_call(struct kmhal_hidl_hal_sp *hal, u32 cmd,
     }
 
 err:
-    kmhal_hidl_parcel_destroy(&p);
+    kmhal_parcel_destroy(&p);
     return ret;
 }
 
@@ -319,7 +320,7 @@ void kmhal_hidl_hal_set_instname(struct kmhal_hidl_hal_sp *hal,
     hal->instname = instname;
 }
 
-static enum kmhal_hidl_android_status
+static enum kmhal_android_status
 validate_arg_descs(const struct kmhal_hidl_hal_arg_write_desc *in_args,
                    u32 n_in_args,
                    struct kmhal_hidl_hal_arg_parse_desc *out_args,
@@ -334,7 +335,7 @@ validate_arg_descs(const struct kmhal_hidl_hal_arg_write_desc *in_args,
         return UNEXPECTED_NULL;
     }
 
-    enum kmhal_hidl_android_status ret = OK;
+    enum kmhal_android_status ret = OK;
     for (u32 i = 0; i < n_in_args; i++) {
         const struct kmhal_hidl_hal_arg_write_desc *const arg = &in_args[i];
 

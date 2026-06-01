@@ -1,7 +1,6 @@
 #ifndef SUSKEYMASTER_HAL_DISABLE_3_0
 #include "km-hidl-hal.hpp"
 #ifndef SUSKEYMASTER_BUILD_HOST
-#include "hidl-base.h"
 #include "hidl-hal.h"
 #include "km-hidl-types.hpp"
 #include "aosp-hidl-support.hpp"

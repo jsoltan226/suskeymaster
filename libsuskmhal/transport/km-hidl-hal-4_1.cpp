@@ -2,7 +2,6 @@
 #define HIDL_DISABLE_INSTRUMENTATION
 #include "km-hidl-hal.hpp"
 #ifndef SUSKEYMASTER_BUILD_HOST
-#include "hidl-base.h"
 #include "hidl-hal.h"
 #include "km-hidl-types.hpp"
 #include "aosp-hidl-support.hpp"

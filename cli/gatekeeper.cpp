@@ -3,9 +3,9 @@
 #include <core/int.h>
 #include <core/util.h>
 #ifndef SUSKEYMASTER_BUILD_HOST
+#include <libsuskmhal/transport/parcel.h>
 #include <libsuskmhal/transport/hidl-hal.h>
 #include <libsuskmhal/transport/hidl-base.h>
-#include <libsuskmhal/transport/hidl-parcel.h>
 #include <libsuskmhal/transport/km-hidl-hal.hpp>
 #include <libsuskmhal/transport/km-hidl-types.hpp>
 #endif /* SUSKEYMASTER_BUILD_HOST */
@@ -116,7 +116,7 @@ struct __attribute__ ((__packed__)) password_handle_t {
 };
 
 #ifndef SUSKEYMASTER_BUILD_HOST
-static int read_gatekeeper_response(const struct kmhal_hidl_parcel *p,
+static int read_gatekeeper_response(const struct kmhal_parcel *p,
                                     size_t *off_p,
                                     const void **out, size_t out_size);
 
@@ -641,7 +641,7 @@ static const char * gatekeeper_status_toString(i32 s)
 }
 
 #ifndef SUSKEYMASTER_BUILD_HOST
-static int read_gatekeeper_response(const struct kmhal_hidl_parcel *p,
+static int read_gatekeeper_response(const struct kmhal_parcel *p,
                                     size_t *off_p,
                                     const void **out, size_t out_size)
 {
@@ -651,8 +651,8 @@ static int read_gatekeeper_response(const struct kmhal_hidl_parcel *p,
     }
 
     u32 exp_flags = 0;
-    kmhal_hidl_parcel_obj_t ref;
-    if (kmhal_hidl_parcel_read_buffer_obj(p, off_p, sizeof(GatekeeperResponse),
+    kmhal_parcel_obj_t ref;
+    if (kmhal_parcel_read_buffer_obj(p, off_p, sizeof(GatekeeperResponse),
                 &exp_flags, nullptr, nullptr, out, &ref))
     {
         std::cerr << __func__ << ": Failed to read the GatekeeperResponse buffer object"

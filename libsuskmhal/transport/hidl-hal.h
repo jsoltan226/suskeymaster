@@ -6,8 +6,8 @@
  */
 
 #include "binder.h"
+#include "parcel.h"
 #include "hidl-base.h"
-#include "hidl-parcel.h"
 #include "hidl-types.h"
 #include <core/int.h>
 #include <core/log.h>
@@ -68,14 +68,14 @@ void kmhal_hidl_hal_sp_destroy(struct kmhal_hidl_hal_sp **hal_p);
  *
  * @return OK if successful, anything else otherwise.
  */
-enum kmhal_hidl_android_status
+enum kmhal_android_status
 kmhal_hidl_hal_ping(struct kmhal_hidl_hal_sp *hal);
 
 /**
  * A function that writes the given data type into a parcel.
  * It should abort on `size` mismatch.
  */
-typedef void (*kmhal_hidl_hal_arg_write_proc_t)(struct kmhal_hidl_parcel *,
+typedef void (*kmhal_hidl_hal_arg_write_proc_t)(struct kmhal_parcel *,
                                                 const void *data, size_t size);
 /**
  * Descriptor for an input argument passed to an HIDL call.
@@ -97,8 +97,8 @@ struct kmhal_hidl_hal_arg_write_desc {
 
 /**
  * A function that reads the given data type from a parcel.
- * It should return 0 on success and non-zero on failure or `out_size` mismatch,
- * and write to `out` only on success.
+ * It should return 0 on success and non-zero on failure
+ * or `exp_out_size` mismatch, and write to `out` only on success.
  *
  * If the given type is a primitive type, `*out_p` should contain
  * the immediate value. Otherwise, it should contain a const pointer
@@ -106,10 +106,10 @@ struct kmhal_hidl_hal_arg_write_desc {
  *
  * See `kmhal_hidl_hal_call`.
  */
-typedef int (*kmhal_hidl_hal_arg_parse_proc_t)(const struct kmhal_hidl_parcel *,
+typedef int (*kmhal_hidl_hal_arg_parse_proc_t)(const struct kmhal_parcel *p,
                                                size_t *off_p,
                                                const void **out_p,
-                                               size_t out_size);
+                                               size_t exp_out_size);
 /**
  * Descriptor for an output (returned) argument from an HIDL call.
  * For example, for IKeymasterDevice::addRngEntropy
@@ -149,9 +149,9 @@ struct kmhal_hidl_hal_arg_parse_desc {
  * @param n_out_args The number of members of the @in_args array.
  *
  * @return OK on success, anything else on failure.
- *  See `enum kmhal_hidl_android_status`.
+ *  See `enum kmhal_android_status`.
  */
-enum kmhal_hidl_android_status
+enum kmhal_android_status
 kmhal_hidl_hal_call(struct kmhal_hidl_hal_sp *hal, u32 cmd,
                     const struct kmhal_hidl_hal_arg_write_desc *in_args,
                     u32 n_in_args,
@@ -160,7 +160,7 @@ kmhal_hidl_hal_call(struct kmhal_hidl_hal_sp *hal, u32 cmd,
 
 /** Serialization and deserialization functions for common HIDL types **/
 
-static inline void kmhal_hidl_hal_arg_write_u32(struct kmhal_hidl_parcel *p,
+static inline void kmhal_hidl_hal_arg_write_u32(struct kmhal_parcel *p,
                                                 const void *data, size_t size)
 {
     if (size != sizeof(u32))
@@ -168,10 +168,10 @@ static inline void kmhal_hidl_hal_arg_write_u32(struct kmhal_hidl_parcel *p,
     else if (data == NULL)
         s_abort("hidl-hal", __func__, "Data is NULL");
 
-    kmhal_hidl_parcel_write_u32(p, *(u32 *)data);
+    kmhal_parcel_write_u32(p, *(u32 *)data);
 }
 
-static inline void kmhal_hidl_hal_arg_write_u64(struct kmhal_hidl_parcel *p,
+static inline void kmhal_hidl_hal_arg_write_u64(struct kmhal_parcel *p,
                                                 const void *data, size_t size)
 {
     if (size != sizeof(u64))
@@ -179,11 +179,11 @@ static inline void kmhal_hidl_hal_arg_write_u64(struct kmhal_hidl_parcel *p,
     else if (data == NULL)
         s_abort("hidl-hal", __func__, "Data is NULL");
 
-    kmhal_hidl_parcel_write_u64(p, *(u64 *)data);
+    kmhal_parcel_write_u64(p, *(u64 *)data);
 }
 
 static inline void
-kmhal_hidl_hal_arg_write_hidl_string(struct kmhal_hidl_parcel *p,
+kmhal_hidl_hal_arg_write_hidl_string(struct kmhal_parcel *p,
                                      const void *data,
                                      size_t size)
 {
@@ -193,11 +193,11 @@ kmhal_hidl_hal_arg_write_hidl_string(struct kmhal_hidl_parcel *p,
         s_abort("hidl-hal", __func__, "Data is NULL");
 
     kmhal_hidl_string_write(p, (const struct kmhal_hidl_string *)data,
-            KMHAL_HIDL_PARCEL_OBJ_INVALID, 0, NULL);
+                            KMHAL_PARCEL_OBJ_INVALID, 0, NULL);
 }
 
 static inline int
-kmhal_hidl_hal_arg_parse_u32(const struct kmhal_hidl_parcel *p,
+kmhal_hidl_hal_arg_parse_u32(const struct kmhal_parcel *p,
                              size_t *off_p,
                              const void **out_p, size_t out_size)
 {
@@ -209,11 +209,11 @@ kmhal_hidl_hal_arg_parse_u32(const struct kmhal_hidl_parcel *p,
         return -1;
     }
 
-    return kmhal_hidl_parcel_read_u32(p, off_p, (u32 *)out_p);
+    return kmhal_parcel_read_u32(p, off_p, (u32 *)out_p);
 }
 
 static inline int
-kmhal_hidl_hal_arg_parse_u64(const struct kmhal_hidl_parcel *p,
+kmhal_hidl_hal_arg_parse_u64(const struct kmhal_parcel *p,
                              size_t *off_p,
                              const void **out_p, size_t out_size)
 {
@@ -225,11 +225,11 @@ kmhal_hidl_hal_arg_parse_u64(const struct kmhal_hidl_parcel *p,
         return -1;
     }
 
-    return kmhal_hidl_parcel_read_u64(p, off_p, (u64 *)out_p);
+    return kmhal_parcel_read_u64(p, off_p, (u64 *)out_p);
 }
 
 static inline int
-kmhal_hidl_hal_arg_parse_hidl_string(const struct kmhal_hidl_parcel *p,
+kmhal_hidl_hal_arg_parse_hidl_string(const struct kmhal_parcel *p,
                                      size_t *off_p,
                                      const void **out_p, size_t out_size)
 {

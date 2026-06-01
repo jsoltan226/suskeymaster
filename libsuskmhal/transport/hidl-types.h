@@ -7,7 +7,7 @@
  */
 
 #ifndef SUSKEYMASTER_BUILD_HOST
-#include "hidl-parcel.h"
+#include "parcel.h"
 #endif /* SUSKEYMASTER_BUILD_HOST */
 #include <core/int.h>
 #include <stddef.h>
@@ -53,12 +53,12 @@ static_assert(sizeof(struct kmhal_hidl_string) == 16,
  *
  * @return A reference to the newly created HIDL string contents object.
  */
-kmhal_hidl_parcel_obj_t
-kmhal_hidl_string_write(struct kmhal_hidl_parcel *parcel,
+kmhal_parcel_obj_t
+kmhal_hidl_string_write(struct kmhal_parcel *parcel,
                         const struct kmhal_hidl_string *hstr,
-                        kmhal_hidl_parcel_obj_t parent,
+                        kmhal_parcel_obj_t parent,
                         binder_size_t parent_offset,
-                        kmhal_hidl_parcel_obj_t *out_parent_ref);
+                        kmhal_parcel_obj_t *out_parent_ref);
 
 /**
  * Write an object for an HIDL string's contents into the parcel.
@@ -76,10 +76,10 @@ kmhal_hidl_string_write(struct kmhal_hidl_parcel *parcel,
  *
  * @return A reference to the newly created HIDL string contents object.
  */
-kmhal_hidl_parcel_obj_t
-kmhal_hidl_string_write_embedded(struct kmhal_hidl_parcel *parcel,
+kmhal_parcel_obj_t
+kmhal_hidl_string_write_embedded(struct kmhal_parcel *parcel,
                                  const struct kmhal_hidl_string *hstr,
-                                 kmhal_hidl_parcel_obj_t parent,
+                                 kmhal_parcel_obj_t parent,
                                  binder_size_t parent_offset);
 
 /**
@@ -100,9 +100,9 @@ kmhal_hidl_string_write_embedded(struct kmhal_hidl_parcel *parcel,
  * @return 0 on success, non-zero on failure.
  */
 int kmhal_hidl_string_read(const struct kmhal_hidl_string **out_p,
-                           const struct kmhal_hidl_parcel *parcel,
+                           const struct kmhal_parcel *parcel,
                            size_t *offset_p,
-                           kmhal_hidl_parcel_obj_t *out_child_ref);
+                           kmhal_parcel_obj_t *out_child_ref);
 
 /**
  * Find and validate the contents object of an HIDL string.
@@ -128,11 +128,11 @@ int kmhal_hidl_string_read(const struct kmhal_hidl_string **out_p,
  * @return 0 on success, non-zero on failure.
  */
 int kmhal_hidl_string_read_embedded(const char **out,
-                                    kmhal_hidl_parcel_obj_t *out_ref,
-                                    const struct kmhal_hidl_parcel *parcel,
+                                    kmhal_parcel_obj_t *out_ref,
+                                    const struct kmhal_parcel *parcel,
                                     size_t *offset_p,
                                     const struct kmhal_hidl_string *hstr,
-                                    kmhal_hidl_parcel_obj_t parent_handle,
+                                    kmhal_parcel_obj_t parent_handle,
                                     size_t parent_offset);
 
 #endif /* SUSKEYMASTER_BUILD_HOST */
@@ -223,12 +223,12 @@ KMHAL_HIDL_VEC_OF_VEC_OF_DECL(uint8_t);
  *
  * @return A reference to the newly created HIDL vec bytes object.
  */
-kmhal_hidl_parcel_obj_t
-kmhal_hidl_vec_write(struct kmhal_hidl_parcel *parcel,
+kmhal_parcel_obj_t
+kmhal_hidl_vec_write(struct kmhal_parcel *parcel,
                      const struct kmhal_hidl_vec *vec, size_t elem_size,
-                     kmhal_hidl_parcel_obj_t parent,
+                     kmhal_parcel_obj_t parent,
                      binder_size_t parent_offset,
-                     kmhal_hidl_parcel_obj_t *out_parent_ref);
+                     kmhal_parcel_obj_t *out_parent_ref);
 
 #define kmhal_hidl_vec_of_write(T, parcel, vec,     \
         parent, parent_offset, out_parent_ref)      \
@@ -253,11 +253,11 @@ kmhal_hidl_vec_write(struct kmhal_hidl_parcel *parcel,
  *
  * @return A reference to the newly created HIDL vec contents object.
  */
-kmhal_hidl_parcel_obj_t
-kmhal_hidl_vec_write_embedded(struct kmhal_hidl_parcel *parcel,
+kmhal_parcel_obj_t
+kmhal_hidl_vec_write_embedded(struct kmhal_parcel *parcel,
                               const struct kmhal_hidl_vec *vec,
                               size_t elem_size,
-                              kmhal_hidl_parcel_obj_t parent,
+                              kmhal_parcel_obj_t parent,
                               binder_size_t parent_offset);
 
 #define kmhal_hidl_vec_of_write_embedded(T, parcel, vec,    \
@@ -284,9 +284,9 @@ kmhal_hidl_vec_write_embedded(struct kmhal_hidl_parcel *parcel,
  * @return 0 on success, non-zero on failure.
  */
 int kmhal_hidl_vec_read(const struct kmhal_hidl_vec **out_p, size_t elem_size,
-                        const struct kmhal_hidl_parcel *parcel,
+                        const struct kmhal_parcel *parcel,
                         size_t *offset_p,
-                        kmhal_hidl_parcel_obj_t *out_child_ref);
+                        kmhal_parcel_obj_t *out_child_ref);
 
 #define kmhal_hidl_vec_of_read(T, out, parcel,  \
         vec_obj_ref, out_child_ref)             \
@@ -316,12 +316,12 @@ int kmhal_hidl_vec_read(const struct kmhal_hidl_vec **out_p, size_t elem_size,
  * @return 0 on success, non-zero on failure.
  */
 int kmhal_hidl_vec_read_embedded(const void **out,
-                                 kmhal_hidl_parcel_obj_t *out_ref,
-                                 const struct kmhal_hidl_parcel *parcel,
+                                 kmhal_parcel_obj_t *out_ref,
+                                 const struct kmhal_parcel *parcel,
                                  size_t *offset_p,
                                  const struct kmhal_hidl_vec *vec,
                                  size_t elem_size,
-                                 kmhal_hidl_parcel_obj_t parent_handle,
+                                 kmhal_parcel_obj_t parent_handle,
                                  size_t parent_offset);
 
 #define kmhal_hidl_vec_of_read_embedded(T, out, out_ref, parcel,    \

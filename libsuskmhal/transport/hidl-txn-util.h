@@ -6,8 +6,9 @@
  */
 
 #include "binder.h"
+#include "status.h"
+#include "parcel.h"
 #include "hidl-base.h"
-#include "hidl-parcel.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -26,11 +27,11 @@ extern "C" {
  *  If `*parcel_p` is NULL, a new parcel is allocated and written into it.
  *
  * @return `OK` on success, `NO_MEMORY` on allocation failure.
- *  See `enum kmhal_hidl_android_status`.
+ *  See `enum kmhal_android_status`.
  */
-enum kmhal_hidl_android_status
+enum kmhal_android_status
 kmhal_hidl_util_check_allocate_txn_tmps(struct kmhal_binder_txn **txn_p,
-                                        struct kmhal_hidl_parcel **parcel_p);
+                                        struct kmhal_parcel **parcel_p);
 
 /* Performs a binder transaction with the (packed) parcel,
  * unpacks the result and checks for any errors.
@@ -47,7 +48,7 @@ kmhal_hidl_util_check_allocate_txn_tmps(struct kmhal_binder_txn **txn_p,
  * @param parcel_p A valid pointer to a parcel that is
  *  packed and ready for transact.
  *  After a successful transaction, `*parcel_p` will contain a new parcel
- *  initialized from the reply data. See `kmhal_hidl_parcel_new_from_reply`.
+ *  initialized from the reply data. See `kmhal_parcel_new_from_reply`.
  *
  * @param out_reply Optional output pointer for the returned reply.
  *
@@ -66,11 +67,11 @@ kmhal_hidl_util_check_allocate_txn_tmps(struct kmhal_binder_txn **txn_p,
  * will already contain the FREE_BUFFER command, so it should be flushed
  * before being destroyed.
  */
-enum kmhal_hidl_android_status
+enum kmhal_android_status
 kmhal_hidl_util_transact_and_unpack(
         struct kmhal_binder_ctx *binder,
         struct kmhal_binder_txn **txn_p,
-        struct kmhal_hidl_parcel **parcel_p,
+        struct kmhal_parcel **parcel_p,
         struct kmhal_binder_txn_args_out *out_reply,
         bool write_free_reply
 );
@@ -83,7 +84,7 @@ kmhal_hidl_util_transact_and_unpack(
  * @param parcel_p A pointer to a parcel. May be NULL.
  */
 void kmhal_hidl_util_destroy_txn_tmps(struct kmhal_binder_txn **txn_p,
-                                      struct kmhal_hidl_parcel **parcel_p);
+                                      struct kmhal_parcel **parcel_p);
 
 #ifdef __cplusplus
 } /* extern "C" */

@@ -34,46 +34,36 @@ typedef uint32_t kmhal_binder_domain_ordered_mask_t;
 
 /* Binder domains */
 enum kmhal_binder_domain {
-    KMHAL_BINDER    = 0x00000000U, /* /dev/binder */
-    KMHAL_HWBINDER  = 0x00000001U, /* /dev/hwbinder */
-    KMHAL_VNDBINDER = 0x00000002U, /* /dev/vndbinder */
-};
-
-/* Domain bit masks */
-enum kmhal_binder_domain_mask {
-    KMHAL_BINDER_BIT    = 0x00000001U,
-    KMHAL_HWBINDER_BIT  = 0x00000002U,
-    KMHAL_VNDBINDER_BIT = 0x00000004U,
+    KMHAL_BINDER_DEV_BINDER    = UINT32_C(0x00000001), /* /dev/binder */
+    KMHAL_BINDER_DEV_HWBINDER  = UINT32_C(0x00000002), /* /dev/hwbinder */
+    KMHAL_BINDER_DEV_VNDBINDER = UINT32_C(0x00000004), /* /dev/vndbinder */
 };
 
 /* Fallback order enums for kmhal_binder_open */
 enum kmhal_binder_domain_binder_order {
-    KMHAL_BINDER_1 = 0x01000001U,
-    KMHAL_BINDER_2 = 0x02000001U,
-    KMHAL_BINDER_3 = 0x03000001U,
+    KMHAL_BINDER_DEV_BINDER_1 = UINT32_C(0x01000001),
+    KMHAL_BINDER_DEV_BINDER_2 = UINT32_C(0x02000001),
+    KMHAL_BINDER_DEV_BINDER_3 = UINT32_C(0x03000001),
 };
 enum kmhal_binder_domain_hwbinder_order {
-    KMHAL_HWBINDER_1 = 0x00010002U,
-    KMHAL_HWBINDER_2 = 0x00020002U,
-    KMHAL_HWBINDER_3 = 0x00030002U,
+    KMHAL_BINDER_DEV_HWBINDER_1 = UINT32_C(0x00010002),
+    KMHAL_BINDER_DEV_HWBINDER_2 = UINT32_C(0x00020002),
+    KMHAL_BINDER_DEV_HWBINDER_3 = UINT32_C(0x00030002),
 };
 enum kmhal_binder_domain_vndbinder_order {
-    KMHAL_VNDBINDER_1 = 0x00000104U,
-    KMHAL_VNDBINDER_2 = 0x00000204U,
-    KMHAL_VNDBINDER_3 = 0x00000304U,
+    KMHAL_BINDER_DEV_VNDBINDER_1 = UINT32_C(0x00000104),
+    KMHAL_BINDER_DEV_VNDBINDER_2 = UINT32_C(0x00000204),
+    KMHAL_BINDER_DEV_VNDBINDER_3 = UINT32_C(0x00000304),
 };
-
-/* Default domain order: /dev/hwbinder, /dev/binder, /dev/vndbinder */
-#define KMHAL_BINDER_DEFAULT_ORDER   \
-(                                    \
-    KMHAL_HWBINDER_1 |               \
-    KMHAL_BINDER_2   |               \
-    KMHAL_VNDBINDER_3                \
-)
 
 /**
  * Open a binder device using domain fallback order.
  * @param domains_to_try: Mask defining order of domains.
+ * Example (try "/dev/binder", then "/dev/vndbinder"):
+ *  (KMHAL_BINDER_DEV_BINDER_1 | KMHAL_BINDER_DEV_VNDBINDER_2)
+ * Or just simply try only "/dev/hwbinder":
+ *  (KMHAL_BINDER_DEV_HWBINDER)
+ *
  * @return: New context or NULL on failure.
  */
 struct kmhal_binder_ctx *
@@ -86,6 +76,20 @@ kmhal_binder_open(kmhal_binder_domain_ordered_mask_t domains_to_try);
  */
 struct kmhal_binder_ctx *
 kmhal_binder_open_dev(const char *dev_path);
+
+/**
+ * Return the path to the device associated with the given context.
+ * @param ctx Binder device context.
+ * @return String with the path or NULL if not available.
+ */
+const char * kmhal_binder_get_dev_path(const struct kmhal_binder_ctx *ctx);
+
+/**
+ * Return the binder device file descriptor associated with the given context.
+ * @param ctx Binder device context.
+ * @return Binder device file descriptor or -1 if not available.
+ */
+int kmhal_binder_get_fd(const struct kmhal_binder_ctx *ctx);
 
 /**
  * Check whether a binder context is valid.
@@ -103,29 +107,25 @@ struct kmhal_binder_txn * kmhal_binder_txn_new(void);
  * Serialize `BC_ACQUIRE` command to increment strong reference count.
  * Call before using `handle`.
  */
-void kmhal_binder_write_acquire(struct kmhal_binder_txn *txn,
-                                u32 handle);
+void kmhal_binder_write_acquire(struct kmhal_binder_txn *txn, u32 handle);
 
 /**
  * Serialize `BC_INCREFS` command to increment weak reference count.
  * Call before using `handle`.
  */
-void kmhal_binder_write_increfs(struct kmhal_binder_txn *txn,
-                                u32 handle);
+void kmhal_binder_write_increfs(struct kmhal_binder_txn *txn, u32 handle);
 
 /**
  * Serialize `BC_RELEASE` command to decrement strong reference count.
  * Call after using `handle` if `BC_INCREFS` was previously used.
  */
-void kmhal_binder_write_release(struct kmhal_binder_txn *txn,
-                                u32 handle);
+void kmhal_binder_write_release(struct kmhal_binder_txn *txn, u32 handle);
 
 /**
  * Serialize BC_DECREFS command to decrement weak reference count.
  * Call after using `handle` if `BC_ACQUIRE` was previously used.
  */
-void kmhal_binder_write_decrefs(struct kmhal_binder_txn *txn,
-                                u32 handle);
+void kmhal_binder_write_decrefs(struct kmhal_binder_txn *txn, u32 handle);
 
 /* The binder transaction input data */
 struct kmhal_binder_txn_args_in {

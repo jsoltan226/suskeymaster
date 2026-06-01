@@ -1,8 +1,8 @@
 #include "hidl-manager.h"
 #include "binder.h"
-#include "hidl-base.h"
+#include "status.h"
+#include "parcel.h"
 #include "hidl-types.h"
-#include "hidl-parcel.h"
 #include "hidl-txn-util.h"
 #include <core/log.h>
 #include <core/util.h>
@@ -30,13 +30,13 @@
 
 
 static int read_hidl_vec_of_hidl_string(
-        const struct kmhal_hidl_parcel *parcel,
+        const struct kmhal_parcel *parcel,
         size_t *offset_p,
         const KMHAL_HIDL_VEC_OF_STRUCT(kmhal_hidl_string) **out_p
 );
 
-static int read_handle(const struct kmhal_hidl_parcel *parcel,
-        size_t *offset_p, u32 *out_handle);
+static int read_handle(const struct kmhal_parcel *parcel,
+                       size_t *offset_p, u32 *out_handle);
 
 void kmhal_hidl_manager_write_acquire(struct kmhal_binder_txn *txn)
 {
@@ -54,7 +54,7 @@ void kmhal_hidl_manager_write_release(
     kmhal_binder_write_decrefs(txn, MGR_BINDER_HANDLE);
 }
 
-enum kmhal_hidl_android_status
+enum kmhal_android_status
 kmhal_hidl_manager_get(struct kmhal_binder_ctx *binder,
                        struct kmhal_binder_txn **txn_p,
 
@@ -66,8 +66,8 @@ kmhal_hidl_manager_get(struct kmhal_binder_ctx *binder,
     u_check_params(kmhal_binder_ctx_ok(binder) && txn_p != NULL);
     u_check_params(in_interface_name != NULL && in_instance_name != NULL);
 
-    enum kmhal_hidl_android_status ret = UNKNOWN_ERROR;
-    struct kmhal_hidl_parcel *parcel = NULL;
+    enum kmhal_android_status ret = UNKNOWN_ERROR;
+    struct kmhal_parcel *parcel = NULL;
 
     const struct kmhal_hidl_string
     iface_hstr = {
@@ -87,26 +87,26 @@ kmhal_hidl_manager_get(struct kmhal_binder_ctx *binder,
     if ((ret = kmhal_hidl_util_check_allocate_txn_tmps(txn_p, &parcel)) != OK)
         goto err;
 
-    kmhal_hidl_parcel_write_cstring(parcel, MGR_1_0_FQNAME);
+    kmhal_parcel_write_cstring(parcel, MGR_1_0_FQNAME);
 
     {
         kmhal_hidl_string_write(parcel, &iface_hstr,
-                KMHAL_HIDL_PARCEL_OBJ_INVALID, 0, 0);
+                KMHAL_PARCEL_OBJ_INVALID, 0, 0);
 
         kmhal_hidl_string_write(parcel, &inst_hstr,
-                KMHAL_HIDL_PARCEL_OBJ_INVALID, 0, 0);
+                KMHAL_PARCEL_OBJ_INVALID, 0, 0);
     }
 
     /* We have to call `INCREFS` and `ACQUIRE` on the returned handle
      * before writing the FREE_BUFFER command */
-    kmhal_hidl_parcel_pack(*txn_p, parcel, MGR_BINDER_HANDLE, MGR_CMD_GET);
+    kmhal_parcel_pack(*txn_p, parcel, MGR_BINDER_HANDLE, MGR_CMD_GET, true);
     ret = kmhal_hidl_util_transact_and_unpack(binder, txn_p,
             &parcel, &reply, false);
     if (ret != OK)
         goto err;
 
     /* Read the returned handle... */
-    size_t off = KMHAL_HIDL_PARCEL_DATA_START_OFFSET;
+    size_t off = KMHAL_PARCEL_HIDL_DATA_START_OFFSET;
     if (read_handle(parcel, &off, &handle)) {
         ret = BAD_VALUE;
         goto err;
@@ -121,14 +121,14 @@ kmhal_hidl_manager_get(struct kmhal_binder_ctx *binder,
     kmhal_binder_write_free_reply(*txn_p, reply.data_buf);
 
     if (out_handle != NULL) *out_handle = handle;
-    kmhal_hidl_parcel_destroy(&parcel);
+    kmhal_parcel_destroy(&parcel);
     ret = OK;
 
 err:
     if (ret != OK) {
         s_log_error(MGR_1_0_FQNAME"::get(\"%s\", \"%s\"): ret: %d (%s)",
                 in_interface_name, in_instance_name,
-                ret, kmhal_hidl_android_status_toString(ret)
+                ret, kmhal_android_status_toString(ret)
         );
         kmhal_hidl_util_destroy_txn_tmps(txn_p, &parcel);
     }
@@ -136,7 +136,7 @@ err:
     return ret;
 }
 
-enum kmhal_hidl_android_status kmhal_hidl_manager_list(
+enum kmhal_android_status kmhal_hidl_manager_list(
         struct kmhal_binder_ctx *binder,
         struct kmhal_binder_txn **txn_p,
 
@@ -145,41 +145,41 @@ enum kmhal_hidl_android_status kmhal_hidl_manager_list(
 {
     u_check_params(kmhal_binder_ctx_ok(binder) && txn_p != NULL);
 
-    enum kmhal_hidl_android_status ret = UNKNOWN_ERROR;
-    struct kmhal_hidl_parcel *parcel = NULL;
+    enum kmhal_android_status ret = UNKNOWN_ERROR;
+    struct kmhal_parcel *parcel = NULL;
 
     if ((ret = kmhal_hidl_util_check_allocate_txn_tmps(txn_p, &parcel)) != OK)
         goto err;
 
-    kmhal_hidl_parcel_write_cstring(parcel, MGR_1_0_FQNAME);
+    kmhal_parcel_write_cstring(parcel, MGR_1_0_FQNAME);
 
-    kmhal_hidl_parcel_pack(*txn_p, parcel, MGR_BINDER_HANDLE, MGR_CMD_LIST);
+    kmhal_parcel_pack(*txn_p, parcel, MGR_BINDER_HANDLE, MGR_CMD_LIST, true);
     ret = kmhal_hidl_util_transact_and_unpack(binder, txn_p,
             &parcel, NULL, true);
     if (ret != OK)
         goto err;
 
     /* Read the returned hidl_vec<hidl_string> */
-    size_t offset = KMHAL_HIDL_PARCEL_DATA_START_OFFSET;
+    size_t offset = KMHAL_PARCEL_HIDL_DATA_START_OFFSET;
     if (read_hidl_vec_of_hidl_string(parcel, &offset, out_fqInstanceNames)) {
         ret = BAD_VALUE;
         goto_error("Failed to parse the reply");
     }
 
-    kmhal_hidl_parcel_destroy(&parcel);
+    kmhal_parcel_destroy(&parcel);
     ret = OK;
 
 err:
     if (ret != OK) {
         s_log_error(MGR_1_0_FQNAME"::list(): ret: %d (%s)",
-                ret, kmhal_hidl_android_status_toString(ret));
+                ret, kmhal_android_status_toString(ret));
         kmhal_hidl_util_destroy_txn_tmps(txn_p, &parcel);
     }
 
     return ret;
 }
 
-enum kmhal_hidl_android_status kmhal_hidl_manager_list_by_interface(
+enum kmhal_android_status kmhal_hidl_manager_list_by_interface(
         struct kmhal_binder_ctx *binder,
         struct kmhal_binder_txn **txn_p,
 
@@ -191,8 +191,8 @@ enum kmhal_hidl_android_status kmhal_hidl_manager_list_by_interface(
     u_check_params(kmhal_binder_ctx_ok(binder) && txn_p != NULL);
     u_check_params(in_interface_name != NULL);
 
-    enum kmhal_hidl_android_status ret = UNKNOWN_ERROR;
-    struct kmhal_hidl_parcel *parcel = NULL;
+    enum kmhal_android_status ret = UNKNOWN_ERROR;
+    struct kmhal_parcel *parcel = NULL;
 
     const struct kmhal_hidl_string iface_hstr = {
         .buffer = in_interface_name,
@@ -203,15 +203,15 @@ enum kmhal_hidl_android_status kmhal_hidl_manager_list_by_interface(
     if ((ret = kmhal_hidl_util_check_allocate_txn_tmps(txn_p, &parcel)) != OK)
         goto err;
 
-    kmhal_hidl_parcel_write_cstring(parcel, MGR_1_0_FQNAME);
+    kmhal_parcel_write_cstring(parcel, MGR_1_0_FQNAME);
 
     {
         kmhal_hidl_string_write(parcel, &iface_hstr,
-                KMHAL_HIDL_PARCEL_OBJ_INVALID, 0, 0);
+                KMHAL_PARCEL_OBJ_INVALID, 0, 0);
     }
 
-    kmhal_hidl_parcel_pack(*txn_p, parcel, MGR_BINDER_HANDLE,
-            MGR_CMD_LIST_BY_INTERFACE);
+    kmhal_parcel_pack(*txn_p, parcel, MGR_BINDER_HANDLE,
+            MGR_CMD_LIST_BY_INTERFACE, true);
 
     ret = kmhal_hidl_util_transact_and_unpack(binder, txn_p,
             &parcel, NULL, true);
@@ -219,19 +219,19 @@ enum kmhal_hidl_android_status kmhal_hidl_manager_list_by_interface(
         goto err;
 
     /* Read the returned hidl_vec<hidl_string> */
-    size_t offset = KMHAL_HIDL_PARCEL_DATA_START_OFFSET;
+    size_t offset = KMHAL_PARCEL_HIDL_DATA_START_OFFSET;
     if (read_hidl_vec_of_hidl_string(parcel, &offset, out_instanceNames)) {
         ret = BAD_VALUE;
         goto_error("Failed to parse the reply");
     }
 
-    kmhal_hidl_parcel_destroy(&parcel);
+    kmhal_parcel_destroy(&parcel);
     ret = OK;
 
 err:
     if (ret != OK) {
         s_log_error(MGR_1_0_FQNAME"::listByInterface(\"%s\"): ret: %d (%s)",
-            in_interface_name, ret, kmhal_hidl_android_status_toString(ret));
+            in_interface_name, ret, kmhal_android_status_toString(ret));
         kmhal_hidl_util_destroy_txn_tmps(txn_p, &parcel);
     }
 
@@ -239,12 +239,12 @@ err:
 }
 
 static int read_hidl_vec_of_hidl_string(
-        const struct kmhal_hidl_parcel *parcel,
+        const struct kmhal_parcel *parcel,
         size_t *offset_p,
         const KMHAL_HIDL_VEC_OF_STRUCT(kmhal_hidl_string) **out_p
 )
 {
-    kmhal_hidl_parcel_obj_t vec_bytes_ref;
+    kmhal_parcel_obj_t vec_bytes_ref;
     const KMHAL_HIDL_VEC_OF_STRUCT(kmhal_hidl_string) *vec = NULL;
 
     if (kmhal_hidl_vec_of_read(struct kmhal_hidl_string,
@@ -270,12 +270,12 @@ static int read_hidl_vec_of_hidl_string(
     return 0;
 }
 
-static int read_handle(const struct kmhal_hidl_parcel *parcel,
-        size_t *offset_p, u32 *out_handle)
+static int read_handle(const struct kmhal_parcel *parcel,
+                       size_t *offset_p, u32 *out_handle)
 {
     struct flat_binder_object flat_binder_obj;
 
-    if (kmhal_hidl_parcel_read_handle(parcel, offset_p, &flat_binder_obj)) {
+    if (kmhal_parcel_read_handle(parcel, offset_p, &flat_binder_obj)) {
         s_log_error("Failed to read the flat_binder_object (handle) "
                 "from the reply");
         return 1;

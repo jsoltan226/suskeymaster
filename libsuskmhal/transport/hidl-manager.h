@@ -6,6 +6,7 @@
  */
 
 #include "binder.h"
+#include "status.h"
 #include "hidl-base.h"
 #include "hidl-types.h"
 
@@ -49,9 +50,9 @@ void kmhal_hidl_manager_write_release(struct kmhal_binder_txn *txn);
  *  to the requested HAL instance. May be NULL.
  *
  * @return `OK` on success, anything else means failure.
- *  See `enum kmhal_hidl_android_status`.
+ *  See `enum kmhal_android_status`.
  */
-enum kmhal_hidl_android_status
+enum kmhal_android_status
 kmhal_hidl_manager_get(struct kmhal_binder_ctx *binder,
                        struct kmhal_binder_txn **txn_p,
 
@@ -86,9 +87,9 @@ kmhal_hidl_manager_get(struct kmhal_binder_ctx *binder,
  *  }
  *
  * @return `OK` on success, anything else means failure.
- *  See `enum kmhal_hidl_android_status`.
+ *  See `enum kmhal_android_status`.
  */
-enum kmhal_hidl_android_status kmhal_hidl_manager_list(
+enum kmhal_android_status kmhal_hidl_manager_list(
         struct kmhal_binder_ctx *binder,
         struct kmhal_binder_txn **txn_p,
 
@@ -113,9 +114,9 @@ enum kmhal_hidl_android_status kmhal_hidl_manager_list(
  *  Example output: { "default", "strongbox" }
  *
  * @return `OK` on success, anything else means failure.
- *  See `enum kmhal_hidl_android_status`.
+ *  See `enum kmhal_android_status`.
  */
-enum kmhal_hidl_android_status kmhal_hidl_manager_list_by_interface(
+enum kmhal_android_status kmhal_hidl_manager_list_by_interface(
         struct kmhal_binder_ctx *binder,
         struct kmhal_binder_txn **txn_p,
 
