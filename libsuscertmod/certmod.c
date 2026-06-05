@@ -10,7 +10,7 @@
 #include <core/util.h>
 #include <core/math.h>
 #include <core/vector.h>
-#include <libsuskmhal/util/keymaster-types-c.h>
+#include <libsuskmhal/keymaster-types-c.h>
 #include <time.h>
 #include <stdlib.h>
 #include <stdarg.h>

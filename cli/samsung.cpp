@@ -2,12 +2,12 @@
 #include <core/log.h>
 #include <core/math.h>
 #include <core/util.h>
+#include <libsuskmhal/suskmhal.hpp>
+#include <libsuskmhal/keymaster-types-c.h>
+#include <libsuskmhal/keymaster-types-cpp.hpp>
 #include <libsuskmhal/util/dump-utils.h>
 #include <libsuskmhal/util/samsung-utils.h>
-#include <libsuskmhal/util/keymaster-types-c.h>
 #include <libsuskmhal/util/samsung-sus-indata.hpp>
-#include <libsuskmhal/util/keymaster-types-cpp.hpp>
-#include <libsuskmhal/transport/km-hidl-hal.hpp>
 #include <cstdarg>
 #include <cstdlib>
 #include <unordered_map>
@@ -295,7 +295,7 @@ err:
 
 } /* namespace ekey */
 
-int send_indata(HidlSusKeymaster& hal,
+int send_indata(SusKMHal& hal,
                 u32 *ver, u32 *km_ver, u32 cmd, u32 *pid,
                 u32 *int0, u64 *long0, u64 *long1, const hidl_vec<u8> *bin0,
                 const hidl_vec<u8> *bin1, const hidl_vec<u8> *bin2,

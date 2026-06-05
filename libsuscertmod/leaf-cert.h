@@ -5,7 +5,7 @@
 #include "certmod.h"
 #include <core/int.h>
 #include <core/vector.h>
-#include <libsuskmhal/util/keymaster-types-c.h>
+#include <libsuskmhal/keymaster-types-c.h>
 #include <openssl/crypto.h>
 
 #ifdef __cplusplus

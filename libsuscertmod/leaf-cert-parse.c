@@ -6,7 +6,7 @@
 #include <core/log.h>
 #include <core/util.h>
 #include <core/math.h>
-#include <libsuskmhal/util/keymaster-types-c.h>
+#include <libsuskmhal/keymaster-types-c.h>
 #include <stdbool.h>
 #include <openssl/ec.h>
 #include <openssl/rsa.h>

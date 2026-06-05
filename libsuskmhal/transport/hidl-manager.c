@@ -1,3 +1,5 @@
+#ifndef SUSKEYMASTER_BUILD_HOST
+
 #include "hidl-manager.h"
 #include "binder.h"
 #include "status.h"
@@ -285,3 +287,5 @@ static int read_handle(const struct kmhal_parcel *parcel,
         *out_handle = flat_binder_obj.handle;
     return 0;
 }
+
+#endif /* SUSKEYMASTER_BUILD_HOST */

@@ -1,8 +1,8 @@
 #define OPENSSL_API_COMPAT 0x10002000L
 #include "cli.hpp"
+#include <libsuskmhal/suskmhal.hpp>
+#include <libsuskmhal/keymaster-types-c.h>
 #include <libsuskmhal/util/km-params.hpp>
-#include <libsuskmhal/util/keymaster-types-c.h>
-#include <libsuskmhal/transport/km-hidl-hal.hpp>
 #include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <cstdio>
 #include <iostream>
@@ -19,7 +19,7 @@ using ::android::hardware::hidl_vec;
 
 static void init_attest_key_params(hidl_vec<KeyParameter>& params);
 
-int generate_and_attest_wrapping_key(HidlSusKeymaster& hal,
+int generate_and_attest_wrapping_key(SusKMHal& hal,
     hidl_vec<uint8_t>& out_wrapping_blob, hidl_vec<uint8_t>& out_wrapping_pubkey,
     hidl_vec<hidl_vec<uint8_t>> * out_cert_chain, hidl_vec<KeyParameter> const& in_gen_params
 )
@@ -55,7 +55,7 @@ int generate_and_attest_wrapping_key(HidlSusKeymaster& hal,
     std::cout << "Successfully generated wrapping key" << std::endl;
 
     /* Export the public part */
-    if (hal_ops::export_key(hal, out_wrapping_blob, out_wrapping_pubkey, params)) {
+    if (hal_ops::export_key(hal, out_wrapping_blob, params, out_wrapping_pubkey)) {
         std::cerr << "Failed to export the wrapping public key" << std::endl;
         return 1;
     }
@@ -80,7 +80,7 @@ int generate_and_attest_wrapping_key(HidlSusKeymaster& hal,
     return 0;
 }
 
-int import_wrapped_key(HidlSusKeymaster& hal, hidl_vec<uint8_t> const& in_wrapped_data,
+int import_wrapped_key(SusKMHal& hal, hidl_vec<uint8_t> const& in_wrapped_data,
         hidl_vec<uint8_t> const& in_masking_key, hidl_vec<uint8_t> const& in_wrapping_blob,
         hidl_vec<KeyParameter> const& in_unwrapping_params, hidl_vec<uint8_t>& out_key_blob
 )

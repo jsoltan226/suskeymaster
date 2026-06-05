@@ -1,7 +1,7 @@
 #ifndef KEYMASTER_TYPES_H_
 #define KEYMASTER_TYPES_H_
 
-#include "../transport/hidl-types.h"
+#include "transport/hidl-types.h"
 #include <stdint.h>
 #include <stdbool.h>
 #include <core/vector.h>
@@ -323,6 +323,13 @@ enum KM_ErrorCode {
     KM_ERR_UNIMPLEMENTED = -100 /* -100 */,
     KM_ERR_VERSION_MISMATCH = -101 /* -101 */,
     KM_ERR_UNKNOWN_ERROR = -1000 /* -1000 */,
+
+    /* Added in Keymaster 4.1 */
+    KM_ERR_EARLY_BOOT_ENDED = -73,
+    KM_ERR_ATTESTATION_KEYS_NOT_PROVISIONED = -74,
+    KM_ERR_ATTESTATION_IDS_NOT_PROVISIONED = -75,
+    KM_ERR_INVALID_OPERATION = -76,
+    KM_ERR_STORAGE_KEY_UNSUPPORTED = -77,
 };
 
 /**

@@ -1,3 +1,5 @@
+#ifndef SUSKEYMASTER_BUILD_HOST
+
 #define _GNU_SOURCE
 #include "binder.h"
 #include <core/int.h>
@@ -862,3 +864,5 @@ static const char *binder_reply_to_string(u32 cmd)
         return "(unknown)";
     }
 }
+
+#endif /* SUSKEYMASTER_BUILD_HOST */

@@ -88,10 +88,10 @@ BINDIR := bin
 
 # Sources and objects
 _sus_hook_handler := libsuskeymaster/handler.cpp libsuskeymaster/sus-samsung-indata.cpp
-_transport_srcs := $(wildcard libsuskmhal/transport/*.c)
+_android_exclusive_srcs := $(wildcard libsuskmhal/*.cpp) $(wildcard libsuskmhal/transport/*.c)
 
-C_SRCS := $(filter-out $(_transport_srcs), $(wildcard */*/*.c) $(wildcard */*.c) $(wildcard *.c))
-CXX_SRCS := $(filter-out $(_sus_hook_handler) $(_transport_srcs), $(wildcard */*/*/*.cpp) $(wildcard */*/*.cpp) $(wildcard */*.cpp) $(wildcard *.cpp))
+C_SRCS := $(filter-out $(_android_exclusive_srcs), $(wildcard */*/*.c) $(wildcard */*.c) $(wildcard *.c))
+CXX_SRCS := $(filter-out $(_sus_hook_handler) $(_android_exclusive_srcs), $(wildcard */*/*/*.cpp) $(wildcard */*/*.cpp) $(wildcard */*.cpp) $(wildcard *.cpp))
 _all_srcs := $(C_SRCS) $(CXX_SRCS)
 
 C_OBJS := $(patsubst %.c,$(OBJDIR)/%.c.o,$(shell basename -a $(C_SRCS)))

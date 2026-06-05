@@ -117,7 +117,9 @@
      */                                                                                                 \
     KM_DECL_TAG(MIN_MAC_LENGTH, UINT, 8, minMacLength, NULL, INTEGER, _)                                \
                                                                                                         \
-    /* KeyDerivationFunction */                                                                         \
+    /**                                                                                                 \
+     * Legacy Keymaster 3.0 tag. Used to provide a KeyDerivationFunction parameter.                     \
+     */                                                                                                 \
     KM_DECL_TAG(KDF, ENUM_REP, 9, kdf, KeyDerivationFunction, INTEGER, _SET_OF_)                        \
                                                                                                         \
     /**                                                                                                 \
@@ -143,9 +145,9 @@
      */                                                                                                 \
     KM_DECL_TAG(RSA_PUBLIC_EXPONENT, ULONG, 200, rsaPublicExponent, NULL, INTEGER, _)                   \
                                                                                                         \
-    /*                                                                                                  \
-     * Whether the ephemeral public key is fed into the                                                 \
-     * KDF.                                                                                             \
+    /**                                                                                                 \
+     * Legacy Keymaster 3.0 tag. From AOSP (hardware/interfaces/keymaster/3.0/types.hal):               \
+     *  Whether the ephemeral public key is fed into the KDF.                                           \
      */                                                                                                 \
     KM_DECL_TAG(ECIES_SINGLE_HASH_MODE, BOOL, 201, eciesSingleHashMode, NULL, NULL, _)                  \
                                                                                                         \
@@ -201,6 +203,17 @@
                                                                                                         \
     /* Reserved for future use. */                                                                      \
     KM_DECL_TAG(HARDWARE_TYPE, ENUM, 304, hardwareType, SecurityLevel, INTEGER, _)                      \
+                                                                                                        \
+    /**                                                                                                 \
+     * Added in Keymaster 4.1; doesn't exist in earlier versions.                                       \
+     *                                                                                                  \
+     * Keys tagged with EARLY_BOOT_ONLY may only be used during early boot, until                       \
+     * IKeyMintDevice::earlyBootEnded() is called.  Early boot keys may be created after                \
+     * early boot.  Early boot keys may not be imported at all, if Tag::EARLY_BOOT_ONLY is              \
+     * provided to IKeyMintDevice::importKey, the import must fail with                                 \
+     * ErrorCode::EARLY_BOOT_ENDED.                                                                     \
+     */                                                                                                 \
+    KM_DECL_TAG(EARLY_BOOT_ONLY, BOOL, 305, earlyBootOnly, NULL, NULL, _)                               \
                                                                                                         \
     /**                                                                                                 \
      * Tag::ACTIVE_DATETIME specifies the date and time at which the key becomes active, in             \
@@ -276,7 +289,42 @@
      */                                                                                                 \
     KM_DECL_TAG(MAX_USES_PER_BOOT, UINT, 404, maxUsesPerBoot, NULL, INTEGER, _)                         \
                                                                                                         \
-    /* All users may use the key (kind of like Tag::NO_AUTH_REQUIRED). */                               \
+    /**                                                                                                 \
+     * KeyMint tag; doesn't exist in Keymaster.                                                         \
+     *                                                                                                  \
+     * Tag::USAGE_COUNT_LIMIT specifies the number of times that a key may be used. This can be         \
+     * used to limit the use of a key.                                                                  \
+     *                                                                                                  \
+     * The value is a 32-bit integer representing the current number of attempts left.                  \
+     *                                                                                                  \
+     * When initializing a limited use key, the value of this tag represents the maximum usage          \
+     * limit for that key. After the key usage is exhausted, the key blob should be invalidated by      \
+     * finish() call. Any subsequent attempts to use the key must result in a failure with              \
+     * ErrorCode::INVALID_KEY_BLOB returned by IKeyMintDevice.                                          \
+     *                                                                                                  \
+     * At this point, if the caller specifies count > 1, it is not expected that any TEE will be        \
+     * able to enforce this feature in the hardware due to limited resources of secure                  \
+     * storage. In this case, the tag with the value of maximum usage must be added to the key          \
+     * characteristics with SecurityLevel::KEYSTORE by the IKeyMintDevice.                              \
+     *                                                                                                  \
+     * On the other hand, if the caller specifies count = 1, some TEEs may have the ability             \
+     * to enforce this feature in the hardware with its secure storage. If the IKeyMintDevice           \
+     * implementation can enforce this feature, the tag with value = 1 must be added to the key         \
+     * characteristics with the SecurityLevel of the IKeyMintDevice. If the IKeyMintDevice can't        \
+     * enforce this feature even when the count = 1, the tag must be added to the key                   \
+     * characteristics with the SecurityLevel::KEYSTORE.                                                \
+     *                                                                                                  \
+     * When the key is attested, this tag with the same value must also be added to the attestation     \
+     * record. This tag must have the same SecurityLevel as the tag that is added to the key            \
+     * characteristics.                                                                                 \
+     */                                                                                                 \
+    KM_DECL_TAG(USAGE_COUNT_LIMIT, UINT, 405, usageCountLimit, NULL, INTEGER, _)                        \
+                                                                                                        \
+    /**                                                                                                 \
+     * All users may use the key (kind of like Tag::NO_AUTH_REQUIRED).                                  \
+     * Keymaster 3.0 declares it "reserved for future use",                                             \
+     * but no later Keymaster versions actually use it.                                                 \
+     */                                                                                                 \
     KM_DECL_TAG(ALL_USERS, BOOL, 500, allUsers, NULL, NULL, _)                                          \
                                                                                                         \
     /**                                                                                                 \
@@ -399,9 +447,18 @@
      * Tag::UNLOCKED_DEVICE_REQUIRED specifies that the key may only be used when the device is         \
      * unlocked.                                                                                        \
      *                                                                                                  \
+     * This tag is considered deprecated as it was never actually used by the Android Keystore,         \
+     * because "it can't work correctly".                                                               \
+     *                                                                                                  \
      * Must be software-enforced.                                                                       \
      */                                                                                                 \
     KM_DECL_TAG(UNLOCKED_DEVICE_REQUIRED, BOOL, 509, unlockedDeviceReq, NULL, NULL, _)                  \
+                                                                                                        \
+    /**                                                                                                 \
+     * Legacy Keymaster 3.0 tag. From AOSP (hardware/interfaces/keymaster/3.0/types.hal):               \
+     *  Specified to indicate key is usable by all applications.                                        \
+     */                                                                                                 \
+    KM_DECL_TAG(ALL_APPLICATIONS, BOOL, 600, allApplications, NULL, NULL, _)                            \
                                                                                                         \
     /**                                                                                                 \
      * Tag::APPLICATION_ID.  When provided to generateKey or importKey, this tag specifies data         \
@@ -419,7 +476,14 @@
      */                                                                                                 \
     KM_DECL_TAG(APPLICATION_ID, BYTES, 601, applicationId, NULL, OCTET_STRING, _)                       \
                                                                                                         \
-    /* Internal Samsung tag: key is exportable (doesn't apply to asymmetric i.e. EC and RSA keys).      \
+    /**                                                                                                 \
+     * Legacy Keymaster 3.0 tag. From AOSP (hardware/interfaces/keymaster/3.0/types.hal):               \
+     *                                                                                                  \
+     *  If true, private/secret key can be exported, but only                                           \
+     *  if all access control requirements for use are met. (keymaster2)                                \
+     *                                                                                                  \
+     * In Samsung's SKeymaster it does the following:                                                   \
+     * the key is exportable (doesn't apply to asymmetric i.e. EC and RSA keys).                        \
      * Note: Tag::KNOX_OBJECT_PROTECTION_REQUIRED has to be set during key generation/import            \
      * for this one to not be rejected with ErrorCode::INVALID_TAG. */                                  \
     KM_DECL_TAG(EXPORTABLE, BOOL, 602, exportable, NULL, NULL, _)                                       \
@@ -458,7 +522,11 @@
      */                                                                                                 \
     KM_DECL_TAG(ORIGIN, ENUM, 702, keyOrigin, KeyOrigin, INTEGER, _)                                    \
                                                                                                         \
-    /* 703 is unused. */                                                                                \
+    /**                                                                                                 \
+     * Legacy Keymaster 3.0 tag, unused by later versions.                                              \
+     * Specifies whether the key is rollback resistant.                                                 \
+     */                                                                                                 \
+    KM_DECL_TAG(ROLLBACK_RESISTANT, BOOL, 703, rollbackResistant, NULL, NULL, _)                        \
                                                                                                         \
     /**                                                                                                 \
      * Tag::ROOT_OF_TRUST specifies the root of trust, the key used by verified boot to validate the    \
@@ -685,7 +753,51 @@
      */                                                                                                 \
     KM_DECL_TAG(BOOT_PATCHLEVEL, UINT, 719, bootPatchLevel, NULL, INTEGER, _)                           \
                                                                                                         \
-    /* The key is a hardware-wrapped inline encryption key (for userdata FBE) */                        \
+    /**                                                                                                 \
+     * Added in Keymaster 4.1; doesn't exist in earlier versions.                                       \
+     *                                                                                                  \
+     * DEVICE_UNIQUE_ATTESTATION is an argument to IKeymasterDevice::attestKey().  It indicates that    \
+     * attestation using a device-unique key is requested, rather than a batch key.  When a             \
+     * device-unique key is used, only the attestation certificate is returned; no additional           \
+     * chained certificates are provided.  It's up to the caller to recognize the device-unique         \
+     * signing key.  Only SecurityLevel::STRONGBOX IKeymasterDevices may support device-unique          \
+     * attestations.  SecurityLevel::TRUSTED_ENVIRONMENT IKeymasterDevices must return                  \
+     * ErrorCode::INVALID_ARGUMENT if they receive DEVICE_UNIQUE_ATTESTATION.                           \
+     * SecurityLevel::STRONGBOX IKeymasterDevices need not support DEVICE_UNIQUE_ATTESTATION, and       \
+     * return ErrorCode::CANNOT_ATTEST_IDS if they do not support it.                                   \
+     *                                                                                                  \
+     * IKeymasterDevice implementations that support device-unique attestation MUST add the             \
+     * DEVICE_UNIQUE_ATTESTATION tag to device-unique attestations.                                     \
+     */                                                                                                 \
+    KM_DECL_TAG(DEVICE_UNIQUE_ATTESTATION, BOOL, 720, deviceUniqueAttestation, NULL, NULL, _)           \
+                                                                                                        \
+    /**                                                                                                 \
+     * Added in Keymaster 4.1; doesn't exist in earlier versions.                                       \
+     *                                                                                                  \
+     * IDENTITY_CREDENTIAL_KEY is never used by IKeymasterDevice, is not a valid argument to key        \
+     * generation or any operation, is never returned by any method and is never used in a key          \
+     * attestation.  It is used in attestations produced by the IIdentityCredential HAL when that       \
+     * HAL attests to Credential Keys.  IIdentityCredential produces Keymaster-style attestations.      \
+     */                                                                                                 \
+    KM_DECL_TAG(IDENTITY_CREDENTIAL_KEY, BOOL, 721, identityCredentialKey, NULL, NULL, _)               \
+                                                                                                        \
+    /**                                                                                                 \
+     * Added in Keymaster 4.1; doesn't exist in earlier versions.                                       \
+     *                                                                                                  \
+     * To prevent keys from being compromised if an attacker acquires read access to system / kernel    \
+     * memory, some inline encryption hardware supports protecting storage encryption keys in hardware  \
+     * without software having access to or the ability to set the plaintext keys. Instead, software    \
+     * only sees wrapped version of these keys.                                                         \
+     *                                                                                                  \
+     * STORAGE_KEY is used to denote that a key generated or imported is a key used for storage         \
+     * encryption. Keys of this type can either be generated or imported or secure imported using       \
+     * keymaster. exportKey() can be used to re-wrap storage key with a per-boot ephemeral key wrapped  \
+     * key once the key characteristics are enforced.                                                   \
+     *                                                                                                  \
+     * Keys with this tag cannot be used for any operation within keymaster.                            \
+     * ErrorCode::INVALID_OPERATION is returned when a key with Tag::STORAGE_KEY is provided to         \
+     * begin().                                                                                         \
+     */                                                                                                 \
     KM_DECL_TAG(STORAGE_KEY, BOOL, 722, storageKey, NULL, NULL, _)                                      \
                                                                                                         \
     /* Internal Samsung tag: used to validate datetime requirements in begin(). */                      \
@@ -721,7 +833,15 @@
      */                                                                                                 \
     KM_DECL_TAG(NONCE, BYTES, 1001, nonce, NULL, OCTET_STRING, _)                                       \
                                                                                                         \
-    /* Stores a user authentication token for operations that require it. */                            \
+    /**                                                                                                 \
+     * Legacy Keymaster 3.0 tag. From AOSP (hardware/interfaces/keymaster/3.0/types.hal):               \
+     *  Authentication token that proves secure user authentication has been performed.                 \
+     *  Structure defined in hw_auth_token_t in hw_auth_token.h.                                        \
+     *                                                                                                  \
+     * Stores a Gatekeeper user authentication token for `begin`, `update` and `finish` operations.     \
+     * In newer Keymaster versions, the functionality of this tag is replaced                           \
+     * by the new `authToken` argument added to the aforementioned methods.                             \
+     */                                                                                                 \
     KM_DECL_TAG(AUTH_TOKEN, BYTES, 1002, authToken, NULL, OCTET_STRING, _)                              \
                                                                                                         \
     /**                                                                                                 \

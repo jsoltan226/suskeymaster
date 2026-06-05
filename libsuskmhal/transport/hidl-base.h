@@ -44,6 +44,8 @@ enum kmhal_hidl_transaction_ids {
     HIDL_FLAG_CLEAR_BUF          = 0x00000020,
 };
 
+#ifndef SUSKEYMASTER_BUILD_HOST
+
 enum kmhal_android_status
 kmhal_hidl_base_ping(struct kmhal_binder_ctx *binder,
                      struct kmhal_binder_txn **txn_p,
@@ -54,6 +56,8 @@ kmhal_hidl_base_get_descriptor(struct kmhal_binder_ctx *binder,
                                struct kmhal_binder_txn **txn_p,
                                u32 handle,
                                const struct kmhal_hidl_string **out_p);
+
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
 #ifdef __cplusplus
 } /* extern "C" */

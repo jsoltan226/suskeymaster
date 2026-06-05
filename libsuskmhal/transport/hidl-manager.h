@@ -1,6 +1,8 @@
 #ifndef SUSKEYMASTER_KMHAL_HIDL_MANAGER_H_
 #define SUSKEYMASTER_KMHAL_HIDL_MANAGER_H_
 
+#ifndef SUSKEYMASTER_BUILD_HOST
+
 /**
  * A wrapper around some of the HIDL IServiceManager calls.
  */
@@ -128,5 +130,7 @@ enum kmhal_android_status kmhal_hidl_manager_list_by_interface(
 #ifdef __cplusplus
 } /* extern "C" */
 #endif /* __cplusplus */
+
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
 #endif /* SUSKEYMASTER_KMHAL_HIDL_MANAGER_H_ */

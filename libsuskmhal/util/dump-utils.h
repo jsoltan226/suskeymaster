@@ -1,7 +1,7 @@
 #ifndef SUSKEYMASTER_KMHAL_UTIL_DUMP_H_
 #define SUSKEYMASTER_KMHAL_UTIL_DUMP_H_
 
-#include "keymaster-types-c.h"
+#include "../keymaster-types-c.h"
 #include <core/math.h>
 #include <limits.h>
 

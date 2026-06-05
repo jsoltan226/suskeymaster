@@ -1,3 +1,5 @@
+#ifndef SUSKEYMASTER_BUILD_HOST
+
 #include "hidl-base.h"
 #include "binder.h"
 #include "status.h"
@@ -108,3 +110,5 @@ err:
 
     return ret;
 }
+
+#endif /* SUSKEYMASTER_BUILD_HOST */

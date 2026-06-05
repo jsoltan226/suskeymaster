@@ -3,10 +3,10 @@
 #include "google-root.h"
 #include <core/int.h>
 #include <core/vector.h>
+#include <libsuskmhal/suskmhal.hpp>
+#include <libsuskmhal/keymaster-types-c.h>
+#include <libsuskmhal/keymaster-types-cpp.hpp>
 #include <libsuskmhal/util/km-params.hpp>
-#include <libsuskmhal/util/keymaster-types-c.h>
-#include <libsuskmhal/util/keymaster-types-cpp.hpp>
-#include <libsuskmhal/transport/km-hidl-hal.hpp>
 #include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <libsuscertmod/certmod.h>
 #include <libsuscertmod/key-desc.h>

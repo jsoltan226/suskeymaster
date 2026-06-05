@@ -4,8 +4,8 @@
 #include <core/log.h>
 #include <core/util.h>
 #include <core/vector.h>
+#include <libsuskmhal/keymaster-types-c.h>
 #include <libsuskmhal/util/samsung-utils.h>
-#include <libsuskmhal/util/keymaster-types-c.h>
 #include <libsuskmhal/util/samsung-sus-indata.hpp>
 #include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <dlfcn.h>

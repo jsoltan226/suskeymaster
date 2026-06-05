@@ -330,6 +330,29 @@ int kmhal_hidl_vec_read_embedded(const void **out,
     kmhal_hidl_vec_read_embedded(out, out_ref, parcel, parent_vec,  \
             sizeof(T), parent_handle, parent_offset, child_hint)
 
+/** Helpers for serialzation/deserialization in `kmhal_call` (see `hal.h`) **/
+
+void kmhal_hidl_arg_write_hidl_string(struct kmhal_parcel *p,
+                                      const void *data, size_t size);
+
+int kmhal_hidl_arg_parse_hidl_string(const struct kmhal_parcel *p,
+                                     size_t *off_p,
+                                     const void **out_p, size_t out_size);
+
+void kmhal_hidl_arg_write_vec_of_u8(struct kmhal_parcel *p,
+                                    const void *data, size_t size);
+
+int kmhal_hidl_arg_parse_vec_of_u8(const struct kmhal_parcel *p,
+                                   size_t *off_p,
+                                   const void **out_p, size_t out_size);
+
+void kmhal_hidl_arg_write_vec_of_vec_of_u8(struct kmhal_parcel *p,
+                                           const void *data, size_t size);
+
+int kmhal_hidl_arg_parse_vec_of_vec_of_u8(const struct kmhal_parcel *p,
+                                          size_t *off_p,
+                                          const void **out_p, size_t out_size);
+
 #endif /* SUSKEYMASTER_BUILD_HOST */
 
 #ifdef __cplusplus

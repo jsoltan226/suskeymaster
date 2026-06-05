@@ -2,7 +2,7 @@
 #define SUSKEYMASTER_KMHAL_SAMSUNG_UTILS_H_
 
 #include "dump-utils.h"
-#include "keymaster-types-c.h"
+#include "../keymaster-types-c.h"
 #include <stdbool.h>
 #include <openssl/asn1.h>
 #include <openssl/asn1t.h>

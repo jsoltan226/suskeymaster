@@ -1,3 +1,5 @@
+#ifndef SUSKEYMASTER_BUILD_HOST
+
 #include "hidl-types.h"
 #include "parcel.h"
 #include <core/log.h>
@@ -217,3 +219,112 @@ int kmhal_hidl_vec_read_embedded(const void **out,
 
     return 0;
 }
+
+void kmhal_hidl_arg_write_hidl_string(struct kmhal_parcel *p,
+                                      const void *data, size_t size)
+{
+    if (size != sizeof(struct kmhal_hidl_string))
+        s_abort("serdes-hidl", __func__, "Invalid size");
+    else if (data == NULL)
+        s_abort("serdes-hidl", __func__, "Data is NULL");
+
+    kmhal_hidl_string_write(p, (const struct kmhal_hidl_string *)data,
+                            KMHAL_PARCEL_OBJ_INVALID, 0, NULL);
+}
+
+int kmhal_hidl_arg_parse_hidl_string(const struct kmhal_parcel *p,
+                                     size_t *off_p,
+                                     const void **out_p, size_t out_size)
+{
+    if (out_size != sizeof(struct kmhal_hidl_string)) {
+        s_log(S_LOG_ERROR, "serdes-hidl", "%s: Invalid size", __func__);
+        return -1;
+    } else if (out_p == NULL) {
+        s_log(S_LOG_ERROR, "serdes-hidl", "%s: Output pointer is NULL", __func__);
+        return -1;
+    }
+
+    return kmhal_hidl_string_read((const struct kmhal_hidl_string **)out_p, p,
+            off_p, NULL);
+}
+
+void kmhal_hidl_arg_write_vec_of_u8(struct kmhal_parcel *p,
+                                    const void *data, size_t size)
+{
+    u_check_params(data != NULL && size == sizeof(struct kmhal_hidl_vec));
+    kmhal_hidl_vec_write(p, data, sizeof(u8),
+            KMHAL_PARCEL_OBJ_INVALID, 0, NULL);
+}
+
+int kmhal_hidl_arg_parse_vec_of_u8(const struct kmhal_parcel *p,
+                                   size_t *off_p,
+                                   const void **out_p, size_t out_size)
+{
+    if (out_p == NULL || out_size != sizeof(struct kmhal_hidl_vec)) {
+        s_log_error("%s: Invalid parameters", __func__);
+        return -1;
+    }
+    return kmhal_hidl_vec_read((const struct kmhal_hidl_vec **)out_p,
+            sizeof(u8), p, off_p, NULL);
+}
+
+void kmhal_hidl_arg_write_vec_of_vec_of_u8(struct kmhal_parcel *p,
+                                           const void *data, size_t size)
+{
+    u_check_params(data != NULL && size == sizeof(struct kmhal_hidl_vec));
+
+    const struct kmhal_hidl_vec *const vec_p =
+        (const struct kmhal_hidl_vec *)data;
+
+    kmhal_parcel_obj_t ref =
+    kmhal_parcel_write_buffer_obj(p, vec_p->buffer,
+                                  vec_p->size * sizeof(struct kmhal_hidl_vec),
+                                  0, KMHAL_PARCEL_OBJ_INVALID, 0);
+
+    for (u32 i = 0; i < vec_p->size; i++) {
+        kmhal_parcel_write_embedded_buffer(p, vec_p->buffer,
+                                           vec_p->size * sizeof(u8),
+                                           ref,
+                                           i * vec_p->size);
+    }
+}
+
+int kmhal_hidl_arg_parse_vec_of_vec_of_u8(const struct kmhal_parcel *p,
+                                          size_t *off_p,
+                                          const void **out_p, size_t out_size)
+{
+    if (out_p == NULL || out_size != sizeof(struct kmhal_hidl_vec)) {
+        s_log_error("%s: Invalid parameters", __func__);
+        return -1;
+    }
+
+    const struct kmhal_hidl_vec *vec_p = NULL;
+    kmhal_parcel_obj_t ref;
+
+    if (kmhal_hidl_vec_read((const struct kmhal_hidl_vec **)out_p,
+                             sizeof(struct kmhal_hidl_vec), p, off_p, &ref))
+    {
+        s_log_error("Failed to read the parent HIDL vec buffer object");
+        return 1;
+    }
+    vec_p = *out_p;
+
+    for (u32 i = 0; i < vec_p->size; i++) {
+        const size_t parent_offset = i * sizeof(struct kmhal_hidl_vec);
+
+        const struct kmhal_hidl_vec *curr_p = (const struct kmhal_hidl_vec *)
+            ((const u8 *)vec_p->buffer + parent_offset);
+
+        if (kmhal_hidl_vec_read_embedded(NULL, NULL, p, off_p,
+                                         curr_p, sizeof(u8),
+                                         ref, parent_offset))
+        {
+            s_log_error("Failed to read embedded HIDL vec");
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+#endif /* SUSKEYMASTER_BUILD_HOST */

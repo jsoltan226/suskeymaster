@@ -1,3 +1,5 @@
+#ifndef SUSKEYMASTER_BUILD_HOST
+
 #include "txn-util.h"
 #include "binder.h"
 #include "status.h"
@@ -119,3 +121,5 @@ void kmhal_util_destroy_txn_tmps(struct kmhal_binder_txn **txn_p,
     kmhal_binder_txn_destroy(txn_p);
     kmhal_parcel_destroy(parcel_p);
 }
+
+#endif /* SUSKEYMASTER_BUILD_HOST */

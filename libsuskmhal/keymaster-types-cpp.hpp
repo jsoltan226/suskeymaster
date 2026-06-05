@@ -2,7 +2,7 @@
 #define HIDL_GENERATED_ANDROID_HARDWARE_KEYMASTER_GENERIC_TYPES_H
 
 #include "km-tags-def.h"
-#include "../transport/aosp-hidl-support.hpp"
+#include "transport/aosp-hidl-support.hpp"
 #include <cstdint>
 
 namespace android {
@@ -338,6 +338,13 @@ enum class ErrorCode : int32_t {
     UNIMPLEMENTED = -100 /* -100 */,
     VERSION_MISMATCH = -101 /* -101 */,
     UNKNOWN_ERROR = -1000 /* -1000 */,
+
+    /* Added in Keymaster 4.1 */
+    EARLY_BOOT_ENDED = -73,
+    ATTESTATION_KEYS_NOT_PROVISIONED = -74,
+    ATTESTATION_IDS_NOT_PROVISIONED = -75,
+    INVALID_OPERATION = -76,
+    STORAGE_KEY_UNSUPPORTED = -77,
 };
 
 /**
@@ -2376,6 +2383,36 @@ inline std::string toString<::android::hardware::keymaster::generic::ErrorCode>(
         first = false;
         flipped |= ::android::hardware::keymaster::generic::ErrorCode::UNKNOWN_ERROR;
     }
+    if ((o & ::android::hardware::keymaster::generic::ErrorCode::EARLY_BOOT_ENDED) == static_cast<int32_t>(::android::hardware::keymaster::generic::ErrorCode::EARLY_BOOT_ENDED)) {
+        os += (first ? "" : " | ");
+        os += "EARLY_BOOT_ENDED";
+        first = false;
+        flipped |= ::android::hardware::keymaster::generic::ErrorCode::EARLY_BOOT_ENDED;
+    }
+    if ((o & ::android::hardware::keymaster::generic::ErrorCode::ATTESTATION_KEYS_NOT_PROVISIONED) == static_cast<int32_t>(::android::hardware::keymaster::generic::ErrorCode::ATTESTATION_KEYS_NOT_PROVISIONED)) {
+        os += (first ? "" : " | ");
+        os += "ATTESTATION_KEYS_NOT_PROVISIONED";
+        first = false;
+        flipped |= ::android::hardware::keymaster::generic::ErrorCode::ATTESTATION_KEYS_NOT_PROVISIONED;
+    }
+    if ((o & ::android::hardware::keymaster::generic::ErrorCode::ATTESTATION_IDS_NOT_PROVISIONED) == static_cast<int32_t>(::android::hardware::keymaster::generic::ErrorCode::ATTESTATION_IDS_NOT_PROVISIONED)) {
+        os += (first ? "" : " | ");
+        os += "ATTESTATION_IDS_NOT_PROVISIONED";
+        first = false;
+        flipped |= ::android::hardware::keymaster::generic::ErrorCode::ATTESTATION_IDS_NOT_PROVISIONED;
+    }
+    if ((o & ::android::hardware::keymaster::generic::ErrorCode::INVALID_OPERATION) == static_cast<int32_t>(::android::hardware::keymaster::generic::ErrorCode::INVALID_OPERATION)) {
+        os += (first ? "" : " | ");
+        os += "INVALID_OPERATION";
+        first = false;
+        flipped |= ::android::hardware::keymaster::generic::ErrorCode::INVALID_OPERATION;
+    }
+    if ((o & ::android::hardware::keymaster::generic::ErrorCode::STORAGE_KEY_UNSUPPORTED) == static_cast<int32_t>(::android::hardware::keymaster::generic::ErrorCode::STORAGE_KEY_UNSUPPORTED)) {
+        os += (first ? "" : " | ");
+        os += "STORAGE_KEY_UNSUPPORTED";
+        first = false;
+        flipped |= ::android::hardware::keymaster::generic::ErrorCode::STORAGE_KEY_UNSUPPORTED;
+    }
     if (o != flipped) {
         os += (first ? "" : " | ");
         os += toHexString(o & (~flipped));
@@ -2605,6 +2642,21 @@ static inline std::string toString(::android::hardware::keymaster::generic::Erro
     }
     if (o == ::android::hardware::keymaster::generic::ErrorCode::VERSION_MISMATCH) {
         return "VERSION_MISMATCH";
+    }
+    if (o == ::android::hardware::keymaster::generic::ErrorCode::EARLY_BOOT_ENDED) {
+        return "EARLY_BOOT_ENDED";
+    }
+    if (o == ::android::hardware::keymaster::generic::ErrorCode::ATTESTATION_KEYS_NOT_PROVISIONED) {
+        return "ATTESTATION_KEYS_NOT_PROVISIONED";
+    }
+    if (o == ::android::hardware::keymaster::generic::ErrorCode::ATTESTATION_IDS_NOT_PROVISIONED) {
+        return "ATTESTATION_IDS_NOT_PROVISIONED";
+    }
+    if (o == ::android::hardware::keymaster::generic::ErrorCode::INVALID_OPERATION) {
+        return "INVALID_OPERATION";
+    }
+    if (o == ::android::hardware::keymaster::generic::ErrorCode::STORAGE_KEY_UNSUPPORTED) {
+        return "STORAGE_KEY_UNSUPPORTED";
     }
     if (o == ::android::hardware::keymaster::generic::ErrorCode::UNKNOWN_ERROR) {
         return "UNKNOWN_ERROR";
@@ -3051,397 +3103,5 @@ static inline void PrintTo(const ::android::hardware::keymaster::generic::Verifi
 }  // namespace keymaster
 }  // namespace hardware
 }  // namespace android
-
-//
-// global type declarations for package
-//
-
-namespace android {
-namespace hardware {
-namespace details {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc++17-extensions"
-template<> inline constexpr std::array<::android::hardware::keymaster::generic::Constants, 1> hidl_enum_values<::android::hardware::keymaster::generic::Constants> = {
-    ::android::hardware::keymaster::generic::Constants::AUTH_TOKEN_MAC_LENGTH,
-};
-#pragma clang diagnostic pop
-}  // namespace details
-}  // namespace hardware
-}  // namespace android
-
-namespace android {
-namespace hardware {
-namespace details {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc++17-extensions"
-template<> inline constexpr std::array<::android::hardware::keymaster::generic::TagType, 11> hidl_enum_values<::android::hardware::keymaster::generic::TagType> = {
-    ::android::hardware::keymaster::generic::TagType::INVALID,
-    ::android::hardware::keymaster::generic::TagType::ENUM,
-    ::android::hardware::keymaster::generic::TagType::ENUM_REP,
-    ::android::hardware::keymaster::generic::TagType::UINT,
-    ::android::hardware::keymaster::generic::TagType::UINT_REP,
-    ::android::hardware::keymaster::generic::TagType::ULONG,
-    ::android::hardware::keymaster::generic::TagType::DATE,
-    ::android::hardware::keymaster::generic::TagType::BOOL,
-    ::android::hardware::keymaster::generic::TagType::BIGNUM,
-    ::android::hardware::keymaster::generic::TagType::BYTES,
-    ::android::hardware::keymaster::generic::TagType::ULONG_REP,
-};
-#pragma clang diagnostic pop
-}  // namespace details
-}  // namespace hardware
-}  // namespace android
-
-namespace android {
-namespace hardware {
-namespace details {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc++17-extensions"
-template<> inline constexpr std::array<::android::hardware::keymaster::generic::Tag, 55> hidl_enum_values<::android::hardware::keymaster::generic::Tag> = {
-    ::android::hardware::keymaster::generic::Tag::INVALID,
-    ::android::hardware::keymaster::generic::Tag::PURPOSE,
-    ::android::hardware::keymaster::generic::Tag::ALGORITHM,
-    ::android::hardware::keymaster::generic::Tag::KEY_SIZE,
-    ::android::hardware::keymaster::generic::Tag::BLOCK_MODE,
-    ::android::hardware::keymaster::generic::Tag::DIGEST,
-    ::android::hardware::keymaster::generic::Tag::PADDING,
-    ::android::hardware::keymaster::generic::Tag::CALLER_NONCE,
-    ::android::hardware::keymaster::generic::Tag::MIN_MAC_LENGTH,
-    ::android::hardware::keymaster::generic::Tag::EC_CURVE,
-    ::android::hardware::keymaster::generic::Tag::RSA_PUBLIC_EXPONENT,
-    ::android::hardware::keymaster::generic::Tag::INCLUDE_UNIQUE_ID,
-    ::android::hardware::keymaster::generic::Tag::BLOB_USAGE_REQUIREMENTS,
-    ::android::hardware::keymaster::generic::Tag::BOOTLOADER_ONLY,
-    ::android::hardware::keymaster::generic::Tag::ROLLBACK_RESISTANCE,
-    ::android::hardware::keymaster::generic::Tag::HARDWARE_TYPE,
-    ::android::hardware::keymaster::generic::Tag::ACTIVE_DATETIME,
-    ::android::hardware::keymaster::generic::Tag::ORIGINATION_EXPIRE_DATETIME,
-    ::android::hardware::keymaster::generic::Tag::USAGE_EXPIRE_DATETIME,
-    ::android::hardware::keymaster::generic::Tag::MIN_SECONDS_BETWEEN_OPS,
-    ::android::hardware::keymaster::generic::Tag::MAX_USES_PER_BOOT,
-    ::android::hardware::keymaster::generic::Tag::USER_ID,
-    ::android::hardware::keymaster::generic::Tag::USER_SECURE_ID,
-    ::android::hardware::keymaster::generic::Tag::NO_AUTH_REQUIRED,
-    ::android::hardware::keymaster::generic::Tag::USER_AUTH_TYPE,
-    ::android::hardware::keymaster::generic::Tag::AUTH_TIMEOUT,
-    ::android::hardware::keymaster::generic::Tag::ALLOW_WHILE_ON_BODY,
-    ::android::hardware::keymaster::generic::Tag::TRUSTED_USER_PRESENCE_REQUIRED,
-    ::android::hardware::keymaster::generic::Tag::TRUSTED_CONFIRMATION_REQUIRED,
-    ::android::hardware::keymaster::generic::Tag::UNLOCKED_DEVICE_REQUIRED,
-    ::android::hardware::keymaster::generic::Tag::APPLICATION_ID,
-    ::android::hardware::keymaster::generic::Tag::APPLICATION_DATA,
-    ::android::hardware::keymaster::generic::Tag::CREATION_DATETIME,
-    ::android::hardware::keymaster::generic::Tag::ORIGIN,
-    ::android::hardware::keymaster::generic::Tag::ROOT_OF_TRUST,
-    ::android::hardware::keymaster::generic::Tag::OS_VERSION,
-    ::android::hardware::keymaster::generic::Tag::OS_PATCHLEVEL,
-    ::android::hardware::keymaster::generic::Tag::UNIQUE_ID,
-    ::android::hardware::keymaster::generic::Tag::ATTESTATION_CHALLENGE,
-    ::android::hardware::keymaster::generic::Tag::ATTESTATION_APPLICATION_ID,
-    ::android::hardware::keymaster::generic::Tag::ATTESTATION_ID_BRAND,
-    ::android::hardware::keymaster::generic::Tag::ATTESTATION_ID_DEVICE,
-    ::android::hardware::keymaster::generic::Tag::ATTESTATION_ID_PRODUCT,
-    ::android::hardware::keymaster::generic::Tag::ATTESTATION_ID_SERIAL,
-    ::android::hardware::keymaster::generic::Tag::ATTESTATION_ID_IMEI,
-    ::android::hardware::keymaster::generic::Tag::ATTESTATION_ID_MEID,
-    ::android::hardware::keymaster::generic::Tag::ATTESTATION_ID_MANUFACTURER,
-    ::android::hardware::keymaster::generic::Tag::ATTESTATION_ID_MODEL,
-    ::android::hardware::keymaster::generic::Tag::VENDOR_PATCHLEVEL,
-    ::android::hardware::keymaster::generic::Tag::BOOT_PATCHLEVEL,
-    ::android::hardware::keymaster::generic::Tag::ASSOCIATED_DATA,
-    ::android::hardware::keymaster::generic::Tag::NONCE,
-    ::android::hardware::keymaster::generic::Tag::MAC_LENGTH,
-    ::android::hardware::keymaster::generic::Tag::RESET_SINCE_ID_ROTATION,
-    ::android::hardware::keymaster::generic::Tag::CONFIRMATION_TOKEN,
-};
-#pragma clang diagnostic pop
-}  // namespace details
-}  // namespace hardware
-}  // namespace android
-
-namespace android {
-namespace hardware {
-namespace details {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc++17-extensions"
-template<> inline constexpr std::array<::android::hardware::keymaster::generic::Algorithm, 5> hidl_enum_values<::android::hardware::keymaster::generic::Algorithm> = {
-    ::android::hardware::keymaster::generic::Algorithm::RSA,
-    ::android::hardware::keymaster::generic::Algorithm::EC,
-    ::android::hardware::keymaster::generic::Algorithm::AES,
-    ::android::hardware::keymaster::generic::Algorithm::TRIPLE_DES,
-    ::android::hardware::keymaster::generic::Algorithm::HMAC,
-};
-#pragma clang diagnostic pop
-}  // namespace details
-}  // namespace hardware
-}  // namespace android
-
-namespace android {
-namespace hardware {
-namespace details {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc++17-extensions"
-template<> inline constexpr std::array<::android::hardware::keymaster::generic::BlockMode, 4> hidl_enum_values<::android::hardware::keymaster::generic::BlockMode> = {
-    ::android::hardware::keymaster::generic::BlockMode::ECB,
-    ::android::hardware::keymaster::generic::BlockMode::CBC,
-    ::android::hardware::keymaster::generic::BlockMode::CTR,
-    ::android::hardware::keymaster::generic::BlockMode::GCM,
-};
-#pragma clang diagnostic pop
-}  // namespace details
-}  // namespace hardware
-}  // namespace android
-
-namespace android {
-namespace hardware {
-namespace details {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc++17-extensions"
-template<> inline constexpr std::array<::android::hardware::keymaster::generic::PaddingMode, 6> hidl_enum_values<::android::hardware::keymaster::generic::PaddingMode> = {
-    ::android::hardware::keymaster::generic::PaddingMode::NONE,
-    ::android::hardware::keymaster::generic::PaddingMode::RSA_OAEP,
-    ::android::hardware::keymaster::generic::PaddingMode::RSA_PSS,
-    ::android::hardware::keymaster::generic::PaddingMode::RSA_PKCS1_1_5_ENCRYPT,
-    ::android::hardware::keymaster::generic::PaddingMode::RSA_PKCS1_1_5_SIGN,
-    ::android::hardware::keymaster::generic::PaddingMode::PKCS7,
-};
-#pragma clang diagnostic pop
-}  // namespace details
-}  // namespace hardware
-}  // namespace android
-
-namespace android {
-namespace hardware {
-namespace details {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc++17-extensions"
-template<> inline constexpr std::array<::android::hardware::keymaster::generic::Digest, 7> hidl_enum_values<::android::hardware::keymaster::generic::Digest> = {
-    ::android::hardware::keymaster::generic::Digest::NONE,
-    ::android::hardware::keymaster::generic::Digest::MD5,
-    ::android::hardware::keymaster::generic::Digest::SHA1,
-    ::android::hardware::keymaster::generic::Digest::SHA_2_224,
-    ::android::hardware::keymaster::generic::Digest::SHA_2_256,
-    ::android::hardware::keymaster::generic::Digest::SHA_2_384,
-    ::android::hardware::keymaster::generic::Digest::SHA_2_512,
-};
-#pragma clang diagnostic pop
-}  // namespace details
-}  // namespace hardware
-}  // namespace android
-
-namespace android {
-namespace hardware {
-namespace details {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc++17-extensions"
-template<> inline constexpr std::array<::android::hardware::keymaster::generic::EcCurve, 4> hidl_enum_values<::android::hardware::keymaster::generic::EcCurve> = {
-    ::android::hardware::keymaster::generic::EcCurve::P_224,
-    ::android::hardware::keymaster::generic::EcCurve::P_256,
-    ::android::hardware::keymaster::generic::EcCurve::P_384,
-    ::android::hardware::keymaster::generic::EcCurve::P_521,
-};
-#pragma clang diagnostic pop
-}  // namespace details
-}  // namespace hardware
-}  // namespace android
-
-namespace android {
-namespace hardware {
-namespace details {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc++17-extensions"
-template<> inline constexpr std::array<::android::hardware::keymaster::generic::KeyOrigin, 5> hidl_enum_values<::android::hardware::keymaster::generic::KeyOrigin> = {
-    ::android::hardware::keymaster::generic::KeyOrigin::GENERATED,
-    ::android::hardware::keymaster::generic::KeyOrigin::DERIVED,
-    ::android::hardware::keymaster::generic::KeyOrigin::IMPORTED,
-    ::android::hardware::keymaster::generic::KeyOrigin::UNKNOWN,
-    ::android::hardware::keymaster::generic::KeyOrigin::SECURELY_IMPORTED,
-};
-#pragma clang diagnostic pop
-}  // namespace details
-}  // namespace hardware
-}  // namespace android
-
-namespace android {
-namespace hardware {
-namespace details {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc++17-extensions"
-template<> inline constexpr std::array<::android::hardware::keymaster::generic::KeyBlobUsageRequirements, 2> hidl_enum_values<::android::hardware::keymaster::generic::KeyBlobUsageRequirements> = {
-    ::android::hardware::keymaster::generic::KeyBlobUsageRequirements::STANDALONE,
-    ::android::hardware::keymaster::generic::KeyBlobUsageRequirements::REQUIRES_FILE_SYSTEM,
-};
-#pragma clang diagnostic pop
-}  // namespace details
-}  // namespace hardware
-}  // namespace android
-
-namespace android {
-namespace hardware {
-namespace details {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc++17-extensions"
-template<> inline constexpr std::array<::android::hardware::keymaster::generic::KeyPurpose, 5> hidl_enum_values<::android::hardware::keymaster::generic::KeyPurpose> = {
-    ::android::hardware::keymaster::generic::KeyPurpose::ENCRYPT,
-    ::android::hardware::keymaster::generic::KeyPurpose::DECRYPT,
-    ::android::hardware::keymaster::generic::KeyPurpose::SIGN,
-    ::android::hardware::keymaster::generic::KeyPurpose::VERIFY,
-    ::android::hardware::keymaster::generic::KeyPurpose::WRAP_KEY,
-};
-#pragma clang diagnostic pop
-}  // namespace details
-}  // namespace hardware
-}  // namespace android
-
-namespace android {
-namespace hardware {
-namespace details {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc++17-extensions"
-template<> inline constexpr std::array<::android::hardware::keymaster::generic::ErrorCode, 74> hidl_enum_values<::android::hardware::keymaster::generic::ErrorCode> = {
-    ::android::hardware::keymaster::generic::ErrorCode::OK,
-    ::android::hardware::keymaster::generic::ErrorCode::ROOT_OF_TRUST_ALREADY_SET,
-    ::android::hardware::keymaster::generic::ErrorCode::UNSUPPORTED_PURPOSE,
-    ::android::hardware::keymaster::generic::ErrorCode::INCOMPATIBLE_PURPOSE,
-    ::android::hardware::keymaster::generic::ErrorCode::UNSUPPORTED_ALGORITHM,
-    ::android::hardware::keymaster::generic::ErrorCode::INCOMPATIBLE_ALGORITHM,
-    ::android::hardware::keymaster::generic::ErrorCode::UNSUPPORTED_KEY_SIZE,
-    ::android::hardware::keymaster::generic::ErrorCode::UNSUPPORTED_BLOCK_MODE,
-    ::android::hardware::keymaster::generic::ErrorCode::INCOMPATIBLE_BLOCK_MODE,
-    ::android::hardware::keymaster::generic::ErrorCode::UNSUPPORTED_MAC_LENGTH,
-    ::android::hardware::keymaster::generic::ErrorCode::UNSUPPORTED_PADDING_MODE,
-    ::android::hardware::keymaster::generic::ErrorCode::INCOMPATIBLE_PADDING_MODE,
-    ::android::hardware::keymaster::generic::ErrorCode::UNSUPPORTED_DIGEST,
-    ::android::hardware::keymaster::generic::ErrorCode::INCOMPATIBLE_DIGEST,
-    ::android::hardware::keymaster::generic::ErrorCode::INVALID_EXPIRATION_TIME,
-    ::android::hardware::keymaster::generic::ErrorCode::INVALID_USER_ID,
-    ::android::hardware::keymaster::generic::ErrorCode::INVALID_AUTHORIZATION_TIMEOUT,
-    ::android::hardware::keymaster::generic::ErrorCode::UNSUPPORTED_KEY_FORMAT,
-    ::android::hardware::keymaster::generic::ErrorCode::INCOMPATIBLE_KEY_FORMAT,
-    ::android::hardware::keymaster::generic::ErrorCode::UNSUPPORTED_KEY_ENCRYPTION_ALGORITHM,
-    ::android::hardware::keymaster::generic::ErrorCode::UNSUPPORTED_KEY_VERIFICATION_ALGORITHM,
-    ::android::hardware::keymaster::generic::ErrorCode::INVALID_INPUT_LENGTH,
-    ::android::hardware::keymaster::generic::ErrorCode::KEY_EXPORT_OPTIONS_INVALID,
-    ::android::hardware::keymaster::generic::ErrorCode::DELEGATION_NOT_ALLOWED,
-    ::android::hardware::keymaster::generic::ErrorCode::KEY_NOT_YET_VALID,
-    ::android::hardware::keymaster::generic::ErrorCode::KEY_EXPIRED,
-    ::android::hardware::keymaster::generic::ErrorCode::KEY_USER_NOT_AUTHENTICATED,
-    ::android::hardware::keymaster::generic::ErrorCode::OUTPUT_PARAMETER_NULL,
-    ::android::hardware::keymaster::generic::ErrorCode::INVALID_OPERATION_HANDLE,
-    ::android::hardware::keymaster::generic::ErrorCode::INSUFFICIENT_BUFFER_SPACE,
-    ::android::hardware::keymaster::generic::ErrorCode::VERIFICATION_FAILED,
-    ::android::hardware::keymaster::generic::ErrorCode::TOO_MANY_OPERATIONS,
-    ::android::hardware::keymaster::generic::ErrorCode::UNEXPECTED_NULL_POINTER,
-    ::android::hardware::keymaster::generic::ErrorCode::INVALID_KEY_BLOB,
-    ::android::hardware::keymaster::generic::ErrorCode::IMPORTED_KEY_NOT_ENCRYPTED,
-    ::android::hardware::keymaster::generic::ErrorCode::IMPORTED_KEY_DECRYPTION_FAILED,
-    ::android::hardware::keymaster::generic::ErrorCode::IMPORTED_KEY_NOT_SIGNED,
-    ::android::hardware::keymaster::generic::ErrorCode::IMPORTED_KEY_VERIFICATION_FAILED,
-    ::android::hardware::keymaster::generic::ErrorCode::INVALID_ARGUMENT,
-    ::android::hardware::keymaster::generic::ErrorCode::UNSUPPORTED_TAG,
-    ::android::hardware::keymaster::generic::ErrorCode::INVALID_TAG,
-    ::android::hardware::keymaster::generic::ErrorCode::MEMORY_ALLOCATION_FAILED,
-    ::android::hardware::keymaster::generic::ErrorCode::IMPORT_PARAMETER_MISMATCH,
-    ::android::hardware::keymaster::generic::ErrorCode::SECURE_HW_ACCESS_DENIED,
-    ::android::hardware::keymaster::generic::ErrorCode::OPERATION_CANCELLED,
-    ::android::hardware::keymaster::generic::ErrorCode::CONCURRENT_ACCESS_CONFLICT,
-    ::android::hardware::keymaster::generic::ErrorCode::SECURE_HW_BUSY,
-    ::android::hardware::keymaster::generic::ErrorCode::SECURE_HW_COMMUNICATION_FAILED,
-    ::android::hardware::keymaster::generic::ErrorCode::UNSUPPORTED_EC_FIELD,
-    ::android::hardware::keymaster::generic::ErrorCode::MISSING_NONCE,
-    ::android::hardware::keymaster::generic::ErrorCode::INVALID_NONCE,
-    ::android::hardware::keymaster::generic::ErrorCode::MISSING_MAC_LENGTH,
-    ::android::hardware::keymaster::generic::ErrorCode::KEY_RATE_LIMIT_EXCEEDED,
-    ::android::hardware::keymaster::generic::ErrorCode::CALLER_NONCE_PROHIBITED,
-    ::android::hardware::keymaster::generic::ErrorCode::KEY_MAX_OPS_EXCEEDED,
-    ::android::hardware::keymaster::generic::ErrorCode::INVALID_MAC_LENGTH,
-    ::android::hardware::keymaster::generic::ErrorCode::MISSING_MIN_MAC_LENGTH,
-    ::android::hardware::keymaster::generic::ErrorCode::UNSUPPORTED_MIN_MAC_LENGTH,
-    ::android::hardware::keymaster::generic::ErrorCode::UNSUPPORTED_KDF,
-    ::android::hardware::keymaster::generic::ErrorCode::UNSUPPORTED_EC_CURVE,
-    ::android::hardware::keymaster::generic::ErrorCode::KEY_REQUIRES_UPGRADE,
-    ::android::hardware::keymaster::generic::ErrorCode::ATTESTATION_CHALLENGE_MISSING,
-    ::android::hardware::keymaster::generic::ErrorCode::KEYMASTER_NOT_CONFIGURED,
-    ::android::hardware::keymaster::generic::ErrorCode::ATTESTATION_APPLICATION_ID_MISSING,
-    ::android::hardware::keymaster::generic::ErrorCode::CANNOT_ATTEST_IDS,
-    ::android::hardware::keymaster::generic::ErrorCode::ROLLBACK_RESISTANCE_UNAVAILABLE,
-    ::android::hardware::keymaster::generic::ErrorCode::HARDWARE_TYPE_UNAVAILABLE,
-    ::android::hardware::keymaster::generic::ErrorCode::PROOF_OF_PRESENCE_REQUIRED,
-    ::android::hardware::keymaster::generic::ErrorCode::CONCURRENT_PROOF_OF_PRESENCE_REQUESTED,
-    ::android::hardware::keymaster::generic::ErrorCode::NO_USER_CONFIRMATION,
-    ::android::hardware::keymaster::generic::ErrorCode::DEVICE_LOCKED,
-    ::android::hardware::keymaster::generic::ErrorCode::UNIMPLEMENTED,
-    ::android::hardware::keymaster::generic::ErrorCode::VERSION_MISMATCH,
-    ::android::hardware::keymaster::generic::ErrorCode::UNKNOWN_ERROR,
-};
-#pragma clang diagnostic pop
-}  // namespace details
-}  // namespace hardware
-}  // namespace android
-
-namespace android {
-namespace hardware {
-namespace details {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc++17-extensions"
-template<> inline constexpr std::array<::android::hardware::keymaster::generic::KeyDerivationFunction, 6> hidl_enum_values<::android::hardware::keymaster::generic::KeyDerivationFunction> = {
-    ::android::hardware::keymaster::generic::KeyDerivationFunction::NONE,
-    ::android::hardware::keymaster::generic::KeyDerivationFunction::RFC5869_SHA256,
-    ::android::hardware::keymaster::generic::KeyDerivationFunction::ISO18033_2_KDF1_SHA1,
-    ::android::hardware::keymaster::generic::KeyDerivationFunction::ISO18033_2_KDF1_SHA256,
-    ::android::hardware::keymaster::generic::KeyDerivationFunction::ISO18033_2_KDF2_SHA1,
-    ::android::hardware::keymaster::generic::KeyDerivationFunction::ISO18033_2_KDF2_SHA256,
-};
-#pragma clang diagnostic pop
-}  // namespace details
-}  // namespace hardware
-}  // namespace android
-
-namespace android {
-namespace hardware {
-namespace details {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc++17-extensions"
-template<> inline constexpr std::array<::android::hardware::keymaster::generic::HardwareAuthenticatorType, 4> hidl_enum_values<::android::hardware::keymaster::generic::HardwareAuthenticatorType> = {
-    ::android::hardware::keymaster::generic::HardwareAuthenticatorType::NONE,
-    ::android::hardware::keymaster::generic::HardwareAuthenticatorType::PASSWORD,
-    ::android::hardware::keymaster::generic::HardwareAuthenticatorType::FINGERPRINT,
-    ::android::hardware::keymaster::generic::HardwareAuthenticatorType::ANY,
-};
-#pragma clang diagnostic pop
-}  // namespace details
-}  // namespace hardware
-}  // namespace android
-
-namespace android {
-namespace hardware {
-namespace details {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc++17-extensions"
-template<> inline constexpr std::array<::android::hardware::keymaster::generic::SecurityLevel, 3> hidl_enum_values<::android::hardware::keymaster::generic::SecurityLevel> = {
-    ::android::hardware::keymaster::generic::SecurityLevel::SOFTWARE,
-    ::android::hardware::keymaster::generic::SecurityLevel::TRUSTED_ENVIRONMENT,
-    ::android::hardware::keymaster::generic::SecurityLevel::STRONGBOX,
-};
-#pragma clang diagnostic pop
-}  // namespace details
-}  // namespace hardware
-}  // namespace android
-
-namespace android {
-namespace hardware {
-namespace details {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc++17-extensions"
-template<> inline constexpr std::array<::android::hardware::keymaster::generic::KeyFormat, 3> hidl_enum_values<::android::hardware::keymaster::generic::KeyFormat> = {
-    ::android::hardware::keymaster::generic::KeyFormat::X509,
-    ::android::hardware::keymaster::generic::KeyFormat::PKCS8,
-    ::android::hardware::keymaster::generic::KeyFormat::RAW,
-};
-#pragma clang diagnostic pop
-}  // namespace details
-}  // namespace hardware
-}  // namespace android
-
 
 #endif  // HIDL_GENERATED_ANDROID_HARDWARE_KEYMASTER_GENERIC_TYPES_H

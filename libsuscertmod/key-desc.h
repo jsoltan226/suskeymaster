@@ -2,8 +2,8 @@
 #define SUS_CERT_MOD_REPACK_KEY_DESC_H_
 
 #define OPENSSL_API_COMPAT 0x10002000L
+#include <libsuskmhal/keymaster-types-c.h>
 #include <libsuskmhal/util/dump-utils.h>
-#include <libsuskmhal/util/keymaster-types-c.h>
 #include <openssl/asn1.h>
 
 #ifdef __cplusplus
@@ -12,7 +12,7 @@ extern "C" {
 
 /* Various utilities for working with Android Attestation Extension objects,
  * represented by the KeyDescription struct
- * (see `libsuskmhal/util/keymaster-types-c.h`).
+ * (see `libsuskmhal/keymaster-types-c.h`).
  *
  * For more information, visit the official Google/AOSP documentation at
  *  https://source.android.com/docs/security/features/keystore/attestation

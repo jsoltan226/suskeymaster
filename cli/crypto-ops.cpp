@@ -1,7 +1,7 @@
 #include "cli.hpp"
+#include <libsuskmhal/suskmhal.hpp>
+#include <libsuskmhal/keymaster-types-cpp.hpp>
 #include <libsuskmhal/util/km-params.hpp>
-#include <libsuskmhal/util/keymaster-types-cpp.hpp>
-#include <libsuskmhal/transport/km-hidl-hal.hpp>
 #include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <cstring>
 
@@ -12,9 +12,9 @@ namespace crypto {
 
 using namespace ::android::hardware::keymaster::generic;
 using ::android::hardware::hidl_vec;
-using kmhal::hidl::HidlSusKeymaster;
+using kmhal::SusKMHal;
 
-static ErrorCode do_generic_operation_cycle(HidlSusKeymaster& hal,
+static ErrorCode do_generic_operation_cycle(SusKMHal& hal,
         KeyPurpose op, hidl_vec<uint8_t> const& keyblob,
         hidl_vec<uint8_t> const& input_, hidl_vec<KeyParameter> const& params,
         hidl_vec<uint8_t> const* finish_signature,
@@ -31,9 +31,9 @@ static void init_sign_params_from_user_and_characteristics(
         hidl_vec<KeyParameter>& out_verify_params
 );
 
-int encrypt(HidlSusKeymaster& hal, hidl_vec<uint8_t> const& plaintext,
-        hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& encrypt_params,
-        hidl_vec<uint8_t>& out_ciphertext, hidl_vec<uint8_t>& out_aes_gcm_iv)
+int encrypt(SusKMHal& hal, hidl_vec<uint8_t> const& plaintext,
+            hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& encrypt_params,
+            hidl_vec<uint8_t>& out_ciphertext, hidl_vec<uint8_t>& out_aes_gcm_iv)
 {
     hidl_vec<KeyParameter> params(encrypt_params);
 
@@ -66,9 +66,9 @@ int encrypt(HidlSusKeymaster& hal, hidl_vec<uint8_t> const& plaintext,
     return 0;
 }
 
-int decrypt(HidlSusKeymaster& hal, hidl_vec<uint8_t> const& ciphertext,
-        hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& decrypt_params,
-        hidl_vec<uint8_t>& out_plaintext)
+int decrypt(SusKMHal& hal, hidl_vec<uint8_t> const& ciphertext,
+            hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& decrypt_params,
+            hidl_vec<uint8_t>& out_plaintext)
 {
     hidl_vec<KeyParameter> params(decrypt_params);
 
@@ -95,9 +95,9 @@ int decrypt(HidlSusKeymaster& hal, hidl_vec<uint8_t> const& ciphertext,
     return 0;
 }
 
-int sign(HidlSusKeymaster& hal, hidl_vec<uint8_t> const& message,
-    hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_sign_params,
-    hidl_vec<uint8_t>& out_signature)
+int sign(SusKMHal& hal, hidl_vec<uint8_t> const& message,
+         hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_sign_params,
+         hidl_vec<uint8_t>& out_signature)
 {
     hidl_vec<KeyParameter> params(in_sign_params), verify_params;
 
@@ -132,9 +132,9 @@ int sign(HidlSusKeymaster& hal, hidl_vec<uint8_t> const& message,
     return 0;
 }
 
-int verify(HidlSusKeymaster& hal,
-    hidl_vec<uint8_t> const& message, hidl_vec<uint8_t> const& signature,
-    hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_verify_params)
+int verify(SusKMHal& hal,
+           hidl_vec<uint8_t> const& message, hidl_vec<uint8_t> const& signature,
+           hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_verify_params)
 {
     hidl_vec<uint8_t> app_id, app_data;
     util::extract_application_id_and_data(in_verify_params, app_id, app_data);
@@ -161,7 +161,7 @@ int verify(HidlSusKeymaster& hal,
     return 0;
 }
 
-static ErrorCode do_generic_operation_cycle(HidlSusKeymaster& hal,
+static ErrorCode do_generic_operation_cycle(SusKMHal& hal,
         KeyPurpose op, hidl_vec<uint8_t> const& keyblob,
         hidl_vec<uint8_t> const& input_, hidl_vec<KeyParameter> const& params,
         hidl_vec<uint8_t> const* finish_signature,

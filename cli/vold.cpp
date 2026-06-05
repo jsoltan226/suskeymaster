@@ -1,7 +1,7 @@
 #define OPENSSL_API_COMPAT 0x10002000L
 #include "cli.hpp"
-#include <libsuskmhal/util/keymaster-types-cpp.hpp>
-#include <libsuskmhal/transport/km-hidl-hal.hpp>
+#include <libsuskmhal/suskmhal.hpp>
+#include <libsuskmhal/keymaster-types-cpp.hpp>
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -20,7 +20,7 @@ namespace vold {
 
 using namespace ::android::hardware::keymaster::generic;
 using ::android::hardware::hidl_vec;
-using kmhal::hidl::HidlSusKeymaster;
+using kmhal::SusKMHal;
 
 /* from keyutils.h */
 
@@ -77,7 +77,7 @@ int generate_app_id(hidl_vec<u8> const& in_secdiscardable,
     return 0;
 }
 
-int decrypt_de_key(HidlSusKeymaster& hal,
+int decrypt_de_key(SusKMHal& hal,
         hidl_vec<u8> const& in_keystore_key, hidl_vec<u8> const& in_secdiscardable,
         hidl_vec<u8> const& in_encrypted_key, hidl_vec<u8>& out_decrypted_key)
 {

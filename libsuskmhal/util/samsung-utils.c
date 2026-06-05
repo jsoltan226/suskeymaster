@@ -1,6 +1,6 @@
 #include "samsung-utils.h"
 #include "dump-utils.h"
-#include "keymaster-types-c.h"
+#include "../keymaster-types-c.h"
 #include <core/log.h>
 
 #define MODULE_NAME "samsung-utils"

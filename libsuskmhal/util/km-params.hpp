@@ -3,8 +3,8 @@
 
 #define HIDL_DISABLE_INSTRUMENTATION
 
-#include "keymaster-types-c.h"
-#include "keymaster-types-cpp.hpp"
+#include "../keymaster-types-c.h"
+#include "../keymaster-types-cpp.hpp"
 #include "../transport/aosp-hidl-support.hpp"
 #include <vector>
 #include <cstdint>

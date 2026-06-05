@@ -2,9 +2,9 @@
 #include <core/vector.h>
 #include <libsuscertmod/key-desc.h>
 #include <libsuscertmod/leaf-cert.h>
+#include <libsuskmhal/suskmhal.hpp>
+#include <libsuskmhal/keymaster-types-c.h>
 #include <libsuskmhal/util/km-params.hpp>
-#include <libsuskmhal/util/keymaster-types-c.h>
-#include <libsuskmhal/transport/km-hidl-hal.hpp>
 #include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <ctime>
 #include <cstdio>
@@ -20,7 +20,7 @@ namespace hal_ops {
 
 using namespace ::android::hardware::keymaster::generic;
 using ::android::hardware::hidl_vec;
-using kmhal::hidl::HidlSusKeymaster;
+using kmhal::SusKMHal;
 
 static void pr_info(const char *fmt, ...) {
     va_list vlist;
@@ -30,8 +30,9 @@ static void pr_info(const char *fmt, ...) {
     va_end(vlist);
 }
 
-int get_key_characteristics(HidlSusKeymaster& hal,
-    hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_application_id_data)
+int get_print_key_characteristics(SusKMHal& hal,
+                                  hidl_vec<u8> const& key,
+                                  hidl_vec<KeyParameter> const& in_application_id_data)
 {
     hidl_vec<uint8_t> app_id;
     hidl_vec<uint8_t> app_data;
@@ -73,9 +74,9 @@ int get_key_characteristics(HidlSusKeymaster& hal,
     return EXIT_SUCCESS;
 }
 
-int generate_key(HidlSusKeymaster& hal,
-    hidl_vec<KeyParameter> const& in_gen_params,
-    hidl_vec<uint8_t>& out_key_blob)
+int generate_key(SusKMHal& hal,
+                 hidl_vec<KeyParameter> const& in_gen_params,
+                 hidl_vec<uint8_t>& out_key_blob)
 {
     Algorithm alg = util::find_algorithm(in_gen_params,
         { Algorithm::EC, Algorithm::RSA, Algorithm::AES, Algorithm::TRIPLE_DES, Algorithm::HMAC }
@@ -99,9 +100,9 @@ int generate_key(HidlSusKeymaster& hal,
     return 0;
 }
 
-int attest_key(HidlSusKeymaster& hal,
-    hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_attest_params,
-    hidl_vec<hidl_vec<uint8_t>>& out_cert_chain)
+int attest_key(SusKMHal& hal,
+               hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_attest_params,
+               hidl_vec<hidl_vec<uint8_t>>& out_cert_chain)
 {
     hidl_vec<KeyParameter> params = in_attest_params;
 
@@ -129,10 +130,9 @@ int attest_key(HidlSusKeymaster& hal,
     return transact::server::verify_attestation(cert_chain);
 }
 
-int import_key(HidlSusKeymaster& hal,
-    hidl_vec<uint8_t> const& in_private_key,
-    hidl_vec<KeyParameter> const& in_import_params,
-    hidl_vec<uint8_t>& out_key_blob)
+int import_key(SusKMHal& hal,
+               hidl_vec<uint8_t> const& in_private_key, hidl_vec<KeyParameter> const& in_import_params,
+               hidl_vec<uint8_t>& out_key_blob)
 {
     Algorithm alg = util::determine_algorithm_from_params_and_pkey(in_import_params, in_private_key);
     if (alg == static_cast<Algorithm>(-1)) {
@@ -172,10 +172,9 @@ int import_key(HidlSusKeymaster& hal,
     return 0;
 }
 
-int export_key(HidlSusKeymaster& hal,
-    hidl_vec<uint8_t> const& key,
-    hidl_vec<uint8_t>& out_public_key_x509,
-    hidl_vec<KeyParameter> const& in_application_id_data)
+int export_key(SusKMHal& hal,
+               hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& in_application_id_data,
+               hidl_vec<u8>& out_public_key_x509)
 {
     hidl_vec<uint8_t> app_id;
     hidl_vec<uint8_t> app_data;
@@ -228,10 +227,10 @@ int export_key(HidlSusKeymaster& hal,
     return 0;
 }
 
-int upgrade_key(HidlSusKeymaster& hal,
-        hidl_vec<uint8_t> const& in_keyblob_to_upgrade,
-        hidl_vec<KeyParameter> const& in_upgrade_params,
-        hidl_vec<uint8_t>& out_upgraded_keyblob)
+int upgrade_key(SusKMHal& hal,
+                hidl_vec<uint8_t> const& in_keyblob_to_upgrade,
+                hidl_vec<KeyParameter> const& in_upgrade_params,
+                hidl_vec<uint8_t>& out_upgraded_keyblob)
 {
     ErrorCode e = hal.upgradeKey(in_keyblob_to_upgrade, in_upgrade_params, out_upgraded_keyblob);
     if (e != ErrorCode::OK) {

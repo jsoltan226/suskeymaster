@@ -3,8 +3,8 @@
 #include <core/log.h>
 #include <core/util.h>
 #include <core/vector.h>
+#include <libsuskmhal/keymaster-types-c.h>
 #include <libsuskmhal/util/dump-utils.h>
-#include <libsuskmhal/util/keymaster-types-c.h>
 #include <stdint.h>
 #include <openssl/asn1.h>
 #include <openssl/asn1t.h>

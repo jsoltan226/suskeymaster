@@ -2,9 +2,11 @@
 #include "endian.h"
 #include <core/log.h>
 #include <libsuscertmod/certmod.h>
+#include <libsuskmhal/suskmhal.hpp>
+#include <libsuskmhal/keymaster-types-cpp.hpp>
 #include <libsuskmhal/util/km-params.hpp>
-#include <libsuskmhal/util/keymaster-types-cpp.hpp>
-#include <libsuskmhal/transport/km-hidl-hal.hpp>
+#include <libsuskmhal/transport/hal.h>
+#include <libsuskmhal/transport/serdes-aidl.h>
 #include <strings.h>
 #include <cstdio>
 #include <string>
@@ -31,7 +33,7 @@ static const char *g_argv0 = NULL;
 
 namespace suskeymaster {
 
-static std::unique_ptr<kmhal::hidl::HidlSusKeymaster> g_hal = nullptr;
+static std::unique_ptr<kmhal::SusKMHal> g_hal = nullptr;
 
 enum hal_version : uint8_t {
     HAL_NOT_NEEDED = 0x00,
@@ -219,7 +221,7 @@ static const std::vector<cli_command> cmds = {
         }
     },
     [](arg_map_t& a) {
-        return cli::hal_ops::get_key_characteristics(*g_hal,
+        return cli::hal_ops::get_print_key_characteristics(*g_hal,
                 a["key_blob"].in_bytes(),
                 a["deserialization_params"].in_key_params()
         );
@@ -372,8 +374,8 @@ static const std::vector<cli_command> cmds = {
     },
     [](arg_map_t& a) {
         return cli::hal_ops::export_key(*g_hal,
-                a["in_keyblob"].in_bytes(), a["out_exported"].out_bytes(),
-                a["deserialization_params"].in_key_params());
+                a["in_keyblob"].in_bytes(), a["deserialization_params"].in_key_params(),
+                a["out_exported"].out_bytes());
     }
 },
 {
@@ -1273,8 +1275,98 @@ static const std::vector<cli_command> cmds = {
         return cli::samsung::send_indata(*g_hal, ver_p, km_ver_p, cmd, pid_p,
                 int0_p, long0_p, long1_p, bin0_p, bin1_p, bin2_p, key_p, par_p);
     }
-}
+},
 #endif /* SUSKEYMASTER_ENABLE_SEND_INDATA */
+#ifndef SUSKEYMASTER_BUILD_HOST
+{
+    { "aidltest" },
+    { "aidltest" },
+    HAL_NOT_NEEDED,
+    {},
+    [] (arg_map_t&) {
+        struct kmhal_sp *aidl_hal = nullptr;
+
+        aidl_hal = kmhal_aidl_sp_new_get(
+                "android.hardware.security.keymint.IKeyMintDevice",
+                "default", nullptr, false
+        );
+        if (aidl_hal == nullptr) {
+            std::cerr << "FAIL" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        std::cout << "keymint handle: " << kmhal_get_handle(aidl_hal, nullptr) << std::endl;
+
+        auto s = kmhal_ping(aidl_hal);
+        std::cout << "ping result: " << static_cast<int>(s)
+            << " (" << kmhal_android_status_toString(s) << ")" << std::endl;
+
+        struct KeyMintHardwareInfo {
+            i32 versionNumber;
+            SecurityLevel securityLevel = SecurityLevel::SOFTWARE;
+            char *keyMintName = nullptr;
+            char *keyMintAuthorName = nullptr;
+            i32 timestampTokenRequired;
+        } hwinfo;
+        struct kmhal_arg_parse_desc desc;
+        desc.name = "KeyMintHardwareInfo";
+        desc.type = KMHAL_ARG_INLINE_DATA;
+        desc.arg.i.out = &hwinfo;
+        desc.arg.i.size = sizeof(hwinfo);
+        desc.arg.i.proc =
+        [](const struct kmhal_parcel *p, size_t *off_p, void *out, size_t size)
+        {
+            if (out == nullptr || size != sizeof(KeyMintHardwareInfo)) {
+                std::cerr << "invalid parameters" << std::endl;
+                return -1;
+            }
+
+            KeyMintHardwareInfo *o = reinterpret_cast<KeyMintHardwareInfo *>(out);
+
+            if (kmhal_arg_parse_u32(p, off_p,
+                        (const void **)&o->versionNumber, sizeof(i32)))
+                    return 1;
+
+            if (kmhal_arg_parse_u32(p, off_p,
+                        (const void **)&o->securityLevel, sizeof(u32)))
+                    return 1;
+
+            if (kmhal_aidl_arg_parse_convert_aidl_string16(p, off_p,
+                        (const void **)&o->keyMintName, 0))
+                    return 1;
+
+            if (kmhal_aidl_arg_parse_convert_aidl_string16(p, off_p,
+                        (const void **)&o->keyMintAuthorName, 0))
+                    return 1;
+
+            if (kmhal_arg_parse_u32(p, off_p,
+                        (const void **)&o->timestampTokenRequired, sizeof(u32)))
+                    return 1;
+
+            return 0;
+        };
+
+        s = kmhal_call(aidl_hal, 1, nullptr, 0, &desc, 1);
+        std::cout << "call result: " << static_cast<int>(s)
+            << " (" << kmhal_android_status_toString(s) << ")" << std::endl;
+        if (s != OK)
+            return EXIT_FAILURE;
+
+        std::cout << "versionNumber: " << hwinfo.versionNumber << std::endl;
+        std::cout << "securityLevel: " << static_cast<u32>(hwinfo.securityLevel)
+            << " (" << toString(hwinfo.securityLevel) << ")" << std::endl;
+        std::cout << "keyMintName: " << hwinfo.keyMintName << std::endl;
+        free(hwinfo.keyMintName);
+        std::cout << "keyMintAuthorName: " << hwinfo.keyMintAuthorName << std::endl;
+        free(hwinfo.keyMintAuthorName);
+        std::cout << "timestampTokenRequired: " << hwinfo.timestampTokenRequired << std::endl;
+
+        std::cout << "OK" << std::endl;
+        kmhal_sp_destroy(&aidl_hal);
+        return EXIT_SUCCESS;
+    }
+}
+#endif /* SUSKEYMASTER_BUILD_HOST */
 };
 
 struct cli_cmd_example_cmdline {
@@ -1449,7 +1541,7 @@ static int init_g_hal(hal_version min_ver)
 
 #ifndef SUSKEYMASTER_HAL_DISABLE_4_1
     if ((min_ver <= HAL_4_1 && !km_ver_env) || !strcmp(km_ver_env ? km_ver_env : "", "4.1")) {
-        g_hal = std::make_unique<kmhal::hidl::HidlSusKeymaster4_1>();
+        g_hal = std::make_unique<kmhal::SusHidlKeymaster4_1>();
         if (g_hal->isHALOk()) {
             print_inithal_ok_msg(HAL_4_1);
             return EXIT_SUCCESS;
@@ -1462,7 +1554,7 @@ static int init_g_hal(hal_version min_ver)
 
 #ifndef SUSKEYMASTER_HAL_DISABLE_4_0
     if ((min_ver <= HAL_4_0 && !km_ver_env) || !strcmp(km_ver_env ? km_ver_env : "", "4.0")) {
-        g_hal = std::make_unique<kmhal::hidl::HidlSusKeymaster4_0>();
+        g_hal = std::make_unique<kmhal::SusHidlKeymaster4_0>();
         if (g_hal->isHALOk()) {
             print_inithal_ok_msg(HAL_4_0);
             return EXIT_SUCCESS;
@@ -1475,7 +1567,7 @@ static int init_g_hal(hal_version min_ver)
 
 #ifndef SUSKEYMASTER_HAL_DISABLE_3_0
     if ((min_ver <= HAL_3_0 && !km_ver_env) || !strcmp(km_ver_env ? km_ver_env : "", "3.0")) {
-        g_hal = std::make_unique<kmhal::hidl::HidlSusKeymaster3_0>();
+        g_hal = std::make_unique<kmhal::SusHidlKeymaster3_0>();
         if (g_hal->isHALOk()) {
             print_inithal_ok_msg(HAL_3_0);
             return EXIT_SUCCESS;

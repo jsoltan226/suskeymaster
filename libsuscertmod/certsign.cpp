@@ -2,9 +2,9 @@
 #include "certsign.h"
 #include "keybox.h"
 #include "certmod.h"
-#include <libsuskmhal/util/keymaster-types-c.h>
-#include <libsuskmhal/util/keymaster-types-cpp.hpp>
-#include <libsuskmhal/transport/km-hidl-hal.hpp>
+#include <libsuskmhal/suskmhal.hpp>
+#include <libsuskmhal/keymaster-types-c.h>
+#include <libsuskmhal/keymaster-types-cpp.hpp>
 #include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <core/int.h>
 #include <core/log.h>
@@ -17,9 +17,8 @@
 
 using namespace ::android::hardware;
 using namespace ::android::hardware::keymaster::generic;
-using namespace ::suskeymaster::kmhal::hidl;
 
-static std::unique_ptr<HidlSusKeymaster> get_hal(void);
+static std::unique_ptr<suskeymaster::kmhal::SusKMHal> get_hal(void);
 static int get_keyblob_from_current_keybox(enum sus_key_variant variant,
         hidl_vec<uint8_t>& out);
 static hidl_vec<KeyParameter> init_params(enum sus_key_variant variant);
@@ -39,7 +38,7 @@ i32 sus_cert_sign(VECTOR(u8 const) tbs_der, VECTOR(u8) *out_sig,
     ErrorCode e = ErrorCode::UNKNOWN_ERROR;
     hidl_vec<uint8_t> keyblob;
     hidl_vec<KeyParameter> params;
-    std::unique_ptr<HidlSusKeymaster> hal = nullptr;
+    std::unique_ptr<suskeymaster::kmhal::SusKMHal> hal = nullptr;
 
     /* Prepare what's needed */
     if (get_keyblob_from_current_keybox(variant, keyblob))
@@ -90,24 +89,24 @@ err:
 
 } /* extern "C" */
 
-static std::unique_ptr<HidlSusKeymaster> get_hal(void)
+static std::unique_ptr<suskeymaster::kmhal::SusKMHal> get_hal(void)
 {
-    std::unique_ptr<HidlSusKeymaster> ret = nullptr;
+    std::unique_ptr<suskeymaster::kmhal::SusKMHal> ret = nullptr;
 
 #ifndef SUSKEYMASTER_HAL_DISABLE_4_1
-    ret = std::make_unique<HidlSusKeymaster4_1>();
+    ret = std::make_unique<suskeymaster::kmhal::SusHidlKeymaster4_1>();
     if (ret && ret->isHALOk())
         return ret;
 #endif /* SUSKEYMASTER_HAL_DISABLE_4_1 */
 
 #ifndef SUSKEYMASTER_HAL_DISABLE_4_0
-    ret = std::make_unique<HidlSusKeymaster4_0>();
+    ret = std::make_unique<suskeymaster::kmhal::SusHidlKeymaster4_0>();
     if (ret && ret->isHALOk())
         return ret;
 #endif /* SUSKEYMASTER_HAL_DISABLE_4_0 */
 
 #ifndef SUSKEYMASTER_HAL_DISABLE_3_0
-    ret = std::make_unique<HidlSusKeymaster3_0>();
+    ret = std::make_unique<suskeymaster::kmhal::SusHidlKeymaster3_0>();
     if (ret && ret->isHALOk())
         return ret;
 #endif /* SUSKEYMASTER_HAL_DISABLE_3_0 */

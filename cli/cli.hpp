@@ -2,10 +2,10 @@
 #define CLI_SUSKEYMASTER_HPP_
 
 #include <core/log.h>
+#include <libsuskmhal/suskmhal.hpp>
 #include <libsuskmhal/util/km-params.hpp>
-#include <libsuskmhal/util/keymaster-types-cpp.hpp>
+#include <libsuskmhal/keymaster-types-cpp.hpp>
 #include <libsuskmhal/transport/hidl-base.h>
-#include <libsuskmhal/transport/km-hidl-hal.hpp>
 #include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <libsuscertmod/samsung-sus-indata.h>
 #include <vector>
@@ -19,54 +19,53 @@
 namespace suskeymaster {
 namespace cli {
 
-using ::suskeymaster::kmhal::hidl::HidlSusKeymaster;
+using ::suskeymaster::kmhal::SusKMHal;
 using namespace ::android::hardware::keymaster::generic;
 using ::android::hardware::hidl_vec;
 
 namespace hal_ops {
 
-int get_key_characteristics(HidlSusKeymaster& hal,
-    hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& in_application_id_data);
+int get_print_key_characteristics(SusKMHal& hal,
+                                  hidl_vec<u8> const& key,
+                                  hidl_vec<KeyParameter> const& in_application_id_data);
 
-int generate_key(HidlSusKeymaster& hal,
-    hidl_vec<KeyParameter> const& in_gen_params,
-    hidl_vec<u8>& out_wrapped_blob);
+int generate_key(SusKMHal& hal,
+                 hidl_vec<KeyParameter> const& in_gen_params,
+                 hidl_vec<u8>& out_wrapped_blob);
 
-int attest_key(HidlSusKeymaster& hal,
-    hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& in_attest_params,
-    hidl_vec<hidl_vec<u8>>& out_cert_chain);
+int attest_key(SusKMHal& hal,
+               hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& in_attest_params,
+               hidl_vec<hidl_vec<u8>>& out_cert_chain);
 
-int import_key(HidlSusKeymaster& hal,
-    hidl_vec<u8> const& priv_pkcs8,
-    hidl_vec<KeyParameter> const& in_import_params,
-    hidl_vec<u8>& out_wrapped_blob);
+int import_key(SusKMHal& hal,
+               hidl_vec<u8> const& priv_pkcs8, hidl_vec<KeyParameter> const& in_import_params,
+               hidl_vec<u8>& out_wrapped_blob);
 
-int export_key(HidlSusKeymaster& hal,
-    hidl_vec<u8> const& key,
-    hidl_vec<u8>& out_public_key_x509,
-    hidl_vec<KeyParameter> const& in_application_id_data);
+int export_key(SusKMHal& hal,
+               hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& in_application_id_data,
+               hidl_vec<u8>& out_public_key_x509);
 
-int upgrade_key(HidlSusKeymaster& hal,
-    hidl_vec<u8> const& in_keyblob_to_upgrade,
-    hidl_vec<KeyParameter> const& in_upgrade_params,
-    hidl_vec<u8>& out_upgraded_keyblob);
+int upgrade_key(SusKMHal& hal,
+                hidl_vec<u8> const& in_keyblob_to_upgrade,
+                hidl_vec<KeyParameter> const& in_upgrade_params,
+                hidl_vec<u8>& out_upgraded_keyblob);
 
 namespace crypto {
-    int encrypt(HidlSusKeymaster& hal, hidl_vec<u8> const& plaintext,
-            hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& encrypt_params,
-            hidl_vec<u8>& out_ciphertext, hidl_vec<u8>& out_aes_gcm_iv);
+    int encrypt(SusKMHal& hal, hidl_vec<u8> const& plaintext,
+                hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& encrypt_params,
+                hidl_vec<u8>& out_ciphertext, hidl_vec<u8>& out_aes_gcm_iv);
 
-    int decrypt(HidlSusKeymaster& hal, hidl_vec<u8> const& ciphertext,
-            hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& decrypt_params,
-            hidl_vec<u8>& out_plaintext);
+    int decrypt(SusKMHal& hal, hidl_vec<u8> const& ciphertext,
+                hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& decrypt_params,
+                hidl_vec<u8>& out_plaintext);
 
-    int sign(HidlSusKeymaster& hal, hidl_vec<u8> const& message,
-        hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& in_sign_params,
-        hidl_vec<u8>& out_signature);
+    int sign(SusKMHal& hal, hidl_vec<u8> const& message,
+             hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& in_sign_params,
+             hidl_vec<u8>& out_signature);
 
-    int verify(HidlSusKeymaster& hal,
-        hidl_vec<u8> const& message, hidl_vec<u8> const& signature,
-        hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& in_verify_params);
+    int verify(SusKMHal& hal,
+               hidl_vec<u8> const& message, hidl_vec<u8> const& signature,
+               hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& in_verify_params);
 } /* namespace crypto */
 
 } /* namespace hal_ops */
@@ -84,7 +83,7 @@ namespace keybox {
 
 namespace transact {
     namespace client {
-        int generate_and_attest_wrapping_key(HidlSusKeymaster& hal,
+        int generate_and_attest_wrapping_key(SusKMHal& hal,
             hidl_vec<u8>& out_wrapping_blob, hidl_vec<u8>& out_wrapping_pubkey,
             hidl_vec<hidl_vec<u8>> * out_opt_cert_chain,
             hidl_vec<KeyParameter> const& in_gen_params
@@ -100,7 +99,7 @@ namespace transact {
     }
 
     namespace client {
-        int import_wrapped_key(HidlSusKeymaster& hal, hidl_vec<u8> const& in_wrapped_data,
+        int import_wrapped_key(SusKMHal& hal, hidl_vec<u8> const& in_wrapped_data,
             hidl_vec<u8> const& in_masking_key, hidl_vec<u8> const& in_wrapping_blob,
             hidl_vec<KeyParameter> const& in_unwrapping_params,
             hidl_vec<u8>& out_key_blob);
@@ -113,7 +112,7 @@ namespace vold {
             hidl_vec<u8> const& in_secret,
             hidl_vec<u8>& out_app_id);
 
-    int decrypt_de_key(HidlSusKeymaster& hal,
+    int decrypt_de_key(SusKMHal& hal,
             hidl_vec<u8> const& in_keystore_key, hidl_vec<u8> const& in_secdiscardable,
             hidl_vec<u8> const& in_encrypted_key, hidl_vec<u8>& out_decrypted_key);
 
@@ -127,13 +126,13 @@ namespace vold {
 namespace gatekeeper {
     struct gk_hal {
     private:
-        struct kmhal_hidl_hal_sp *hal_sp;
+        struct kmhal_sp *hal_sp;
         bool owns;
     public:
 
         /* Implemented in `gatekeeper.cpp` */
         gk_hal();
-        gk_hal(HidlSusKeymaster&);
+        gk_hal(SusKMHal&);
         ~gk_hal();
 
         gk_hal(const gk_hal& other) {
@@ -148,10 +147,10 @@ namespace gatekeeper {
 
         bool is_ok() const { return this->hal_sp != nullptr; }
 
-        struct kmhal_hidl_hal_sp * get_hal_sp() const { return this->hal_sp; }
+        struct kmhal_sp * get_hal_sp() const { return this->hal_sp; }
     };
 
-    int verify(HidlSusKeymaster& kmhal, u32 uid, u64 challenge, hidl_vec<uint8_t> const& cred,
+    int verify(SusKMHal& kmhal, u32 uid, u64 challenge, hidl_vec<uint8_t> const& cred,
                hidl_vec<uint8_t> const& handle, hidl_vec<uint8_t>& out,
                struct gk_hal *opt_gk_hal = nullptr);
 
@@ -200,12 +199,12 @@ namespace gatekeeper {
     int stretch_lskf(hidl_vec<u8> const& credential, sp_pwd_data const& pwd,
                      hidl_vec<u8>& out, bool warn_if_default_password = true);
 
-    int unwrap_sp_blob(HidlSusKeymaster& kmhal, u32 uid, hidl_vec<u8> const& keystore_key_blob,
+    int unwrap_sp_blob(SusKMHal& kmhal, u32 uid, hidl_vec<u8> const& keystore_key_blob,
                        hidl_vec<u8> const& stretched_cred, hidl_vec<u8> const& secdiscardable,
                        hidl_vec<u8> const& sp_blob, hidl_vec<u8>& out, u8& out_blob_version,
                        hidl_vec<u8> const& gk_pwd_handle = {});
 
-    int validate_synthetic_password(HidlSusKeymaster& kmhal, u32 uid,
+    int validate_synthetic_password(SusKMHal& kmhal, u32 uid,
                                     hidl_vec<u8> const& synthetic_password, u8 sp_blob_ver,
                                     hidl_vec<u8> const& null_pwd_handle);
 
@@ -225,7 +224,7 @@ namespace samsung {
     } /* namespace ekey */
 
 #ifdef SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA
-    int send_indata(HidlSusKeymaster& hal,
+    int send_indata(SusKMHal& hal,
                     u32 *ver, u32 *km_ver, u32 cmd, u32 *pid,
                     u32 *int0, u64 *long0, u64 *long1, const hidl_vec<u8> *bin0,
                     const hidl_vec<u8> *bin1, const hidl_vec<u8> *bin2,

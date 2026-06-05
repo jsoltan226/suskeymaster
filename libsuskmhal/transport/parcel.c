@@ -1,6 +1,7 @@
+#ifndef SUSKEYMASTER_BUILD_HOST
+
 #include "parcel.h"
 #include "binder.h"
-#include "status.h"
 #include <core/log.h>
 #include <core/int.h>
 #include <core/util.h>
@@ -29,7 +30,8 @@ struct parcel_obj {
 struct kmhal_parcel {
     _Atomic bool initialized_;
 
-    VECTOR(u8) buffer;
+    VECTOR(u8) write_buffer;
+    const void *read_buffer; size_t read_buffer_size;
 
     VECTOR(struct parcel_obj) objects;
     binder_size_t sg_buffers_size;
@@ -56,7 +58,8 @@ static int validate_buffer_object(const struct kmhal_parcel *parcel,
                                   binder_size_t parent_offset);
 
 static int validate_parent(const struct kmhal_parcel *parcel,
-                           binder_size_t parent_idx, binder_size_t child_idx);
+                           binder_size_t parent_idx, binder_size_t child_idx,
+                           bool read);
 
 static int validate_reply(const struct kmhal_binder_txn_args_out *r);
 
@@ -69,7 +72,9 @@ struct kmhal_parcel * kmhal_parcel_new(void)
         goto_error("Failed to allocate a new parcel struct");
     atomic_store(&ret->initialized_, true);
 
-    ret->buffer = vector_new(u8);
+    ret->write_buffer = vector_new(u8);
+    ret->read_buffer = NULL;
+    ret->read_buffer_size = 0;
 
     ret->objects = vector_new(struct parcel_obj);
     ret->sg_buffers_size = 0;
@@ -100,8 +105,8 @@ kmhal_parcel_new_from_reply(const struct kmhal_binder_txn_args_out *reply)
     if (ret == NULL)
         goto err;
 
-    vector_resize(&ret->buffer, reply->data_size);
-    memcpy(ret->buffer, reply->data_buf, reply->data_size);
+    ret->read_buffer = reply->data_buf;
+    ret->read_buffer_size = reply->data_size;
 
     vector_reserve(&ret->objects, reply->offsets_count);
     for (u32 i = 0; i < reply->offsets_count; i++) {
@@ -155,11 +160,11 @@ void kmhal_parcel_write_bytes(struct kmhal_parcel *parcel,
 
     /* `vector_resize` already memset()s the whole thing to zero,
      * including any of our additional padding bytes */
-    const size_t offset = align4(vector_size(parcel->buffer));
+    const size_t offset = align4(vector_size(parcel->write_buffer));
     s_assert(offset + len < UINT32_MAX, "Offset and length too big");
 
-    vector_resize(&parcel->buffer, offset + len);
-    memcpy(parcel->buffer + offset, data, len);
+    vector_resize(&parcel->write_buffer, offset + len);
+    memcpy(parcel->write_buffer + offset, data, len);
 }
 
 void kmhal_parcel_patch(struct kmhal_parcel *parcel,
@@ -171,10 +176,10 @@ void kmhal_parcel_patch(struct kmhal_parcel *parcel,
 
     s_assert(offset + len < UINT32_MAX, "Offset and length too big");
 
-    if (offset + len > vector_size(parcel->buffer))
-        vector_resize(&parcel->buffer, offset + len);
+    if (offset + len > vector_size(parcel->write_buffer))
+        vector_resize(&parcel->write_buffer, offset + len);
 
-    memcpy(parcel->buffer + offset, data, len);
+    memcpy(parcel->write_buffer + offset, data, len);
 }
 
 void kmhal_parcel_write_u32(struct kmhal_parcel *parcel, u32 u)
@@ -187,13 +192,13 @@ void kmhal_parcel_write_u64(struct kmhal_parcel *parcel, u64 u)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
 
-    size_t off = align4(vector_size(parcel->buffer));
+    size_t off = align4(vector_size(parcel->write_buffer));
     s_assert(off < UINT32_MAX - sizeof(u64), "New offset too bit");
 
-    vector_resize(&parcel->buffer, off + sizeof(u64));
+    vector_resize(&parcel->write_buffer, off + sizeof(u64));
 
     const u64 u_ = u;
-    memcpy(parcel->buffer + off, &u_, sizeof(u64));
+    memcpy(parcel->write_buffer + off, &u_, sizeof(u64));
 }
 
 void kmhal_parcel_write_cstring(struct kmhal_parcel *parcel,
@@ -202,13 +207,13 @@ void kmhal_parcel_write_cstring(struct kmhal_parcel *parcel,
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
             str != NULL);
 
-    const binder_size_t str_offset = align4(vector_size(parcel->buffer));
+    const binder_size_t str_offset = align4(vector_size(parcel->write_buffer));
     const size_t str_len = strlen(str),
           str_len_full = align4(str_len + sizeof((char)'\0'));
 
-    vector_resize(&parcel->buffer, str_offset + str_len_full);
-    memcpy(parcel->buffer + str_offset, str, str_len);
-    parcel->buffer[str_offset + str_len] = '\0';
+    vector_resize(&parcel->write_buffer, str_offset + str_len_full);
+    memcpy(parcel->write_buffer + str_offset, str, str_len);
+    parcel->write_buffer[str_offset + str_len] = '\0';
 }
 
 void kmhal_parcel_write_aidl_string16(struct kmhal_parcel *parcel,
@@ -217,7 +222,7 @@ void kmhal_parcel_write_aidl_string16(struct kmhal_parcel *parcel,
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
             str16 != NULL);
 
-    binder_size_t off = align4(vector_size(parcel->buffer));
+    binder_size_t off = align4(vector_size(parcel->write_buffer));
     i32 len = 0;
     while (str16[len++] != u'\0') ;
     len--;
@@ -227,12 +232,12 @@ void kmhal_parcel_write_aidl_string16(struct kmhal_parcel *parcel,
     const size_t str_size = len*sizeof(char16_t) + sizeof(u'\0');
     const size_t str_size_aligned = align4(str_size);
 
-    vector_resize(&parcel->buffer, off + sizeof(len) + str_size_aligned);
+    vector_resize(&parcel->write_buffer, off + sizeof(len) + str_size_aligned);
 
-    memcpy(parcel->buffer + off, &len, sizeof(i32));
+    memcpy(parcel->write_buffer + off, &len, sizeof(i32));
     off += sizeof(len);
 
-    memcpy(parcel->buffer + off, str16, str_size);
+    memcpy(parcel->write_buffer + off, str16, str_size);
     /* no need to null-terminate;
      * we already found the u'\0` terminator while determining the length */
 }
@@ -243,28 +248,32 @@ void kmhal_parcel_write_convert_aidl_string16(struct kmhal_parcel *parcel,
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
             str8 != NULL);
 
-    const size_t len = strlen(str8);
-    if (len > INT32_MAX)
+    const size_t len_ = strlen(str8);
+    if (len_ > INT32_MAX)
         s_log_fatal("AIDL UTF-16 string can't be longer than 2^31 characters!");
+    const i32 len = (i32)len_;
 
     char16_t *str16 = calloc(len + 1, sizeof(char16_t));
     s_assert(str16 != NULL, "Failed to allocate a new UTF-16 string");
 
-    for (size_t i = 0; i < len; i++) {
+    for (i32 i = 0; i < len; i++) {
         str16[i] = INT16_C(0x00FF) & str8[i];
     }
     str16[len] = u'\0';
 
-    binder_size_t off = align4(vector_size(parcel->buffer));
+    binder_size_t off = align4(vector_size(parcel->write_buffer));
     const size_t str_size = len*sizeof(char16_t) + sizeof(u'\0');
     const size_t str_size_aligned = align4(str_size);
-    vector_resize(&parcel->buffer, off + sizeof(len) + str_size_aligned);
+    vector_resize(&parcel->write_buffer, off + sizeof(len) + str_size_aligned);
 
-    memcpy(parcel->buffer + off, &len, sizeof(i32));
+    memcpy(parcel->write_buffer + off, &len, sizeof(len));
     off += sizeof(len);
 
-    memcpy(parcel->buffer + off, str16, str_size);
+    memcpy(parcel->write_buffer + off, str16, str_size);
     /* No need to null-terminate; string already terminated by us */
+
+    free(str16);
+    str16 = NULL;
 }
 
 kmhal_parcel_obj_t
@@ -279,11 +288,11 @@ kmhal_parcel_write_handle(struct kmhal_parcel *parcel,
             obj->hdr.type == BINDER_TYPE_WEAK_HANDLE
     ));
 
-    const binder_size_t off = align4(vector_size(parcel->buffer));
+    const binder_size_t off = align4(vector_size(parcel->write_buffer));
     s_assert(off < UINT32_MAX - sizeof(*obj), "New offset too big");
 
-    vector_resize(&parcel->buffer, off + sizeof(*obj));
-    memcpy(parcel->buffer + off, obj, sizeof(*obj));
+    vector_resize(&parcel->write_buffer, off + sizeof(*obj));
+    memcpy(parcel->write_buffer + off, obj, sizeof(*obj));
 
     const size_t new_idx = vector_size(parcel->objects);
     vector_push_back(&parcel->objects, (struct parcel_obj) {
@@ -312,7 +321,8 @@ kmhal_parcel_write_buffer_obj(struct kmhal_parcel *parcel,
     binder_size_t parent_idx = 0;
     if (has_parent) {
         parent_idx = (binder_size_t)parent;
-        u_check_params(validate_parent(parcel, parent_idx, new_idx) == 0);
+        s_assert(validate_parent(parcel, parent_idx, new_idx, false) == 0,
+                "Invalid parent buffer object!");
     }
     u_check_params(buffer != NULL || buffer_size == 0);
 
@@ -325,11 +335,11 @@ kmhal_parcel_write_buffer_obj(struct kmhal_parcel *parcel,
         .parent_offset  = has_parent ? parent_offset : 0
     };
 
-    const size_t off = align4(vector_size(parcel->buffer));
+    const size_t off = align4(vector_size(parcel->write_buffer));
     s_assert(off < UINT32_MAX - sizeof(obj), "New offset too big");
 
-    vector_resize(&parcel->buffer, off + sizeof(obj));
-    memcpy(parcel->buffer + off, &obj, sizeof(obj));
+    vector_resize(&parcel->write_buffer, off + sizeof(obj));
+    memcpy(parcel->write_buffer + off, &obj, sizeof(obj));
 
     if (buffer != NULL) {
         vector_push_back(&parcel->objects, (struct parcel_obj) {
@@ -364,66 +374,6 @@ kmhal_parcel_write_embedded_buffer(struct kmhal_parcel *parcel,
             BINDER_BUFFER_FLAG_HAS_PARENT, parent_idx, parent_offset);
 }
 
-size_t kmhal_parcel_obj_idx(kmhal_parcel_obj_t obj)
-{
-    u_check_params(KMHAL_PARCEL_OBJ_IS_VALID(obj));
-    return (size_t)obj;
-}
-
-kmhal_parcel_obj_t
-kmhal_parcel_obj_get(const struct kmhal_parcel *parcel, size_t idx)
-{
-    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
-
-    if (idx >= vector_size(parcel->objects)) {
-        s_log_error("Invalid object offset index %zu", idx);
-        return KMHAL_PARCEL_OBJ_INVALID;
-    }
-
-    return (kmhal_parcel_obj_t)idx;
-}
-
-static int cmp_objs_offsets(const void *obj1_, const void *obj2_)
-{
-    const struct parcel_obj *const obj1 = obj1_, *const obj2 = obj2_;
-
-    s_assert(obj1 != NULL && obj2 != NULL, "Unexpected NULL pointer(s)");
-    s_assert(obj1->off < INT_MAX && obj2->off < INT_MAX, "Offset(s) too big");
-
-    return (int)obj1->off - (int)obj2->off;
-}
-
-kmhal_parcel_obj_t
-kmhal_parcel_obj_find_by_offset(const struct kmhal_parcel *parcel,
-                                size_t offset)
-{
-    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
-
-    if (vector_size(parcel->buffer) < sizeof(struct binder_buffer_object) ||
-        align4(offset) > vector_size(parcel->buffer) -
-            sizeof(struct binder_buffer_object))
-    {
-        s_log_error("Binder buffer object offset out of bounds");
-        return KMHAL_PARCEL_OBJ_INVALID;
-    } else if (offset != align4(offset)) {
-        s_log_error("Offset not aligned");
-        return KMHAL_PARCEL_OBJ_INVALID;
-    }
-
-    struct parcel_obj key = { .off = offset };
-
-    struct parcel_obj *found = bsearch(&key,
-            parcel->objects, vector_size(parcel->objects),
-            sizeof(struct parcel_obj), cmp_objs_offsets);
-    if (found == NULL) {
-        /* s_log_error("Object with offset %zu not found in parcel", offset); */
-        return KMHAL_PARCEL_OBJ_INVALID;
-    }
-
-    const kmhal_parcel_obj_t r = (kmhal_parcel_obj_t)found->self_idx;
-    return r;
-}
-
 void kmhal_parcel_pack(struct kmhal_binder_txn *txn,
                        struct kmhal_parcel *parcel,
                        u32 handle, u32 cmd, int scatter_gather)
@@ -451,8 +401,8 @@ void kmhal_parcel_pack(struct kmhal_binder_txn *txn,
             .cmd = cmd,
             .flags = TF_ACCEPT_FDS,
             .handle = handle,
-            .data_buf = parcel->buffer,
-            .data_size = vector_size(parcel->buffer),
+            .data_buf = parcel->write_buffer,
+            .data_size = vector_size(parcel->write_buffer),
             .offsets_buf = parcel->txn_object_offsets,
             .offsets_count = n_objs,
             .sg_buffers_size = parcel->sg_buffers_size
@@ -512,18 +462,86 @@ int kmhal_parcel_unpack(struct kmhal_parcel **parcel_p,
     return 0;
 }
 
+size_t kmhal_parcel_obj_idx(kmhal_parcel_obj_t obj)
+{
+    u_check_params(KMHAL_PARCEL_OBJ_IS_VALID(obj));
+    return (size_t)obj;
+}
+
+kmhal_parcel_obj_t
+kmhal_parcel_obj_get(const struct kmhal_parcel *parcel, size_t idx)
+{
+    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
+
+    if (idx >= vector_size(parcel->objects)) {
+        s_log_error("Invalid object offset index %zu", idx);
+        return KMHAL_PARCEL_OBJ_INVALID;
+    }
+
+    return (kmhal_parcel_obj_t)idx;
+}
+
+static int cmp_objs_offsets(const void *obj1_, const void *obj2_)
+{
+    const struct parcel_obj *const obj1 = obj1_, *const obj2 = obj2_;
+
+    s_assert(obj1 != NULL && obj2 != NULL, "Unexpected NULL pointer(s)");
+    s_assert(obj1->off < INT_MAX && obj2->off < INT_MAX, "Offset(s) too big");
+
+    return (int)obj1->off - (int)obj2->off;
+}
+
+kmhal_parcel_obj_t
+kmhal_parcel_obj_find_by_offset(const struct kmhal_parcel *parcel,
+                                size_t offset)
+{
+    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
+    if (parcel->read_buffer == NULL || parcel->read_buffer_size == 0) {
+        s_log_error("Parcel not initialized with reply data");
+        return KMHAL_PARCEL_OBJ_INVALID;
+    }
+
+    if (parcel->read_buffer_size < sizeof(struct binder_buffer_object) ||
+        align4(offset) > parcel->read_buffer_size -
+            sizeof(struct binder_buffer_object))
+    {
+        s_log_error("Binder buffer object offset out of bounds");
+        return KMHAL_PARCEL_OBJ_INVALID;
+    } else if (offset != align4(offset)) {
+        s_log_error("Offset not aligned");
+        return KMHAL_PARCEL_OBJ_INVALID;
+    }
+
+    struct parcel_obj key = { .off = offset };
+
+    struct parcel_obj *found = bsearch(&key,
+            parcel->objects, vector_size(parcel->objects),
+            sizeof(struct parcel_obj), cmp_objs_offsets);
+    if (found == NULL) {
+        /* s_log_error("Object with offset %zu not found in parcel", offset); */
+        return KMHAL_PARCEL_OBJ_INVALID;
+    }
+
+    const kmhal_parcel_obj_t r = (kmhal_parcel_obj_t)found->self_idx;
+    return r;
+}
+
 int kmhal_parcel_peek(const struct kmhal_parcel *parcel,
                       size_t offset, void *out, size_t len)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_)
             && offset < UINT32_MAX && len < UINT32_MAX);
+    if (parcel->read_buffer == NULL || parcel->read_buffer_size == 0) {
+        s_log_error("Parcel not initialized with reply data");
+        return -1;
+    }
 
-    if (offset > vector_size(parcel->buffer) ||
-        len > vector_size(parcel->buffer) - offset)
+    if (offset > parcel->read_buffer_size ||
+        len > parcel->read_buffer_size - offset)
         return 1;
 
     if (out)
-        memcpy(out, parcel->buffer + offset, len);
+        memcpy(out, (const u8 *)parcel->read_buffer + offset, len);
 
     return 0;
 }
@@ -531,18 +549,21 @@ int kmhal_parcel_peek(const struct kmhal_parcel *parcel,
 int kmhal_parcel_read_u32(const struct kmhal_parcel *parcel,
                           size_t *offset_p, u32 *out)
 {
-    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
-            parcel->buffer != NULL);
+    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
     u_check_params(offset_p != NULL && *offset_p == align4(*offset_p) &&
             *offset_p < UINT32_MAX - sizeof(u32));
+    if (parcel->read_buffer == NULL || parcel->read_buffer_size == 0) {
+        s_log_error("Parcel not initialized with reply data");
+        return -1;
+    }
 
-    if (*offset_p + sizeof(u32) > vector_size(parcel->buffer)) {
+    if (*offset_p + sizeof(u32) > parcel->read_buffer_size) {
         s_log_error("Requested offset outside of parcel buffer");
         return -1;
     }
 
     if (out != NULL)
-        memcpy(out, parcel->buffer + *offset_p, sizeof(u32));
+        memcpy(out, (const u8 *)parcel->read_buffer + *offset_p, sizeof(u32));
     *offset_p += sizeof(u32);
 
     return 0;
@@ -551,18 +572,21 @@ int kmhal_parcel_read_u32(const struct kmhal_parcel *parcel,
 int kmhal_parcel_read_u64(const struct kmhal_parcel *parcel,
                           size_t *offset_p, u64 *out)
 {
-    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
-            parcel->buffer != NULL);
+    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
     u_check_params(offset_p != NULL && *offset_p == align4(*offset_p) &&
             *offset_p < UINT32_MAX - sizeof(u64));
+    if (parcel->read_buffer == NULL || parcel->read_buffer_size == 0) {
+        s_log_error("Parcel not initialized with reply data");
+        return -1;
+    }
 
-    if (*offset_p + sizeof(u64) > vector_size(parcel->buffer)) {
+    if (*offset_p + sizeof(u64) > parcel->read_buffer_size) {
         s_log_error("Requested *offset_p outside of parcel buffer");
         return -1;
     }
 
     if (out != NULL)
-        memcpy(out, parcel->buffer + *offset_p, sizeof(u64));
+        memcpy(out, (const u8 *)parcel->read_buffer + *offset_p, sizeof(u64));
     *offset_p += sizeof(u64);
 
     return 0;
@@ -572,18 +596,21 @@ int kmhal_parcel_read_aidl_string16(const struct kmhal_parcel *parcel,
                                     size_t *offset_p,
                                     char16_t **out_p, size_t *out_size_p)
 {
-    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
-            parcel->buffer != NULL);
+    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
     u_check_params(offset_p != NULL && *offset_p == align4(*offset_p) &&
             *offset_p < UINT32_MAX - sizeof(u32));
+    if (parcel->read_buffer == NULL || parcel->read_buffer_size == 0) {
+        s_log_error("Parcel not initialized with reply data");
+        return -1;
+    }
 
-    if (*offset_p + sizeof(u32) > vector_size(parcel->buffer)) {
+    if (*offset_p + sizeof(u32) > parcel->read_buffer_size) {
         s_log_error("Requested *offset_p outside of parcel buffer");
         return -1;
     }
 
     i32 len = 0;
-    memcpy(&len, parcel->buffer + *offset_p, sizeof(u32));
+    memcpy(&len, (const u8 *)parcel->read_buffer + *offset_p, sizeof(u32));
     if (len < 0) {
         s_log_error("Invalid UTF-16 string length");
         return -1;
@@ -592,20 +619,25 @@ int kmhal_parcel_read_aidl_string16(const struct kmhal_parcel *parcel,
 
     const size_t str_size = (len + 1) * sizeof(char16_t),
                 str_size_aligned = align4(str_size);
-    if (str_size_aligned > vector_size(parcel->buffer) ||
-        *offset_p > vector_size(parcel->buffer) - str_size_aligned)
+    if (str_size_aligned > parcel->read_buffer_size ||
+        *offset_p > parcel->read_buffer_size - str_size_aligned)
     {
         s_log_error("UTF-16 string overflows parcel buffer");
         return 1;
     }
 
-    if (*(const char16_t *)(&parcel->buffer[*offset_p + len*sizeof(char16_t)])
-            != u'\0')
+    /* Check that the last character is a u'\0' NULL terminator */
     {
-        s_log_error("UTF-16 string is not null-terminated");
-        return 1;
-    }
+        const size_t last_char_off = *offset_p + (len*sizeof(char16_t));
+        char16_t tmp = -1;
+        memcpy(&tmp, (const u8 *)parcel->read_buffer + last_char_off,
+                sizeof(char16_t));
 
+        if (tmp != u'\0') {
+            s_log_error("UTF-16 string is not null-terminated");
+            return 1;
+        }
+    }
 
     if (out_p != NULL && *out_p == NULL) {
         *out_p = calloc(1, str_size);
@@ -622,7 +654,7 @@ int kmhal_parcel_read_aidl_string16(const struct kmhal_parcel *parcel,
     }
 
     if (out_p != NULL)
-        memcpy(*out_p, parcel->buffer + *offset_p, str_size);
+        memcpy(*out_p, (const u8 *)parcel->read_buffer + *offset_p, str_size);
     *offset_p += str_size_aligned;
 
     if (out_size_p != NULL)
@@ -689,20 +721,23 @@ err:
 int kmhal_parcel_read_handle(const struct kmhal_parcel *parcel,
                              size_t *offset_p, struct flat_binder_object *out)
 {
-    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
-            parcel->buffer != NULL);
+    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
     u_check_params(offset_p != NULL);
+    if (parcel->read_buffer == NULL || parcel->read_buffer_size == 0) {
+        s_log_error("Parcel not initialized with reply data");
+        return -1;
+    }
 
     const size_t off = *offset_p;
-    if (vector_size(parcel->buffer) < sizeof(struct flat_binder_object) ||
-        off > vector_size(parcel->buffer) - sizeof(struct flat_binder_object))
+    if (parcel->read_buffer_size < sizeof(struct flat_binder_object) ||
+        off > parcel->read_buffer_size - sizeof(struct flat_binder_object))
     {
         s_log_error("Flat binder object out of bounds");
         return -1;
     }
 
     struct flat_binder_object tmp;
-    memcpy(&tmp, parcel->buffer + off, sizeof(struct flat_binder_object));
+    memcpy(&tmp, (const u8 *)parcel->read_buffer + off, sizeof(tmp));
     switch (tmp.hdr.type) {
     case BINDER_TYPE_HANDLE:
     case BINDER_TYPE_WEAK_HANDLE:
@@ -731,20 +766,23 @@ int kmhal_parcel_read_buffer_obj(const struct kmhal_parcel *parcel,
                                  const void **out,
                                  kmhal_parcel_obj_t *out_ref)
 {
-    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_) &&
-            parcel->buffer != NULL);
+    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
     u_check_params(offset_p != NULL && *offset_p < SIZE_MAX);
+    if (parcel->read_buffer == NULL || parcel->read_buffer_size == 0) {
+        s_log_error("Parcel not initialized with reply data");
+        return -1;
+    }
 
     const size_t off = *offset_p;
-    if (vector_size(parcel->buffer) < sizeof(struct binder_buffer_object) ||
-            off > vector_size(parcel->buffer) -
+    if (parcel->read_buffer_size < sizeof(struct binder_buffer_object) ||
+            off > parcel->read_buffer_size -
                 sizeof(struct binder_buffer_object))
     {
         s_log_error("Offset overflows buffer!");
         return -1;
     }
     struct binder_buffer_object tmp;
-    memcpy(&tmp, parcel->buffer + off, sizeof(struct binder_buffer_object));
+    memcpy(&tmp, (const u8 *)parcel->read_buffer + off, sizeof(tmp));
 
     kmhal_parcel_obj_t ref = KMHAL_PARCEL_OBJ_INVALID;
 
@@ -785,6 +823,10 @@ int kmhal_parcel_read_embedded_buffer(const struct kmhal_parcel *p,
 {
     u_check_params(p != NULL && atomic_load(&p->initialized_));
     u_check_params(off_p != NULL);
+    if (p->read_buffer == NULL || p->read_buffer_size == 0) {
+        s_log_error("Parcel not initialized with reply data");
+        return -1;
+    }
 
     if (validate_parcel_object_ref(p, parent_ref)) {
         s_log_error("Invalid parent object reference");
@@ -793,8 +835,8 @@ int kmhal_parcel_read_embedded_buffer(const struct kmhal_parcel *p,
 
     const size_t parent_idx = (size_t)parent_ref;
     const binder_size_t parent_off = p->objects[parent_idx].off;
-    if (vector_size(p->buffer) < sizeof(struct binder_buffer_object) ||
-            parent_off > vector_size(p->buffer)
+    if (p->read_buffer_size < sizeof(struct binder_buffer_object) ||
+            parent_off > p->read_buffer_size
                 - sizeof(struct binder_buffer_object))
     {
         s_log_error("Parent object overflows parcel buffer");
@@ -802,7 +844,7 @@ int kmhal_parcel_read_embedded_buffer(const struct kmhal_parcel *p,
     }
 
     struct binder_buffer_object parent_obj;
-    memcpy(&parent_obj, p->buffer + parent_off,
+    memcpy(&parent_obj, (const u8 *)p->read_buffer + parent_off,
             sizeof(struct binder_buffer_object));
 
     if (parent_offset > parent_obj.length ||
@@ -844,7 +886,8 @@ int kmhal_parcel_read_embedded_buffer(const struct kmhal_parcel *p,
          * using `kmhal_parcel_obj_find_by_offset`,
          * we have a guarantee that it's valid */
         struct binder_buffer_object child_obj;
-        memcpy(&child_obj, p->buffer + child->off, sizeof(child_obj));
+        memcpy(&child_obj, (const u8 *)p->read_buffer + child->off,
+                sizeof(child_obj));
 
         if (child_obj.buffer != child_buffer_ptr) {
             s_log_error("Expected and found embedded buffer pointer mismatch");
@@ -901,7 +944,9 @@ static void parcel_destroy__(struct kmhal_parcel **parcel_p,
     parcel->sg_buffers_size = 0;
     vector_destroy(&parcel->objects);
 
-    vector_destroy(&parcel->buffer);
+    vector_destroy(&parcel->write_buffer);
+    parcel->read_buffer = NULL;
+    parcel->read_buffer_size = 0;
 
     free(parcel);
     *parcel_p = NULL;
@@ -1008,7 +1053,8 @@ static int validate_buffer_object(const struct kmhal_parcel *parcel,
 }
 
 static int validate_parent(const struct kmhal_parcel *parcel,
-                           binder_size_t parent_idx, binder_size_t child_idx)
+                           binder_size_t parent_idx, binder_size_t child_idx,
+                           bool read)
 {
     const size_t idx = (size_t)parent_idx;
     if (idx >= vector_size(parcel->objects)) {
@@ -1027,16 +1073,19 @@ static int validate_parent(const struct kmhal_parcel *parcel,
     s_assert(off < UINT32_MAX - sizeof(struct binder_buffer_object),
             "Offset too big");
 
-    if (off > vector_size(parcel->buffer) -
-            sizeof(struct binder_buffer_object))
+    const size_t s = read ? parcel->read_buffer_size :
+                            vector_size(parcel->write_buffer);
+    if (s < sizeof(struct binder_buffer_object) ||
+        off > s - sizeof(struct binder_buffer_object))
     {
         s_log_error("Parent object out of bounds");
         return 1;
     }
 
+    const u8 *buf = read ? parcel->read_buffer : parcel->write_buffer;
+
     struct binder_buffer_object obj;
-    memcpy(&obj, parcel->buffer + parcel->objects[idx].off,
-            sizeof(struct binder_buffer_object));
+    memcpy(&obj, buf + parcel->objects[idx].off, sizeof(obj));
     if (obj.hdr.type != BINDER_TYPE_PTR) {
         s_log_error("Parent object is not a BINDER_TYPE_PTR");
         return 1;
@@ -1169,20 +1218,7 @@ bad_offset:
         return 1;
     }
 
-    int32_t status = 0;
-    memcpy(&status, r->data_buf, sizeof(int32_t));
-
-    if (r->flags & TF_STATUS_CODE) {
-        s_log_error("Reply is a status code: %d (%s)",
-                status, kmhal_android_status_toString(status));
-        return 1;
-    }
-
-    if (status != 0) {
-        s_log_error("Non-zero status in reply buffer: %d (%s)",
-                status, kmhal_android_status_toString(status));
-        return 1;
-    }
-
     return 0;
 }
+
+#endif /* SUSKEYMASTER_BUILD_HOST */

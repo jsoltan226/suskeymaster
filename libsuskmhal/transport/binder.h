@@ -1,6 +1,8 @@
 #ifndef SUSKEYMASTER_KMHAL_BINDER_H_
 #define SUSKEYMASTER_KMHAL_BINDER_H_
 
+#ifndef SUSKEYMASTER_BUILD_HOST
+
 /**
  * Wrapper around the Android binder device for HAL clients.
  */
@@ -238,5 +240,7 @@ void kmhal_binder_close(struct kmhal_binder_ctx **ctx_p);
 #ifdef __cplusplus
 } /* extern "C" */
 #endif /* __cplusplus */
+
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
 #endif /* SUSKEYMASTER_KMHAL_BINDER_H_ */

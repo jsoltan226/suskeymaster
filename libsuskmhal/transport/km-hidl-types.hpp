@@ -5,92 +5,11 @@
 
 #include "parcel.h"
 #include "hidl-types.h"
-#include "../util/keymaster-types-c.h"
+#include "../keymaster-types-c.h"
 #include <core/int.h>
 #include <core/log.h>
 #include <cstddef>
 #include <cstring>
-
-template<typename T> void write_vec_of_primitive(struct kmhal_parcel *p,
-                                                 const void *data, size_t size)
-{
-    if (data == NULL || size != sizeof(struct kmhal_hidl_vec))
-        s_abort("keymaster-hidl-types", __func__, "Invalid parameters");
-
-    const struct kmhal_hidl_vec *const vec_p =
-        reinterpret_cast<const struct kmhal_hidl_vec *>(data);
-
-    kmhal_hidl_vec_write(p, vec_p, sizeof(T), KMHAL_PARCEL_OBJ_INVALID, 0, nullptr);
-}
-
-template<typename T> int read_vec_of_primitive(const struct kmhal_parcel *p,
-                                               size_t *off_p,
-                                               const void **out_p, size_t out_size)
-{
-    if (out_p == NULL || out_size != sizeof(struct kmhal_hidl_vec)) {
-        s_log(S_LOG_ERROR, "keymaster-hidl-types", "%s: Invalid parameters", __func__);
-        return -1;
-    }
-
-    return kmhal_hidl_vec_read(reinterpret_cast<const struct kmhal_hidl_vec **>(out_p),
-            sizeof(T), p, off_p, nullptr);
-}
-
-template<typename T> void write_vec_of_vec_of_primitive(struct kmhal_parcel *p,
-                                                        const void *data, size_t size)
-{
-    if (data == NULL || size != sizeof(struct kmhal_hidl_vec))
-        s_abort("keymaster-hidl-types", __func__, "Invalid parameters");
-
-    const struct kmhal_hidl_vec vec = *(reinterpret_cast<const struct kmhal_hidl_vec *>(data));
-
-    kmhal_parcel_obj_t ref =
-    kmhal_parcel_write_buffer_obj(p, vec.buffer, vec.size * sizeof(struct kmhal_hidl_vec), 0,
-            KMHAL_PARCEL_OBJ_INVALID, 0);
-
-    for (u32 i = 0; i < vec.size; i++) {
-        kmhal_parcel_write_embedded_buffer(p, vec.buffer,
-                sizeof(T) * vec.size, ref, i * vec.size);
-    }
-}
-
-template<typename T> int read_vec_of_vec_of_primitive(const struct kmhal_parcel *p,
-                                                      size_t *off_p,
-                                                      const void **out_p, size_t out_size)
-{
-    if (out_p == NULL || out_size != sizeof(struct kmhal_hidl_vec)) {
-        s_log(S_LOG_ERROR, "keymaster-hidl-types", "%s: Invalid parameters", __func__);
-        return -1;
-    }
-
-    const struct kmhal_hidl_vec *vec_p = nullptr;
-    kmhal_parcel_obj_t ref;
-    if (kmhal_hidl_vec_read(reinterpret_cast<const struct kmhal_hidl_vec **>(out_p),
-                sizeof(struct kmhal_hidl_vec), p, off_p, &ref))
-    {
-        s_log(S_LOG_ERROR, "keymaster-hidl-types", "Failed to read the HIDL vec buffer object");
-        return 1;
-    }
-
-    vec_p = reinterpret_cast<const struct kmhal_hidl_vec *>(*out_p);
-
-    for (u32 i = 0; i < vec_p->size; i++) {
-        const size_t parent_offset = i * sizeof(struct kmhal_hidl_vec);
-
-        const struct kmhal_hidl_vec *curr = reinterpret_cast<const struct kmhal_hidl_vec *>(
-            reinterpret_cast<const u8 *>(vec_p->buffer) + parent_offset
-        );
-
-        if (kmhal_hidl_vec_read_embedded(nullptr, nullptr, p, off_p,
-                    curr, sizeof(T), ref, parent_offset))
-        {
-            s_log(S_LOG_ERROR, "keymaster-hidl-types", "Failed to read embedded HIDL vec buffer");
-            return 1;
-        }
-    }
-
-    return 0;
-}
 
 static inline
 void write_key_parameter(struct kmhal_parcel *p,

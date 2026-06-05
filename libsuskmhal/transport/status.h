@@ -6,6 +6,10 @@
 #include <stdint.h>
 #include <core/int.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
 /* Stolen from AOSP: system/core/libutils/include/utils/Errors.h */
 enum kmhal_android_status {
     OK                  = 0,
@@ -52,5 +56,9 @@ enum kmhal_aidl_exception {
 const char * kmhal_aidl_exception_toString(i32 ex);
 
 enum kmhal_android_status kmhal_aidl_exception_to_android_status(i32 ex);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif /* __cplusplus */
 
 #endif /* SUSKEYMASTER_KMHAL_TRANSPORT_STATUS_H_ */

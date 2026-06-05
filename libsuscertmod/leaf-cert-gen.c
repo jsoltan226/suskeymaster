@@ -4,7 +4,7 @@
 #include "certmod.h"
 #include "key-desc.h"
 #include "certsign.h"
-#include <libsuskmhal/util/keymaster-types-c.h>
+#include <libsuskmhal/keymaster-types-c.h>
 #include <core/log.h>
 #include <core/util.h>
 #include <core/vector.h>

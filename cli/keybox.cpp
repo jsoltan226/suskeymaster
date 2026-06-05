@@ -2,7 +2,7 @@
 #include <core/util.h>
 #include <core/vector.h>
 #include <libsuscertmod/keybox.h>
-#include <libsuskmhal/util/keymaster-types-cpp.hpp>
+#include <libsuskmhal/keymaster-types-cpp.hpp>
 #include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <ctime>
 #include <string>

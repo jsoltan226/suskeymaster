@@ -1,6 +1,6 @@
 #define _GNU_SOURCE
 #include "dump-utils.h"
-#include "keymaster-types-c.h"
+#include "../keymaster-types-c.h"
 #include <core/math.h>
 #include <stdio.h>
 #include <stdlib.h>

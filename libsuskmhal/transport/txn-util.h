@@ -1,6 +1,8 @@
 #ifndef SUSKEYMASTER_KMHAL_HIDL_TXN_UTIL_H_
 #define SUSKEYMASTER_KMHAL_HIDL_TXN_UTIL_H_
 
+#ifndef SUSKEYMASTER_BUILD_HOST
+
 /**
  * Helpers for common tasks performed during HIDL transactions.
  */
@@ -90,5 +92,7 @@ void kmhal_util_destroy_txn_tmps(struct kmhal_binder_txn **txn_p,
 #ifdef __cplusplus
 } /* extern "C" */
 #endif /* __cplusplus */
+
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
 #endif /* SUSKEYMASTER_KMHAL_HIDL_TXN_UTIL_H_ */

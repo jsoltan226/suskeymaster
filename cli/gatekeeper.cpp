@@ -3,13 +3,14 @@
 #include <core/int.h>
 #include <core/util.h>
 #ifndef SUSKEYMASTER_BUILD_HOST
+#include <libsuskmhal/suskmhal.hpp>
 #include <libsuskmhal/transport/parcel.h>
-#include <libsuskmhal/transport/hidl-hal.h>
+#include <libsuskmhal/transport/hal.h>
 #include <libsuskmhal/transport/hidl-base.h>
-#include <libsuskmhal/transport/km-hidl-hal.hpp>
+#include <libsuskmhal/transport/hidl-types.h>
 #include <libsuskmhal/transport/km-hidl-types.hpp>
 #endif /* SUSKEYMASTER_BUILD_HOST */
-#include <libsuskmhal/util/keymaster-types-cpp.hpp>
+#include <libsuskmhal/keymaster-types-cpp.hpp>
 #include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <cstdio>
 #include <cstdlib>
@@ -37,18 +38,18 @@ static constexpr u8 PROTECTOR_TYPE_WEAK_TOKEN_BASED = 2;
 */
 static constexpr const char PROTECTOR_SECRET_PERSONALIZATION[] = "application-id";
 
-static int decrypt_keymaster(HidlSusKeymaster& hal, hidl_vec<u8> const& auth_token,
+static int decrypt_keymaster(SusKMHal& hal, hidl_vec<u8> const& auth_token,
                              hidl_vec<u8> const& keyblob, hidl_vec<u8> const& blob,
                              hidl_vec<u8>& out);
 
 static int decrypt_software(hidl_vec<u8> const& secret, hidl_vec<u8> const& blob,
                             hidl_vec<u8>& out);
 
-static int decrypt_v1_blob(HidlSusKeymaster& hal, hidl_vec<u8> const& auth_token,
+static int decrypt_v1_blob(SusKMHal& hal, hidl_vec<u8> const& auth_token,
                            hidl_vec<u8> const& keyblob, hidl_vec<u8> const& protector_secret,
                            hidl_vec<u8> const& blob, hidl_vec<u8>& out);
 
-static int decrypt_v2_v3_blob(HidlSusKeymaster& hal, hidl_vec<u8> const& auth_token,
+static int decrypt_v2_v3_blob(SusKMHal& hal, hidl_vec<u8> const& auth_token,
                               hidl_vec<u8> const& keyblob, hidl_vec<u8> const& protector_secret,
                               hidl_vec<u8> const& blob, hidl_vec<u8>& out);
 
@@ -129,7 +130,7 @@ gk_hal::gk_hal() {
     this->hal_sp = nullptr;
 
 #ifndef SUSKEYMASTER_BUILD_HOST
-    this->hal_sp = kmhal_hidl_hal_sp_new_get(gatekeeper_fqname, gatekeeper_instname, nullptr, false);
+    this->hal_sp = kmhal_hidl_sp_new_get(gatekeeper_fqname, gatekeeper_instname, nullptr, false);
     if (this->hal_sp == nullptr) {
         std::cerr << "Couldn't obtain a handle to the Gatekeeper HAL" << std::endl;
         return;
@@ -142,21 +143,21 @@ gk_hal::gk_hal() {
 #endif /* SUSKEYMASTER_BUILD_HOST */
 }
 
-gk_hal::gk_hal(HidlSusKeymaster& kmhal) {
+gk_hal::gk_hal(SusKMHal& kmhal) {
     this->owns = false;
     this->hal_sp = nullptr;
 
     /* Reuse the binder device from the already initialized keymaster HAL */
 
 #ifndef SUSKEYMASTER_BUILD_HOST
-    struct kmhal_hidl_hal_sp *kmhal_sp = kmhal.getHalSp();
+    struct kmhal_sp *kmhal_sp = kmhal.getHalSp();
     if (kmhal_sp == nullptr) {
         std::cerr << "Keymaster HAL handle is NULL!" << std::endl;
         return;
     }
 
-    this->hal_sp = kmhal_hidl_hal_sp_new_get(gatekeeper_fqname, gatekeeper_instname,
-            kmhal_hidl_hal_get_binder(kmhal_sp, nullptr), false);
+    this->hal_sp = kmhal_hidl_sp_new_get(gatekeeper_fqname, gatekeeper_instname,
+                                         kmhal_get_binder(kmhal_sp, nullptr), false);
     if (this->hal_sp == nullptr) {
         std::cerr << "Couldn't obtain a handle to the Gatekeeper HAL" << std::endl;
         return;
@@ -172,11 +173,11 @@ gk_hal::gk_hal(HidlSusKeymaster& kmhal) {
 gk_hal::~gk_hal() {
 #ifndef SUSKEYMASTER_BUILD_HOST
     if (this->owns)
-        kmhal_hidl_hal_sp_destroy(&this->hal_sp);
+        kmhal_sp_destroy(&this->hal_sp);
 #endif /* SUSKEYMASTER_BUILD_HOST */
 }
 
-int verify(HidlSusKeymaster& kmhal, u32 uid, u64 challenge, hidl_vec<u8> const& cred,
+int verify(SusKMHal& kmhal, u32 uid, u64 challenge, hidl_vec<u8> const& cred,
            hidl_vec<u8> const& handle, hidl_vec<u8>& out,
            gk_hal *opt_gk_hal)
 {
@@ -190,28 +191,26 @@ int verify(HidlSusKeymaster& kmhal, u32 uid, u64 challenge, hidl_vec<u8> const& 
 
     {
 #ifndef SUSKEYMASTER_BUILD_HOST
-        u32 uid_ = uid;
         u64 challenge = 0;
         hidl_vec<u8> pwd_handle = handle;
         hidl_vec<u8> gk_password = cred;
 
         const GatekeeperResponse *res_p = nullptr;
 
-        const struct kmhal_hidl_hal_arg_write_desc in_args[] = {
-            { "uid", &uid_, sizeof(u32), kmhal_hidl_hal_arg_write_u32 },
-            { "challenge", &challenge, sizeof(u64), kmhal_hidl_hal_arg_write_u64 },
-            { "enrolledPasswordHandle", &pwd_handle, sizeof(hidl_vec<u8>),
-                write_vec_of_primitive<u8> },
-            { "providedPassword", &gk_password, sizeof(hidl_vec<u8>),
-                write_vec_of_primitive<u8> }
+        const struct kmhal_arg_write_desc in_args[] = {
+            kmhal::transport::init_write("uid", uid, kmhal_arg_write_u32),
+            kmhal::transport::init_write("challenge", challenge, kmhal_arg_write_u64),
+            kmhal::transport::init_write("enrolledPasswordHandle", &pwd_handle,
+                    kmhal_hidl_arg_write_vec_of_u8),
+            kmhal::transport::init_write("providedPassword", &gk_password,
+                    kmhal_hidl_arg_write_vec_of_u8)
         };
-        struct kmhal_hidl_hal_arg_parse_desc out_args[] = {
-            { "response", reinterpret_cast<const void **>(&res_p),
-                sizeof(GatekeeperResponse), read_gatekeeper_response }
+        struct kmhal_arg_parse_desc out_args[] = {
+            kmhal::transport::init_parse("response", &res_p, read_gatekeeper_response)
         };
 
         std::cout << "Calling IGatekeeper::Verify..." << std::endl;
-        if (kmhal_hidl_hal_call(gk_hal.get_hal_sp(), static_cast<u32>(GK_HAL_CMD::VERIFY),
+        if (kmhal_call(gk_hal.get_hal_sp(), static_cast<u32>(GK_HAL_CMD::VERIFY),
                         in_args, u_arr_size(in_args), out_args, u_arr_size(out_args)))
         {
             std::cerr << "Gatekeeper HAL call failed" << std::endl;
@@ -395,7 +394,7 @@ int stretch_lskf(hidl_vec<u8> const& credential, sp_pwd_data const& pwd,
     return 0;
 }
 
-int unwrap_sp_blob(HidlSusKeymaster& kmhal, u32 uid, hidl_vec<u8> const& keystore_key_blob,
+int unwrap_sp_blob(SusKMHal& kmhal, u32 uid, hidl_vec<u8> const& keystore_key_blob,
                    hidl_vec<u8> const& stretched_cred, hidl_vec<u8> const& secdiscardable,
                    hidl_vec<u8> const& sp_blob, hidl_vec<u8>& out, u8& out_blob_version,
                    hidl_vec<u8> const& gk_pwd_handle)
@@ -486,7 +485,7 @@ int unwrap_sp_blob(HidlSusKeymaster& kmhal, u32 uid, hidl_vec<u8> const& keystor
     return EXIT_SUCCESS;
 }
 
-int validate_synthetic_password(HidlSusKeymaster& kmhal, u32 uid,
+int validate_synthetic_password(SusKMHal& kmhal, u32 uid,
                                 hidl_vec<u8> const& synthetic_password, u8 sp_blob_ver,
                                 hidl_vec<u8> const& null_pwd_handle)
 {
@@ -549,7 +548,7 @@ int derive_synthetic_password_subkey(hidl_vec<u8> const& synthetic_password, u8 
     return EXIT_SUCCESS;
 }
 
-static int decrypt_keymaster(HidlSusKeymaster& hal, hidl_vec<u8> const& auth_token,
+static int decrypt_keymaster(SusKMHal& hal, hidl_vec<u8> const& auth_token,
                              hidl_vec<u8> const& keyblob, hidl_vec<u8> const& blob,
                              hidl_vec<u8>& out)
 {
@@ -580,7 +579,7 @@ static int decrypt_software(hidl_vec<u8> const& secret, hidl_vec<u8> const& blob
     return util::aes256gcm_software_decrypt(derived_key, blob, out);
 }
 
-static int decrypt_v1_blob(HidlSusKeymaster& hal, hidl_vec<u8> const& auth_token,
+static int decrypt_v1_blob(SusKMHal& hal, hidl_vec<u8> const& auth_token,
                            hidl_vec<u8> const& keyblob, hidl_vec<u8> const& protector_secret,
                            hidl_vec<u8> const& blob, hidl_vec<u8>& out)
 {
@@ -604,7 +603,7 @@ static int decrypt_v1_blob(HidlSusKeymaster& hal, hidl_vec<u8> const& auth_token
     return 0;
 }
 
-static int decrypt_v2_v3_blob(HidlSusKeymaster& hal, hidl_vec<u8> const& auth_token,
+static int decrypt_v2_v3_blob(SusKMHal& hal, hidl_vec<u8> const& auth_token,
                               hidl_vec<u8> const& keyblob, hidl_vec<u8> const& protector_secret,
                               hidl_vec<u8> const& blob, hidl_vec<u8>& out)
 {

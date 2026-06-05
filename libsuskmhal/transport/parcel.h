@@ -1,6 +1,8 @@
 #ifndef SUSKEYMASTER_KMHAL_PARCEL_H_
 #define SUSKEYMASTER_KMHAL_PARCEL_H_
 
+#ifndef SUSKEYMASTER_BUILD_HOST
+
 /**
  * PARCEL - HIDL & AIDL binder parcel serializer/deserializer.
  *
@@ -229,44 +231,6 @@ kmhal_parcel_write_embedded_buffer(struct kmhal_parcel *parcel,
                                    binder_size_t parent_offset);
 
 /**
- * Get the index into the offsets array of the parcel
- * that corresponds to the given object reference.
- *
- * Note: No validation is performed against `obj`'s parcel.
- *
- * @param obj The object whose index is to be retrieved.
- *
- * @return The object's index.
- */
-size_t kmhal_parcel_obj_idx(kmhal_parcel_obj_t obj);
-
-/**
- * Get a reference to the object at `idx` from `parcel`'s offsets array.
- *
- * @param parcel The parcel containg the object to be retrieved.
- * @param idx Index into @parcel's offsets array.
- *
- * @return A reference to the object or
- *  `KMHAL_PARCEL_OBJ_INVALID` if it doesn't exist.
- */
-kmhal_parcel_obj_t
-kmhal_parcel_obj_get(const struct kmhal_parcel *parcel, size_t idx);
-
-/**
- * Find an object in the parcel's list based on its offset.
- *
- * @param parcel The parcel to search in.
- *
- * @param off The offset of the object.
- *
- * @return A reference to the found object or
- *  `KMHAL_PARCEL_OBJ_INVALID` if it doesn't exist.
- */
-kmhal_parcel_obj_t
-kmhal_parcel_obj_find_by_offset(const struct kmhal_parcel *parcel,
-                                size_t offset);
-
-/**
  * Pack the parcel into a binder scatter-gather transaction.
  *
  * This function:
@@ -321,6 +285,44 @@ void kmhal_parcel_pack(struct kmhal_binder_txn *txn,
  */
 int kmhal_parcel_unpack(struct kmhal_parcel **parcel_p,
                         struct kmhal_binder_txn_args_out *out);
+
+/**
+ * Get the index into the offsets array of the parcel
+ * that corresponds to the given object reference.
+ *
+ * Note: No validation is performed against `obj`'s parcel.
+ *
+ * @param obj The object whose index is to be retrieved.
+ *
+ * @return The object's index.
+ */
+size_t kmhal_parcel_obj_idx(kmhal_parcel_obj_t obj);
+
+/**
+ * Get a reference to the object at `idx` from `parcel`'s offsets array.
+ *
+ * @param parcel The parcel containg the object to be retrieved.
+ * @param idx Index into @parcel's offsets array.
+ *
+ * @return A reference to the object or
+ *  `KMHAL_PARCEL_OBJ_INVALID` if it doesn't exist.
+ */
+kmhal_parcel_obj_t
+kmhal_parcel_obj_get(const struct kmhal_parcel *parcel, size_t idx);
+
+/**
+ * Find an object in the parcel's list based on its offset.
+ *
+ * @param parcel The parcel to search in.
+ *
+ * @param off The offset of the object.
+ *
+ * @return A reference to the found object or
+ *  `KMHAL_PARCEL_OBJ_INVALID` if it doesn't exist.
+ */
+kmhal_parcel_obj_t
+kmhal_parcel_obj_find_by_offset(const struct kmhal_parcel *parcel,
+                                size_t offset);
 
 /* Read arbitrary data at an arbitrary offset from the parcel's buffer.
  * The offset doesn't have to be aligned.
@@ -531,5 +533,7 @@ void kmhal_parcel_destroy(struct kmhal_parcel **parcel_p);
 #ifdef __cplusplus
 } /* extern "C" */
 #endif /* __cplusplus */
+
+#endif /* SUSKEYMASTER_BUILD_HOST */
 
 #endif /* SUSKEYMASTER_KMHAL_PARCEL_H_ */

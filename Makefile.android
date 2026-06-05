@@ -119,8 +119,8 @@ EXE := $(BINDIR)/$(EXEPREFIX)suskeymaster$(EXESUFFIX)
 SO_LIB := $(BINDIR)/$(SO_PREFIX)libsuskeymaster$(SO_SUFFIX)
 EXEARGS :=
 
-.PHONY: all trace release strip clean mostlyclean update run br tests tests-release build-tests compile-tests build-tests-release compile-tests-release run-tests debug-run bdr test-hooks cli lib
-.NOTPARALLEL: all trace release br bdr build-tests build-tests-release
+.PHONY: all trace release strip clean mostlyclean update run br tests tests-release build-tests compile-tests build-tests-release compile-tests-release run-tests debug-run bdr test-hooks cli lib install
+.NOTPARALLEL: all trace release br bdr build-tests build-tests-release install
 
 # Build targets
 all: CFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
@@ -149,6 +149,9 @@ release: LDFLAGS += -flto
 release: clean $(OBJDIR) $(BINDIR) $(EXE) $(SO_LIB) tests-release mostlyclean strip
 
 br: all run
+
+install: all
+	adb push $(EXE) /data/local/tmp 2>&1
 
 # Output executable rules
 $(EXE): $(_exe_all_objs)

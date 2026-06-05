@@ -145,7 +145,11 @@ const char * KM_ErrorCode_toString(uint32_t e) {
     case KM_ERR_NO_USER_CONFIRMATION: return "NO_USER_CONFIRMATION"; break;
     case KM_ERR_DEVICE_LOCKED: return "DEVICE_LOCKED"; break;
     case KM_ERR_UNIMPLEMENTED: return "UNIMPLEMENTED"; break;
-    case KM_ERR_VERSION_MISMATCH: return "VERSION_MISMATCH"; break;
+    case KM_ERR_EARLY_BOOT_ENDED: return "EARLY_BOOT_ENDED"; break;
+    case KM_ERR_ATTESTATION_KEYS_NOT_PROVISIONED: return "ATTESTATION_KEYS_NOT_PROVISIONED"; break;
+    case KM_ERR_ATTESTATION_IDS_NOT_PROVISIONED: return "ATTESTATION_IDS_NOT_PROVISIONED"; break;
+    case KM_ERR_INVALID_OPERATION: return "INVALID_OPERATION"; break;
+    case KM_ERR_STORAGE_KEY_UNSUPPORTED: return "STORAGE_KEY_UNSUPPORTED"; break;
     case KM_ERR_UNKNOWN_ERROR: return "UNKNOWN_ERROR"; break;
     default: return "(unknown)";
     }
