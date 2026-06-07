@@ -8,7 +8,6 @@
 #include <libsuskmhal/transport/hal.h>
 #include <libsuskmhal/transport/hidl-base.h>
 #include <libsuskmhal/transport/hidl-types.h>
-#include <libsuskmhal/transport/km-hidl-types.hpp>
 #endif /* SUSKEYMASTER_BUILD_HOST */
 #include <libsuskmhal/keymaster-types-cpp.hpp>
 #include <libsuskmhal/transport/aosp-hidl-support.hpp>

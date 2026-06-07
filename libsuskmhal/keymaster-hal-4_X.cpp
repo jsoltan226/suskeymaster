@@ -6,8 +6,8 @@
 #include "keymaster-types-cpp.hpp"
 #include "transport/hal.h"
 #include "transport/hidl-types.h"
-#include "transport/km-hidl-types.hpp"
 #include "transport/aosp-hidl-support.hpp"
+#include "transport/keymaster-types-hidl.h"
 #include <iostream>
 using ::android::hardware::hidl_vec;
 #endif /* SUSKEYMASTER_BUILD_HOST */
@@ -146,7 +146,7 @@ ErrorCode SusHidlKeymaster4_0::getHmacSharingParameters(HmacSharingParameters &o
 
     struct kmhal_arg_parse_desc out_args[] = {
         init_parse("error", &ret, kmhal_arg_parse_u32),
-        init_parse("params", &params, read_hmac_sharing_parameters),
+        init_parse("params", &params, parse_hmac_sharing_parameters),
     };
     const size_t n_out_args = u_arr_size(out_args);
 
@@ -209,7 +209,7 @@ ErrorCode SusHidlKeymaster4_0::verifyAuthorization(u64 operationHandle,
 
     struct kmhal_arg_parse_desc out_args[] = {
         init_parse("error", &ret, kmhal_arg_parse_u32),
-        init_parse("token", &token, read_verification_token),
+        init_parse("token", &token, parse_verification_token),
     };
     const size_t n_out_args = u_arr_size(out_args);
 
@@ -249,7 +249,7 @@ ErrorCode SusHidlKeymaster4_0::importWrappedKey(hidl_vec<u8> const& wrappedKeyDa
     struct kmhal_arg_parse_desc out_args[] = {
         init_parse("error", &ret, kmhal_arg_parse_u32),
         init_parse("keyBlob", &keyBlob, kmhal_hidl_arg_parse_vec_of_u8),
-        init_parse("keyCharacteristics", &keyCharacteristics, read_key_characteristics),
+        init_parse("keyCharacteristics", &keyCharacteristics, parse_key_characteristics),
     };
     const size_t n_out_args = u_arr_size(out_args);
 
@@ -288,7 +288,7 @@ ErrorCode SusHidlKeymaster4_0::begin(KeyPurpose purpose,
 
     struct kmhal_arg_parse_desc out_args[] = {
         init_parse("error", &ret, kmhal_arg_parse_u32),
-        init_parse("outParams", &outParams, read_vec_of_key_parameter),
+        init_parse("outParams", &outParams, parse_vec_of_key_parameter),
         init_parse("operationHandle", &out_operationHandle, kmhal_arg_parse_u64),
     };
     const size_t n_out_args = u_arr_size(out_args);
@@ -329,7 +329,7 @@ ErrorCode SusHidlKeymaster4_0::update(u64 operationHandle,
     struct kmhal_arg_parse_desc out_args[] = {
         init_parse("error", &ret, kmhal_arg_parse_u32),
         init_parse("inputConsumed", &out_inputConsumed, kmhal_arg_parse_u32),
-        init_parse("outParams", &outParams, read_vec_of_key_parameter),
+        init_parse("outParams", &outParams, parse_vec_of_key_parameter),
         init_parse("output", &output, kmhal_hidl_arg_parse_vec_of_u8),
     };
     const size_t n_out_args = u_arr_size(out_args);
@@ -372,7 +372,7 @@ ErrorCode SusHidlKeymaster4_0::finish(u64 operationHandle,
 
     struct kmhal_arg_parse_desc out_args[] = {
         init_parse("error", &ret, kmhal_arg_parse_u32),
-        init_parse("outParams", &outParams, read_vec_of_key_parameter),
+        init_parse("outParams", &outParams, parse_vec_of_key_parameter),
         init_parse("output", &output, kmhal_hidl_arg_parse_vec_of_u8),
     };
     const size_t n_out_args = u_arr_size(out_args);

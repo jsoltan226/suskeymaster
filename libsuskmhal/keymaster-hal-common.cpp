@@ -3,7 +3,7 @@
 #include "suskmhal.hpp"
 #include "transport/hal.h"
 #include "transport/hidl-types.h"
-#include "transport/km-hidl-types.hpp"
+#include "transport/keymaster-types-hidl.h"
 
 namespace suskeymaster {
 namespace kmhal {
@@ -72,7 +72,7 @@ ErrorCode SusHidlKeymasterHALCommon::generateKey(hidl_vec<KeyParameter> const& k
     struct kmhal_arg_parse_desc out_args[] = {
         init_parse<ErrorCode>("error", &ret, kmhal_arg_parse_u32),
         init_parse<hidl_vec<u8>>("keyBlob", &keyBlob, kmhal_hidl_arg_parse_vec_of_u8),
-        init_parse<KeyCharacteristics>("keyBlob", &keyCharacteristics, read_key_characteristics)
+        init_parse<KeyCharacteristics>("keyBlob", &keyCharacteristics, parse_key_characteristics)
     };
     const size_t n_out_args = u_arr_size(out_args);
 
@@ -110,7 +110,7 @@ ErrorCode SusHidlKeymasterHALCommon::importKey(hidl_vec<KeyParameter> const& key
     struct kmhal_arg_parse_desc out_args[] = {
         init_parse("error", &ret, kmhal_arg_parse_u32),
         init_parse("keyBlob", &keyBlob, kmhal_hidl_arg_parse_vec_of_u8),
-        init_parse("keyCharacteristics", &keyCharacteristics, read_key_characteristics),
+        init_parse("keyCharacteristics", &keyCharacteristics, parse_key_characteristics),
     };
     const size_t n_out_args = u_arr_size(out_args);
 
@@ -147,7 +147,7 @@ ErrorCode SusHidlKeymasterHALCommon::getKeyCharacteristics(
 
     struct kmhal_arg_parse_desc out_args[] = {
         init_parse("error", &ret, kmhal_arg_parse_u32),
-        init_parse("keyCharacteristics", &keyCharacteristics, read_key_characteristics),
+        init_parse("keyCharacteristics", &keyCharacteristics, parse_key_characteristics),
     };
     const size_t n_out_args = u_arr_size(out_args);
 
