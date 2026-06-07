@@ -5,6 +5,7 @@
 #include "status.h"
 #include "parcel.h"
 #include "txn-util.h"
+#include "aidl-util.h"
 #include "hidl-base.h"
 #include "hidl-manager.h"
 #include <core/log.h>
@@ -35,6 +36,7 @@ struct kmhal_sp {
     const char *instname;
 
     char16_t *aidl_fqname16;
+    enum kmhal_aidl_tx_header_type aidl_tx_hdr_type;
 };
 
 static struct kmhal_sp *
@@ -42,27 +44,8 @@ sp_new_get_common(const char *fqname, const char *instname,
                   struct kmhal_binder_ctx *opt_existing_binder,
                   bool owns_existing_binder, bool aidl);
 
-/* From "frameworks/native/libs/binder/Parcel.cpp" */
-#define STRICT_MODE_PENALTY_GATHER  (INT32_C(1) << 31)
-#define UNSET_WORK_SOURCE           INT32_C(-1)
-enum aidl_header_type {
-    AIDL_HEADER_UNKNOWN = B_PACK_CHARS('U', 'N', 'K', 'N'),
-    AIDL_HEADER_SYSTEM = B_PACK_CHARS('S', 'Y', 'S', 'T'),
-    AIDL_HEADER_VENDOR = B_PACK_CHARS('V', 'N', 'D', 'R'),
-    AIDL_HEADER_RECOVERY = B_PACK_CHARS('R', 'E', 'C', 'O'),
-};
-static void kmhal_aidl_write_txn_header(struct kmhal_parcel *parcel,
-                                        enum aidl_header_type hdr,
-                                        const char16_t *iface_token);
-
-static int kmhal_aidl_parse_reply_header(struct kmhal_parcel *p, size_t *off_p,
-                                         size_t *out_start_off,
-                                         i32 *out_parcelable_size);
-
-static void kmhal_aidl_manager_write_release(struct kmhal_binder_txn *txn);
-
-static int do_aidl_hal_get(struct kmhal_sp *hal);
-static int do_hidl_hal_get(struct kmhal_sp *hal);
+static int do_aidl_hal_get_handle(struct kmhal_sp *hal);
+static int do_hidl_hal_get_handle(struct kmhal_sp *hal);
 
 static enum kmhal_android_status
 validate_arg_descs(const struct kmhal_arg_write_desc *in_args, u32 n_in_args,
@@ -88,6 +71,7 @@ struct kmhal_sp * kmhal_sp_new_empty(void)
     ret->fqname = NULL;
     ret->instname = NULL;
     ret->aidl_fqname16 = NULL;
+    ret->aidl_tx_hdr_type = AIDL_HEADER_UNKNOWN;
     atomic_store(&ret->initialized_, true);
 
     return ret;
@@ -121,6 +105,7 @@ void kmhal_sp_destroy(struct kmhal_sp **hal_p)
     if (!atomic_exchange(&hal->initialized_, false))
         return;
 
+    hal->aidl_tx_hdr_type = AIDL_HEADER_UNKNOWN;
     if (hal->aidl_fqname16 != NULL) {
         free(hal->aidl_fqname16);
         hal->aidl_fqname16 = NULL;
@@ -218,7 +203,7 @@ kmhal_call(struct kmhal_sp *hal, u32 cmd,
 
     /* Write the parcel header */
     if (hal->aidl)
-        kmhal_aidl_write_txn_header(parcel,
+        kmhal_aidl_write_tx_header(parcel,
                 AIDL_HEADER_SYSTEM, hal->aidl_fqname16);
     else
         kmhal_parcel_write_cstring(parcel, hal->fqname);
@@ -262,7 +247,7 @@ kmhal_call(struct kmhal_sp *hal, u32 cmd,
          * while HIDL objects are just written one after the other */
         size_t aidl_start_off = 0;
         i32 aidl_parcelable_size = 0;
-        if (hal->aidl && kmhal_aidl_parse_reply_header(parcel, &off,
+        if (hal->aidl && kmhal_aidl_parse_rx_parcelable_header(parcel, &off,
                     &aidl_start_off, &aidl_parcelable_size))
         {
             ret = BAD_TYPE;
@@ -358,8 +343,8 @@ kmhal_get_binder(struct kmhal_sp *hal,
 }
 
 void kmhal_set_binder(struct kmhal_sp *hal,
-                               struct kmhal_binder_ctx *binder,
-                               bool owns_binder)
+                      struct kmhal_binder_ctx *binder,
+                      bool owns_binder)
 {
     u_check_params(hal != NULL && atomic_load(&hal->initialized_));
 
@@ -368,6 +353,8 @@ void kmhal_set_binder(struct kmhal_sp *hal,
 
     hal->binder = binder;
     hal->owns_binder = owns_binder;
+    if (hal->aidl)
+        hal->aidl_tx_hdr_type = kmhal_aidl_get_tx_header_type(hal->binder);
 }
 
 u32 kmhal_get_handle(const struct kmhal_sp *hal,
@@ -403,11 +390,26 @@ const char * kmhal_get_fqname(const struct kmhal_sp *hal)
     return hal->fqname;
 }
 
-void kmhal_set_fqname(struct kmhal_sp *hal,
-                               const char *fqname)
+void kmhal_set_fqname(struct kmhal_sp *hal, const char *fqname)
 {
     u_check_params(hal != NULL && atomic_load(&hal->initialized_));
+
     hal->fqname = fqname;
+
+    if (hal->aidl) {
+        if (hal->aidl_fqname16 != NULL) {
+            free(hal->aidl_fqname16);
+            hal->aidl_fqname16 = NULL;
+        }
+
+        const size_t nchars = strlen(fqname) + 1;
+        hal->aidl_fqname16 = calloc(nchars, sizeof(char16_t));
+        if (hal->aidl_fqname16 == NULL)
+            s_log_fatal("Failed to allocate the AIDL UTF-16 fqname string");
+
+        for (size_t i = 0; i < nchars; i++)
+            hal->aidl_fqname16[i] = INT16_C(0x00FF) & fqname[i];
+    }
 }
 
 const char * kmhal_get_instname(const struct kmhal_sp *hal)
@@ -439,37 +441,26 @@ sp_new_get_common(const char *fqname, const char *instname,
     ret->aidl = aidl;
 
     if (opt_existing_binder == NULL) {
-        ret->binder = kmhal_binder_open(aidl ? KMHAL_BINDER_DEV_BINDER :
-                                               KMHAL_BINDER_DEV_HWBINDER);
-        if (ret->binder == NULL)
+        struct kmhal_binder_ctx *binder = kmhal_binder_open(aidl ?
+                KMHAL_BINDER_DEV_BINDER : KMHAL_BINDER_DEV_HWBINDER);
+        if (binder == NULL)
             goto_error("Failed to open binder device");
-        ret->owns_binder = true;
+
+        kmhal_set_binder(ret, binder, true);
     } else {
-        ret->binder = opt_existing_binder;
-        ret->owns_binder = owns_existing_binder;
+        kmhal_set_binder(ret, opt_existing_binder, owns_existing_binder);
     }
 
-    ret->fqname = fqname;
-    ret->instname = instname;
-    if (aidl) {
-        const size_t nchars = strlen(fqname) + 1;
-        ret->aidl_fqname16 = calloc(nchars, sizeof(char16_t));
-        if (ret->aidl_fqname16 == NULL)
-            goto_error("Failed to allocate the AIDL UTF-16 fqname string");
-
-        for (size_t i = 0; i < nchars; i++)
-            ret->aidl_fqname16[i] = INT16_C(0x00FF) & fqname[i];
-    }
+    kmhal_set_fqname(ret, fqname);
+    kmhal_set_instname(ret, instname);
 
     if (kmhal_util_check_allocate_txn_tmps(&ret->txn, NULL) != OK)
         goto err;
 
-    if (aidl && do_aidl_hal_get(ret))
+    if (aidl && do_aidl_hal_get_handle(ret))
         goto err;
-    else if (do_hidl_hal_get(ret))
+    else if (!aidl && do_hidl_hal_get_handle(ret))
         goto err;
-
-    ret->owns_handle = true;
 
     return ret;
 
@@ -480,172 +471,7 @@ err:
     return NULL;
 }
 
-static void kmhal_aidl_write_txn_header(struct kmhal_parcel *parcel,
-                                        enum aidl_header_type hdr,
-                                        const char16_t *iface_token)
-{
-    const u32 strict_mode_policy = STRICT_MODE_PENALTY_GATHER;
-    const u32 work_source = UNSET_WORK_SOURCE;
-    const u32 header = hdr;
-
-    kmhal_parcel_write_u32(parcel, strict_mode_policy);
-    kmhal_parcel_write_u32(parcel, work_source);
-    kmhal_parcel_write_u32(parcel, header);
-    kmhal_parcel_write_aidl_string16(parcel, iface_token);
-
-}
-
-static int kmhal_aidl_parse_reply_header(struct kmhal_parcel *p, size_t *off_p,
-                                         size_t *out_start_off,
-                                         i32 *out_parcelable_size)
-{
-    u32 stability = 0;
-    u32 parcelable_size = 0;
-
-    if (kmhal_parcel_read_u32(p, off_p, &stability)) {
-        s_log_error("Failed to read the wire stability");
-        return 1;
-    }
-
-    s_log_debug("Parcelable stability: %s",
-            !!stability ? "VINTF" : "LOCAL");
-
-    *out_start_off = *off_p;
-
-    if (kmhal_parcel_read_u32(p, off_p, &parcelable_size)) {
-        s_log_error("Failed to read the parcelable size");
-        return 1;
-    }
-    s_log_debug("Parcelable payload size: %"PRIi32,
-            (i32)parcelable_size);
-    if (parcelable_size < 0) {
-        s_log_error("Invalid parcelable size");
-        return 1;
-    }
-
-    *out_parcelable_size = parcelable_size;
-    return 0;
-}
-
-static void kmhal_aidl_manager_write_acquire(struct kmhal_binder_txn *txn)
-{
-    kmhal_binder_write_increfs(txn, 0);
-    kmhal_binder_write_acquire(txn, 0);
-}
-
-static void kmhal_aidl_manager_write_release(struct kmhal_binder_txn *txn)
-{
-    kmhal_binder_write_release(txn, 0);
-    kmhal_binder_write_decrefs(txn, 0);
-}
-
-static int read_handle(const struct kmhal_parcel *parcel,
-                       size_t *offset_p, u32 *out_handle)
-{
-    struct flat_binder_object flat_binder_obj;
-
-    if (kmhal_parcel_read_handle(parcel, offset_p, &flat_binder_obj)) {
-        s_log_error("Failed to read the flat_binder_object (handle) "
-                "from the reply");
-        return 1;
-    }
-
-    if (out_handle != NULL)
-        *out_handle = flat_binder_obj.handle;
-    return 0;
-}
-
-static enum kmhal_android_status
-kmhal_aidl_manager_get(struct kmhal_binder_ctx *binder,
-                       struct kmhal_binder_txn **txn_p,
-
-                       const char *in_interface_name,
-                       const char *in_instance_name,
-
-                       u32 *out_handle)
-{
-    u_check_params(kmhal_binder_ctx_ok(binder) && txn_p != NULL);
-    u_check_params(in_interface_name != NULL && in_instance_name != NULL);
-
-    enum kmhal_android_status ret = UNKNOWN_ERROR;
-    struct kmhal_parcel *parcel = NULL;
-
-    struct kmhal_binder_txn_args_out reply = { 0 };
-    u32 handle = (u32)-1;
-
-    const int fqname_len =
-        strlen(in_interface_name) + 1 /* '/' */ + strlen(in_instance_name);
-    char *fqname_str = NULL;
-
-    fqname_str = malloc(fqname_len + 1 /* '\0' */);
-    if (fqname_str == NULL) {
-        ret = NO_MEMORY;
-        goto_error("Failed to allocate the fqname string");
-    }
-    {
-        int r;
-    if ((r = snprintf(fqname_str, fqname_len + 1,
-                "%s/%s", in_interface_name, in_instance_name))
-            != fqname_len)
-    {
-        s_log_fatal("Invalid return value of snprintf: %d (%d)", r, fqname_len);
-    }
-    }
-
-    if ((ret = kmhal_util_check_allocate_txn_tmps(txn_p, &parcel)) != OK)
-        goto err;
-
-    kmhal_aidl_write_txn_header(parcel, AIDL_HEADER_SYSTEM, u"android.os.IServiceManager");
-    /* args */
-    {
-        kmhal_parcel_write_convert_aidl_string16(parcel, fqname_str);
-    }
-
-    /* We have to call `INCREFS` and `ACQUIRE` on the returned handle
-     * before writing the FREE_BUFFER command */
-    kmhal_parcel_pack(*txn_p, parcel, 0, 1, 0);
-    ret = kmhal_util_transact_and_unpack(binder, txn_p,
-            &parcel, &reply, false, true);
-    if (ret != OK)
-        goto err;
-
-    /* Read the returned handle... */
-    size_t off = KMHAL_PARCEL_DATA_START_OFFSET;
-    if (read_handle(parcel, &off, &handle)) {
-        ret = BAD_VALUE;
-        goto err;
-    }
-
-    /* ...and immediately acquire it
-     * (queue the commands in the next transaction) */
-    kmhal_binder_write_increfs(*txn_p, handle);
-    kmhal_binder_write_acquire(*txn_p, handle);
-
-    /* only now can we queue the FREE_BUFFER command for the current reply */
-    kmhal_binder_write_free_reply(*txn_p, reply.data_buf);
-
-    if (out_handle != NULL) *out_handle = handle;
-    kmhal_parcel_destroy(&parcel);
-    ret = OK;
-
-err:
-    if (ret != OK) {
-        s_log_error("android.os.IServiceManager::getService(\"%s\"): ret: %d (%s)",
-                fqname_str != NULL ? fqname_str : "<N/A>",
-                ret, kmhal_android_status_toString(ret)
-        );
-        kmhal_util_destroy_txn_tmps(txn_p, &parcel);
-    }
-
-    if (fqname_str != NULL) {
-        free(fqname_str);
-        fqname_str = NULL;
-    }
-
-    return ret;
-}
-
-static int do_aidl_hal_get(struct kmhal_sp *hal)
+static int do_aidl_hal_get_handle(struct kmhal_sp *hal)
 {
     kmhal_aidl_manager_write_acquire(hal->txn);
     if (kmhal_binder_do_write_read_ioctl(hal->binder, &hal->txn)) {
@@ -654,7 +480,7 @@ static int do_aidl_hal_get(struct kmhal_sp *hal)
     }
     hal->manager_acquired = true;
 
-    if (kmhal_aidl_manager_get(hal->binder, &hal->txn,
+    if (kmhal_aidl_manager_get(hal->binder, &hal->txn, hal->aidl_tx_hdr_type,
                 hal->fqname, hal->instname, &hal->handle) != OK)
     {
         s_log_error("Failed to getService() a handle to the HAL");
@@ -669,7 +495,7 @@ static int do_aidl_hal_get(struct kmhal_sp *hal)
     return 0;
 }
 
-static int do_hidl_hal_get(struct kmhal_sp *hal)
+static int do_hidl_hal_get_handle(struct kmhal_sp *hal)
 {
     kmhal_hidl_manager_write_acquire(hal->txn);
     if (kmhal_binder_do_write_read_ioctl(hal->binder, &hal->txn)) {
@@ -678,12 +504,13 @@ static int do_hidl_hal_get(struct kmhal_sp *hal)
     }
     hal->manager_acquired = true;
 
+    u32 handle = 0;
     if (kmhal_hidl_manager_get(hal->binder, &hal->txn,
-                hal->fqname, hal->instname, &hal->handle) != OK)
+                hal->fqname, hal->instname, &handle) != OK)
     {
         s_log_error("Failed to get() a handle to the HIDL HAL");
         return 1;
-    } else if (hal->handle == 0) {
+    } else if (handle == 0) {
         /* This error is expected when getting the wrong version,
          * so we might need to call this function multiple times
          * before we get the correct one, therefore we might
@@ -692,6 +519,7 @@ static int do_hidl_hal_get(struct kmhal_sp *hal)
         return 1;
     }
 
+    kmhal_set_handle(hal, handle, true);
     return 0;
 }
 

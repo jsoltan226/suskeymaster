@@ -26,7 +26,8 @@
 struct domain_order;
 static void bubble_sort_domain_ptrs(struct domain_order * d_ptrs [N_DOMAINS]);
 
-static const char *domain_to_device_name(enum kmhal_binder_domain);
+static const char * domain_to_dev_path(u32 domain);
+enum kmhal_binder_domain dev_path_to_domain_bit(const char * dev_path);
 
 static void write_generic_ref_cmd(u32 cmd, VECTOR(u8) *cmd_buf_p, u32 handle);
 static void write_free_buf_cmd(VECTOR(u8) *write_buf_p, const void *free_buf);
@@ -55,7 +56,7 @@ static void process_advance_current_transaction(
 
 /* Runs while `ctx->ioctl_lock` is locked */
 static u32 handle_ioctl_response(const u8 **p, const u8 *end,
-        struct transaction_data *td);
+                                 struct transaction_data *td);
 
 static const char *binder_reply_to_string(u32);
 
@@ -76,6 +77,9 @@ struct kmhal_binder_ctx {
 
     /* The binder driver device file descriptor */
     int fd;
+
+    /* Domain of the opened binder device */
+    enum kmhal_binder_domain domain_bit;
 
     /* Path to the opened binder device */
     const char *dev_path;
@@ -147,7 +151,7 @@ kmhal_binder_open(kmhal_binder_domain_ordered_mask_t domains_to_try)
         if (!(domain_mask_byte & (1 << domain_ptrs[i]->domain)))
             continue;
 
-        const char *dev_path = domain_to_device_name(domain_ptrs[i]->domain);
+        const char *dev_path = domain_to_dev_path(domain_ptrs[i]->domain);
         struct kmhal_binder_ctx *const ret =
             kmhal_binder_open_dev(dev_path);
 
@@ -178,6 +182,7 @@ struct kmhal_binder_ctx * kmhal_binder_open_dev(const char *dev_path)
         goto_error("Failed to allocate a new binder context");
     atomic_store(&ret->initialized_, false);
     ret->fd = -1;
+    ret->domain_bit = 0;
     ret->dev_path = NULL;
     ret->td_map = MAP_FAILED;
     ret->fail_flags = FAIL_INIT;
@@ -193,6 +198,7 @@ struct kmhal_binder_ctx * kmhal_binder_open_dev(const char *dev_path)
         goto_error("Failed to open binder device \"%s\": %d (%s)",
                 dev_path, errno, strerror(errno));
     ret->dev_path = dev_path;
+    ret->domain_bit = dev_path_to_domain_bit(dev_path);
 
     /* Check binder protocol version */
     {
@@ -246,6 +252,25 @@ struct kmhal_binder_txn * kmhal_binder_txn_new(void)
     ret->data = vector_new(struct transaction_data);
 
     return ret;
+}
+
+enum kmhal_binder_domain
+kmhal_binder_get_domain(const struct kmhal_binder_ctx *ctx)
+{
+    if (ctx == NULL || !atomic_load(&ctx->initialized_)) {
+        s_log_error("Binder context is invalid or NULL!");
+        return 0;
+    }
+
+    switch (ctx->domain_bit) {
+        case KMHAL_BINDER_DEV_BINDER:
+        case KMHAL_BINDER_DEV_HWBINDER:
+        case KMHAL_BINDER_DEV_VNDBINDER:
+            return ctx->domain_bit;
+        default:
+            s_log_error("Invalid binder domain: %d", ctx->domain_bit);
+            return 0;
+    }
 }
 
 const char * kmhal_binder_get_dev_path(const struct kmhal_binder_ctx *ctx)
@@ -465,6 +490,7 @@ void kmhal_binder_close(struct kmhal_binder_ctx **ctx_p)
         ctx->fd = -1;
     }
     ctx->dev_path = NULL;
+    ctx->domain_bit = 0;
 
     /* Print out the fail flags if something more that `FAIL_INIT` is set */
     if (ctx->fail_flags && ctx->fail_flags != FAIL_INIT) {
@@ -510,7 +536,7 @@ static void bubble_sort_domain_ptrs(struct domain_order * d_ptrs[N_DOMAINS])
     }
 }
 
-static const char *domain_to_device_name(u32 d)
+static const char * domain_to_dev_path(u32 d)
 {
     switch (d) {
     case BINDER_DOMAIN_BINDER: return "/dev/binder";
@@ -518,6 +544,14 @@ static const char *domain_to_device_name(u32 d)
     case BINDER_DOMAIN_VNDBINDER: return "/dev/vndbinder";
     default: return NULL;
     }
+}
+
+enum kmhal_binder_domain dev_path_to_domain_bit(const char *p)
+{
+    if (!strcmp(p, "/dev/binder")) return KMHAL_BINDER_DEV_BINDER;
+    else if (!strcmp(p, "/dev/hwbinder")) return KMHAL_BINDER_DEV_HWBINDER;
+    else if (!strcmp(p, "/dev/vndbinder")) return KMHAL_BINDER_DEV_VNDBINDER;
+    else return 0;
 }
 
 static void write_generic_ref_cmd(u32 cmd, VECTOR(u8) *cmd_buf_p, u32 handle)

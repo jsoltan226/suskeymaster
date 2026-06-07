@@ -80,6 +80,14 @@ struct kmhal_binder_ctx *
 kmhal_binder_open_dev(const char *dev_path);
 
 /**
+ * Return the domain of the binder device associated with the given context.
+ * @param ctx Binder device context.
+ * @return The domain of the binder device, or 0 if not available.
+ */
+enum kmhal_binder_domain
+kmhal_binder_get_domain(const struct kmhal_binder_ctx *ctx);
+
+/**
  * Return the path to the device associated with the given context.
  * @param ctx Binder device context.
  * @return String with the path or NULL if not available.
