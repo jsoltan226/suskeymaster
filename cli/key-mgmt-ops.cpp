@@ -150,6 +150,10 @@ int import_key(SusKMHal& hal,
         case Algorithm::HMAC:
             format = KeyFormat::RAW;
             break;
+        default:
+            std::cerr << "Algorithm " << static_cast<int>(alg) << " (" << toString(alg) << ") "
+                "is not supported" << std::endl;
+            return -1;
     }
 
     std::cout << "Private key algorithm is " << toString(alg) <<
@@ -213,6 +217,10 @@ int export_key(SusKMHal& hal,
             case Algorithm::HMAC:
                 out_key_format = KeyFormat::RAW;
                 break;
+            default:
+                std::cerr << "Algorithm " << static_cast<int>(alg)
+                    << " (" << toString(alg) << ") is not supported" << std::endl;
+            return -1;
         }
     }
 

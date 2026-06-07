@@ -203,7 +203,7 @@ void KM_samsung_dump_outdata(KM_dump_log_proc_t log_proc,
     KM_dump_u64(log_proc, "cmd", outdata->cmd, i, false);
     KM_dump_u64(log_proc, "pid", outdata->pid, i, false);
     KM_dump_enum_val(log_proc, "err", outdata->err,
-            KM_ErrorCode_toString, i, false);
+            KM_ErrorCode_toString_u32, i, false);
 
     if (outdata->int0) KM_dump_u64(log_proc, "int0", outdata->int0, i, false);
     if (outdata->long0) KM_dump_u64(log_proc, "long0",

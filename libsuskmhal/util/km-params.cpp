@@ -1,5 +1,6 @@
 #define HIDL_DISABLE_INSTRUMENTATION
 #include "km-params.hpp"
+#include "../km-def.h"
 #include "../keymaster-types-c.h"
 #include "../keymaster-types-cpp.hpp"
 #include "../transport/aosp-hidl-support.hpp"
@@ -30,17 +31,6 @@ static int parse_tag_value(Tag t, std::string const& value,
 
 static int parse_enum_value(Tag t, std::string const& value,
         KeyParameter &out);
-
-static int parse_algorithm(std::string const& value, Algorithm& out);
-static int parse_block_mode(std::string const& value, BlockMode& out);
-static int parse_padding_mode(std::string const& value, PaddingMode& out);
-static int parse_digest(std::string const& value, Digest& out);
-static int parse_ec_curve(std::string const& value, EcCurve& out);
-static int parse_key_origin(std::string const& value, KeyOrigin& out);
-static int parse_key_blob_usage_requirements(std::string const& value,
-        KeyBlobUsageRequirements& out);
-static int parse_key_purpose(std::string const& value, KeyPurpose& out);
-static int parse_key_derivation_function(std::string const& value, KeyDerivationFunction& out);
 
 static TagType get_tag_type(Tag t);
 
@@ -415,264 +405,39 @@ static int parse_enum_value(Tag t, std::string const& value,
     auto [ptr, ec] = std::from_chars(value.data(), end, uint_val);
     if (ec == std::errc() && ptr == end) {
         if (!is_valid_intval_for_enum(t, uint_val)) {
-            std::cerr << "Invalid integer value " << uint_val
-                << " for Tag::" << toString(t) << std::endl;
-            return 1;
+            /* ignore */
         }
 
         out.f.integer = uint_val;
         return 0;
     }
 
-    switch (t) {
-        case Tag::ALGORITHM: return parse_algorithm(value, out.f.algorithm);
-        case Tag::BLOCK_MODE: return parse_block_mode(value, out.f.blockMode);
-        case Tag::PADDING: return parse_padding_mode(value, out.f.paddingMode);
-        case Tag::DIGEST: return parse_digest(value, out.f.digest);
-        case Tag::EC_CURVE: return parse_ec_curve(value, out.f.ecCurve);
-        case Tag::ORIGIN: return parse_key_origin(value, out.f.origin);
-        case Tag::BLOB_USAGE_REQUIREMENTS:
-            return parse_key_blob_usage_requirements(value, out.f.keyBlobUsageRequirements);
-        case Tag::PURPOSE: return parse_key_purpose(value, out.f.purpose);
+    const std::string& str_value = value;
 
-        case Tag::KDF:
-            return parse_key_derivation_function(value, out.f.keyDerivationFunction);
+    switch (t) {
+#define KM_DECL_ENUM_VAL(c_prefix, name, value_)        \
+            if (str_value == #name) {                   \
+                out.f.integer = value_;                 \
+                return 0;                               \
+            }                                           \
+
+#define KM_DECL_TAG_ENUM(tag, name, list_name)          \
+        case Tag::tag:                                  \
+            KM_##list_name##_LIST__                     \
+                                                        \
+            std::cerr << "Invalid " #name ": "  \
+                << out.f.integer << std::endl;  \
+            return 1;                           \
+
+        KM_TAG_ENUM_LIST__
+
+#undef KM_DECL_TAG_ENUM
+#undef KM_DECL_ENUM_VAL
 
         default:
             std::cerr << "Invalid enum tag: " << toString(t) << std::endl;
             return 1;
     }
-}
-
-static int parse_algorithm(std::string const& value, Algorithm& out)
-{
-    if (value == "RSA") {
-        out = Algorithm::RSA;
-        return 0;
-    }
-    if (value == "EC") {
-        out = Algorithm::EC;
-        return 0;
-    }
-    if (value == "AES") {
-        out = Algorithm::AES;
-        return 0;
-    }
-    if (value == "TRIPLE_DES") {
-        out = Algorithm::TRIPLE_DES;
-        return 0;
-    }
-    if (value == "HMAC") {
-        out = Algorithm::HMAC;
-        return 0;
-    }
-
-    return 1;
-}
-
-static int parse_block_mode(std::string const& value, BlockMode& out)
-{
-    if (value == "ECB") {
-        out = BlockMode::ECB;
-        return 0;
-    }
-    if (value == "CBC") {
-        out = BlockMode::CBC;
-        return 0;
-    }
-    if (value == "CTR") {
-        out = BlockMode::CTR;
-        return 0;
-    }
-    if (value == "GCM") {
-        out = BlockMode::GCM;
-        return 0;
-    }
-
-    return 1;
-}
-
-static int parse_padding_mode(std::string const& value, PaddingMode& out)
-{
-    if (value == "NONE") {
-        out = PaddingMode::NONE;
-        return 0;
-    }
-    if (value == "RSA_OAEP") {
-        out = PaddingMode::RSA_OAEP;
-        return 0;
-    }
-    if (value == "RSA_PSS") {
-        out = PaddingMode::RSA_PSS;
-        return 0;
-    }
-    if (value == "RSA_PKCS1_1_5_ENCRYPT") {
-        out = PaddingMode::RSA_PKCS1_1_5_ENCRYPT;
-        return 0;
-    }
-    if (value == "RSA_PKCS1_1_5_SIGN") {
-        out = PaddingMode::RSA_PKCS1_1_5_SIGN;
-        return 0;
-    }
-    if (value == "PKCS7") {
-        out = PaddingMode::PKCS7;
-        return 0;
-    }
-
-    return 1;
-}
-
-static int parse_digest(std::string const& value, Digest& out)
-{
-    if (value == "NONE") {
-        out = Digest::NONE;
-        return 0;
-    }
-    if (value == "MD5") {
-        out = Digest::MD5;
-        return 0;
-    }
-    if (value == "SHA1") {
-        out = Digest::SHA1;
-        return 0;
-    }
-    if (value == "SHA_2_224") {
-        out = Digest::SHA_2_224;
-        return 0;
-    }
-    if (value == "SHA_2_256") {
-        out = Digest::SHA_2_256;
-        return 0;
-    }
-    if (value == "SHA_2_384") {
-        out = Digest::SHA_2_384;
-        return 0;
-    }
-    if (value == "SHA_2_512") {
-        out = Digest::SHA_2_512;
-        return 0;
-    }
-
-    return 1;
-}
-
-static int parse_ec_curve(std::string const& value, EcCurve& out)
-{
-    if (value == "P_224") {
-        out = EcCurve::P_224;
-        return 0;
-    }
-    if (value == "P_256") {
-        out = EcCurve::P_256;
-        return 0;
-    }
-    if (value == "P_384") {
-        out = EcCurve::P_384;
-        return 0;
-    }
-    if (value == "P_521") {
-        out = EcCurve::P_521;
-        return 0;
-    }
-
-    return 1;
-}
-
-static int parse_key_origin(std::string const& value, KeyOrigin& out)
-{
-    if (value == "GENERATED") {
-        out = KeyOrigin::GENERATED;
-        return 0;
-    }
-    if (value == "DERIVED") {
-        out = KeyOrigin::DERIVED;
-        return 0;
-    }
-    if (value == "IMPORTED") {
-        out = KeyOrigin::IMPORTED;
-        return 0;
-    }
-    if (value == "UNKNOWN") {
-        out = KeyOrigin::UNKNOWN;
-        return 0;
-    }
-    if (value == "SECURELY_IMPORTED") {
-        out = KeyOrigin::SECURELY_IMPORTED;
-        return 0;
-    }
-
-    return 1;
-}
-
-static int parse_key_blob_usage_requirements(std::string const& value,
-        KeyBlobUsageRequirements& out)
-{
-    if (value == "STANDALONE") {
-        out = KeyBlobUsageRequirements::STANDALONE;
-        return 0;
-    }
-    if (value == "REQUIRES_FILE_SYSTEM") {
-        out = KeyBlobUsageRequirements::REQUIRES_FILE_SYSTEM;
-        return 0;
-    }
-
-    return 1;
-}
-
-static int parse_key_purpose(std::string const& value, KeyPurpose& out)
-{
-    if (value == "ENCRYPT") {
-        out = KeyPurpose::ENCRYPT;
-        return 0;
-    }
-    if (value == "DECRYPT") {
-        out = KeyPurpose::DECRYPT;
-        return 0;
-    }
-    if (value == "SIGN") {
-        out = KeyPurpose::SIGN;
-        return 0;
-    }
-    if (value == "VERIFY") {
-        out = KeyPurpose::VERIFY;
-        return 0;
-    }
-    if (value == "WRAP_KEY") {
-        out = KeyPurpose::WRAP_KEY;
-        return 0;
-    }
-
-    return 1;
-}
-
-static int parse_key_derivation_function(std::string const& value, KeyDerivationFunction& out)
-{
-    if (value == "NONE") {
-        out = KeyDerivationFunction::NONE;
-        return 0;
-    }
-    if (value == "RFC5869_SHA256") {
-        out = KeyDerivationFunction::RFC5869_SHA256;
-        return 0;
-    }
-    if (value == "ISO18033_2_KDF1_SHA1") {
-        out = KeyDerivationFunction::ISO18033_2_KDF1_SHA1;
-        return 0;
-    }
-    if (value == "ISO18033_2_KDF1_SHA256") {
-        out = KeyDerivationFunction::ISO18033_2_KDF1_SHA256;
-        return 0;
-    }
-    if (value == "ISO18033_2_KDF2_SHA1") {
-        out = KeyDerivationFunction::ISO18033_2_KDF2_SHA1;
-        return 0;
-    }
-    if (value == "ISO18033_2_KDF2_SHA256") {
-        out = KeyDerivationFunction::ISO18033_2_KDF2_SHA256;
-        return 0;
-    }
-
-    return 1;
 }
 
 static TagType get_tag_type(Tag t_)
@@ -697,70 +462,26 @@ static TagType get_tag_type(Tag t_)
 static bool is_valid_intval_for_enum(Tag t, uint32_t val)
 {
     switch (t) {
-        case Tag::ALGORITHM:
-            return
-                val == static_cast<uint32_t>(Algorithm::RSA) ||
-                val == static_cast<uint32_t>(Algorithm::EC) ||
-                val == static_cast<uint32_t>(Algorithm::AES) ||
-                val == static_cast<uint32_t>(Algorithm::TRIPLE_DES) ||
-                val == static_cast<uint32_t>(Algorithm::HMAC);
-        case Tag::BLOCK_MODE:
-            return
-                val == static_cast<uint32_t>(BlockMode::ECB) ||
-                val == static_cast<uint32_t>(BlockMode::CBC) ||
-                val == static_cast<uint32_t>(BlockMode::CTR) ||
-                val == static_cast<uint32_t>(BlockMode::GCM);
-        case Tag::PADDING:
-            return
-                val == static_cast<uint32_t>(PaddingMode::NONE) ||
-                val == static_cast<uint32_t>(PaddingMode::RSA_OAEP) ||
-                val == static_cast<uint32_t>(PaddingMode::RSA_PSS) ||
-                val == static_cast<uint32_t>(PaddingMode::RSA_PKCS1_1_5_ENCRYPT) ||
-                val == static_cast<uint32_t>(PaddingMode::RSA_PKCS1_1_5_SIGN) ||
-                val == static_cast<uint32_t>(PaddingMode::PKCS7);
-        case Tag::DIGEST:
-            return
-                val == static_cast<uint32_t>(Digest::NONE) ||
-                val == static_cast<uint32_t>(Digest::MD5) ||
-                val == static_cast<uint32_t>(Digest::SHA1) ||
-                val == static_cast<uint32_t>(Digest::SHA_2_224) ||
-                val == static_cast<uint32_t>(Digest::SHA_2_256) ||
-                val == static_cast<uint32_t>(Digest::SHA_2_384) ||
-                val == static_cast<uint32_t>(Digest::SHA_2_512);
-        case Tag::KDF:
-            return
-                val == static_cast<uint32_t>(KeyDerivationFunction::NONE) ||
-                val == static_cast<uint32_t>(KeyDerivationFunction::RFC5869_SHA256) ||
-                val == static_cast<uint32_t>(KeyDerivationFunction::ISO18033_2_KDF1_SHA1) ||
-                val == static_cast<uint32_t>(KeyDerivationFunction::ISO18033_2_KDF1_SHA256) ||
-                val == static_cast<uint32_t>(KeyDerivationFunction::ISO18033_2_KDF2_SHA1) ||
-                val == static_cast<uint32_t>(KeyDerivationFunction::ISO18033_2_KDF2_SHA256);
-        case Tag::EC_CURVE:
-            return
-                val == static_cast<uint32_t>(EcCurve::P_224) ||
-                val == static_cast<uint32_t>(EcCurve::P_256) ||
-                val == static_cast<uint32_t>(EcCurve::P_384) ||
-                val == static_cast<uint32_t>(EcCurve::P_521);
-        case Tag::ORIGIN:
-            return
-                val == static_cast<uint32_t>(KeyOrigin::GENERATED) ||
-                val == static_cast<uint32_t>(KeyOrigin::DERIVED) ||
-                val == static_cast<uint32_t>(KeyOrigin::IMPORTED) ||
-                val == static_cast<uint32_t>(KeyOrigin::UNKNOWN) ||
-                val == static_cast<uint32_t>(KeyOrigin::SECURELY_IMPORTED);
-        case Tag::BLOB_USAGE_REQUIREMENTS:
-            return
-                val == static_cast<uint32_t>(KeyBlobUsageRequirements::STANDALONE) ||
-                val == static_cast<uint32_t>(KeyBlobUsageRequirements::REQUIRES_FILE_SYSTEM);
-        case Tag::PURPOSE:
-            return
-                val == static_cast<uint32_t>(KeyPurpose::ENCRYPT) ||
-                val == static_cast<uint32_t>(KeyPurpose::DECRYPT) ||
-                val == static_cast<uint32_t>(KeyPurpose::SIGN) ||
-                val == static_cast<uint32_t>(KeyPurpose::VERIFY) ||
-                val == static_cast<uint32_t>(KeyPurpose::WRAP_KEY);
+#define KM_DECL_ENUM_VAL(c_prefix, name, value) case value:
+
+#define KM_DECL_TAG_ENUM(tag, name, list_name)              \
+        case Tag::tag:                                      \
+            switch (val) {                                  \
+                KM_##list_name##_LIST__                     \
+                    return true;                            \
+                default:                                    \
+                    std::cerr << "WARNING: " << val <<      \
+                        " is not a valid value for \"" <<   \
+                        toString(t) << "\"" << std::endl;   \
+                    return false;                           \
+            }                                               \
+
+        KM_TAG_ENUM_LIST__
+
+#undef KM_DECL_TAG_ENUM
+#undef KM_DECL_ENUM_VAL
         default:
-            std::cerr << "Invalid enum tag: " << toString(t) << std::endl;
+            std::cerr << "WARNING: Invalid enum tag: " << toString(t) << std::endl;
             return false;
     }
 }

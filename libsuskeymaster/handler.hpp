@@ -7,7 +7,8 @@ namespace suskeymaster {
         ::android::hardware::hidl_vec< ::android::hardware::hidl_vec<uint8_t> >& cert_chain
     );
 
-    extern "C" void sus_attest_cb(
+    extern "C" __attribute__((visibility("default")))
+    void sus_attest_cb(
             void * _this,
             void * _err,
             void * _certChain

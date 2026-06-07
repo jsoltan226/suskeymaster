@@ -174,6 +174,12 @@ void init_default_params_for_alg_and_purposes(hidl_vec<KeyParameter>& params,
             std::cerr << "WARNING: AES and Triple-DES keys cannot "
                 "be used for signing and verification!" << std::endl;
         }
+        break;
+
+    default:
+        std::cerr << "Algorithm " << static_cast<int>(alg) << " (" << toString(alg) << ") "
+            "is not supported" << std::endl;
+        return;
     }
 
     std::vector<kmhal::util::km_default> defaults;
@@ -267,6 +273,11 @@ void init_default_params_for_alg_and_purposes(hidl_vec<KeyParameter>& params,
         if (sign_verify && private_ops)
             defaults.push_back({ Tag::DIGEST, { Digest::SHA_2_256 } });
         break;
+
+    default:
+        std::cerr << "Algorithm " << static_cast<int>(alg) << " (" << toString(alg) << ") "
+            "is not supported" << std::endl;
+        return;
     }
 
     kmhal::util::init_default_params(params, defaults);

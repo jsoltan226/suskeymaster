@@ -1,6 +1,7 @@
 #ifndef KEYMASTER_TYPES_H_
 #define KEYMASTER_TYPES_H_
 
+#include "km-def.h"
 #include "transport/hidl-types.h"
 #include <stdint.h>
 #include <stdbool.h>
@@ -78,9 +79,11 @@ enum KM_TagType {
      */
     KM_TAG_TYPE_ULONG_REP = 2684354560u /* 10 << 28 */,
 };
+const char * KM_TagType_toString(uint32_t tt);
 
-#include "km-tags-def.h"
-
+/**
+ * Keymaster tags
+ */
 enum KM_Tag {
     KM_TAG_INVALID = 0u,
 #define KM_DECL_TAG(name, type, tag_val, param_list_field, bound_enum, asn1_type, asn1_rep) \
@@ -89,321 +92,48 @@ enum KM_Tag {
     KM_TAG_LIST__
 #undef KM_DECL_TAG
 };
-
-/**
- * Algorithms provided by IKeymasterDevice implementations.
- */
-enum KM_Algorithm {
-    /**
-     * Asymmetric algorithms.
-     */
-    KM_ALG_RSA = 1u,
-    KM_ALG_EC = 3u,
-    /**
-     * Block cipher algorithms
-     */
-    KM_ALG_AES = 32u,
-    KM_ALG_TRIPLE_DES = 33u,
-    /**
-     * MAC algorithms
-     */
-    KM_ALG_HMAC = 128u,
-};
-
-/**
- * Symmetric block cipher modes provided by keymaster implementations.
- */
-enum KM_BlockMode {
-    /*
-     * Unauthenticated modes, usable only for encryption/decryption and not generally recommended
-     * except for compatibility with existing other protocols.
-     */
-    KM_BLOCK_MODE_ECB = 1u,
-    KM_BLOCK_MODE_CBC = 2u,
-    KM_BLOCK_MODE_CTR = 3u,
-    /*
-     * Authenticated modes, usable for encryption/decryption and signing/verification.  Recommended
-     * over unauthenticated modes for all purposes.
-     */
-    KM_BLOCK_MODE_GCM = 32u,
-};
-
-/**
- * Padding modes that may be applied to plaintext for encryption operations.  This list includes
- * padding modes for both symmetric and asymmetric algorithms.  Note that implementations should not
- * provide all possible combinations of algorithm and padding, only the
- * cryptographically-appropriate pairs.
- */
-enum KM_PaddingMode {
-    KM_PADDING_NONE = 1u,
-    /*
-     * deprecated
-     */
-    KM_PADDING_RSA_OAEP = 2u,
-    KM_PADDING_RSA_PSS = 3u,
-    KM_PADDING_RSA_PKCS1_1_5_ENCRYPT = 4u,
-    KM_PADDING_RSA_PKCS1_1_5_SIGN = 5u,
-    KM_PADDING_PKCS7 = 64u,
-};
-
-/**
- * Digests provided by keymaster implementations.
- */
-enum KM_Digest {
-    KM_DIGEST_NONE = 0u,
-    KM_DIGEST_MD5 = 1u,
-    KM_DIGEST_SHA1 = 2u,
-    KM_DIGEST_SHA_2_224 = 3u,
-    KM_DIGEST_SHA_2_256 = 4u,
-    KM_DIGEST_SHA_2_384 = 5u,
-    KM_DIGEST_SHA_2_512 = 6u,
-};
-
-/**
- * Supported EC curves, used in ECDSA
- */
-enum KM_EcCurve {
-    KM_EC_CURVE_P_224 = 0u,
-    KM_EC_CURVE_P_256 = 1u,
-    KM_EC_CURVE_P_384 = 2u,
-    KM_EC_CURVE_P_521 = 3u,
-};
-
-/**
- * The origin of a key (or pair), i.e. where it was generated.  Note that ORIGIN can be found in
- * either the hardware-enforced or software-enforced list for a key, indicating whether the key is
- * hardware or software-based.  Specifically, a key with GENERATED in the hardware-enforced list
- * must be guaranteed never to have existed outide the secure hardware.
- */
-enum KM_KeyOrigin {
-    /**
-     * Generated in keymaster.  Should not exist outside the TEE.
-     */
-    KM_ORIGIN_GENERATED = 0u,
-    /**
-     * Derived inside keymaster.  Likely exists off-device.
-     */
-    KM_ORIGIN_DERIVED = 1u,
-    /**
-     * Imported into keymaster.  Existed as cleartext in Android.
-     */
-    KM_ORIGIN_IMPORTED = 2u,
-    /**
-     * Keymaster did not record origin.  This value can only be seen on keys in a keymaster0
-     * implementation.  The keymaster0 adapter uses this value to document the fact that it is
-     * unkown whether the key was generated inside or imported into keymaster.
-     */
-    KM_ORIGIN_UNKNOWN = 3u,
-    /**
-     * Securely imported into Keymaster.  Was created elsewhere, and passed securely through Android
-     * to secure hardware.
-     */
-    KM_ORIGIN_SECURELY_IMPORTED = 4u,
-};
-
-/**
- * Usability requirements of key blobs.  This defines what system functionality must be available
- * for the key to function.  For example, key "blobs" which are actually handles referencing
- * encrypted key material stored in the file system cannot be used until the file system is
- * available, and should have BLOB_REQUIRES_FILE_SYSTEM.
- */
-enum KM_KeyBlobUsageRequirements {
-    KM_USAGE_STANDALONE = 0u,
-    KM_USAGE_REQUIRES_FILE_SYSTEM = 1u,
-};
-
-/**
- * Possible purposes of a key (or pair).
- */
-enum KM_KeyPurpose {
-    KM_PURPOSE_ENCRYPT = 0u,
-    /*
-     * Usable with RSA, EC and AES keys.
-     */
-    KM_PURPOSE_DECRYPT = 1u,
-    /*
-     * Usable with RSA, EC and AES keys.
-     */
-    KM_PURPOSE_SIGN = 2u,
-    /*
-     * Usable with RSA, EC and HMAC keys.
-     */
-    KM_PURPOSE_VERIFY = 3u,
-    /*
-     * Usable with RSA, EC and HMAC keys.
-     *
-     *
-     * 4 is reserved
-     */
-    KM_PURPOSE_WRAP_KEY = 5u,
-};
-
+bool KM_Tag_is_repeatable(uint32_t tag);
+const char * KM_Tag_toString(uint32_t t);
 
 /**
  * Keymaster error codes.
  */
 enum KM_ErrorCode {
-    KM_OK = 0,
-    KM_ERR_ROOT_OF_TRUST_ALREADY_SET = -1 /* -1 */,
-    KM_ERR_UNSUPPORTED_PURPOSE = -2 /* -2 */,
-    KM_ERR_INCOMPATIBLE_PURPOSE = -3 /* -3 */,
-    KM_ERR_UNSUPPORTED_ALGORITHM = -4 /* -4 */,
-    KM_ERR_INCOMPATIBLE_ALGORITHM = -5 /* -5 */,
-    KM_ERR_UNSUPPORTED_KEY_SIZE = -6 /* -6 */,
-    KM_ERR_UNSUPPORTED_BLOCK_MODE = -7 /* -7 */,
-    KM_ERR_INCOMPATIBLE_BLOCK_MODE = -8 /* -8 */,
-    KM_ERR_UNSUPPORTED_MAC_LENGTH = -9 /* -9 */,
-    KM_ERR_UNSUPPORTED_PADDING_MODE = -10 /* -10 */,
-    KM_ERR_INCOMPATIBLE_PADDING_MODE = -11 /* -11 */,
-    KM_ERR_UNSUPPORTED_DIGEST = -12 /* -12 */,
-    KM_ERR_INCOMPATIBLE_DIGEST = -13 /* -13 */,
-    KM_ERR_INVALID_EXPIRATION_TIME = -14 /* -14 */,
-    KM_ERR_INVALID_USER_ID = -15 /* -15 */,
-    KM_ERR_INVALID_AUTHORIZATION_TIMEOUT = -16 /* -16 */,
-    KM_ERR_UNSUPPORTED_KEY_FORMAT = -17 /* -17 */,
-    KM_ERR_INCOMPATIBLE_KEY_FORMAT = -18 /* -18 */,
-    KM_ERR_UNSUPPORTED_KEY_ENCRYPTION_ALGORITHM = -19 /* -19 */,
-    /**
-     * For PKCS8 & PKCS12
-     */
-    KM_ERR_UNSUPPORTED_KEY_VERIFICATION_ALGORITHM = -20 /* -20 */,
-    /**
-     * For PKCS8 & PKCS12
-     */
-    KM_ERR_INVALID_INPUT_LENGTH = -21 /* -21 */,
-    KM_ERR_KEY_EXPORT_OPTIONS_INVALID = -22 /* -22 */,
-    KM_ERR_DELEGATION_NOT_ALLOWED = -23 /* -23 */,
-    KM_ERR_KEY_NOT_YET_VALID = -24 /* -24 */,
-    KM_ERR_KEY_EXPIRED = -25 /* -25 */,
-    KM_ERR_KEY_USER_NOT_AUTHENTICATED = -26 /* -26 */,
-    KM_ERR_OUTPUT_PARAMETER_NULL = -27 /* -27 */,
-    KM_ERR_INVALID_OPERATION_HANDLE = -28 /* -28 */,
-    KM_ERR_INSUFFICIENT_BUFFER_SPACE = -29 /* -29 */,
-    KM_ERR_VERIFICATION_FAILED = -30 /* -30 */,
-    KM_ERR_TOO_MANY_OPERATIONS = -31 /* -31 */,
-    KM_ERR_UNEXPECTED_NULL_POINTER = -32 /* -32 */,
-    KM_ERR_INVALID_KEY_BLOB = -33 /* -33 */,
-    KM_ERR_IMPORTED_KEY_NOT_ENCRYPTED = -34 /* -34 */,
-    KM_ERR_IMPORTED_KEY_DECRYPTION_FAILED = -35 /* -35 */,
-    KM_ERR_IMPORTED_KEY_NOT_SIGNED = -36 /* -36 */,
-    KM_ERR_IMPORTED_KEY_VERIFICATION_FAILED = -37 /* -37 */,
-    KM_ERR_INVALID_ARGUMENT = -38 /* -38 */,
-    KM_ERR_UNSUPPORTED_TAG = -39 /* -39 */,
-    KM_ERR_INVALID_TAG = -40 /* -40 */,
-    KM_ERR_MEMORY_ALLOCATION_FAILED = -41 /* -41 */,
-    KM_ERR_IMPORT_PARAMETER_MISMATCH = -44 /* -44 */,
-    KM_ERR_SECURE_HW_ACCESS_DENIED = -45 /* -45 */,
-    KM_ERR_OPERATION_CANCELLED = -46 /* -46 */,
-    KM_ERR_CONCURRENT_ACCESS_CONFLICT = -47 /* -47 */,
-    KM_ERR_SECURE_HW_BUSY = -48 /* -48 */,
-    KM_ERR_SECURE_HW_COMMUNICATION_FAILED = -49 /* -49 */,
-    KM_ERR_UNSUPPORTED_EC_FIELD = -50 /* -50 */,
-    KM_ERR_MISSING_NONCE = -51 /* -51 */,
-    KM_ERR_INVALID_NONCE = -52 /* -52 */,
-    KM_ERR_MISSING_MAC_LENGTH = -53 /* -53 */,
-    KM_ERR_KEY_RATE_LIMIT_EXCEEDED = -54 /* -54 */,
-    KM_ERR_CALLER_NONCE_PROHIBITED = -55 /* -55 */,
-    KM_ERR_KEY_MAX_OPS_EXCEEDED = -56 /* -56 */,
-    KM_ERR_INVALID_MAC_LENGTH = -57 /* -57 */,
-    KM_ERR_MISSING_MIN_MAC_LENGTH = -58 /* -58 */,
-    KM_ERR_UNSUPPORTED_MIN_MAC_LENGTH = -59 /* -59 */,
-    KM_ERR_UNSUPPORTED_KDF = -60 /* -60 */,
-    KM_ERR_UNSUPPORTED_EC_CURVE = -61 /* -61 */,
-    KM_ERR_KEY_REQUIRES_UPGRADE = -62 /* -62 */,
-    KM_ERR_ATTESTATION_CHALLENGE_MISSING = -63 /* -63 */,
-    KM_ERR_KEYMASTER_NOT_CONFIGURED = -64 /* -64 */,
-    KM_ERR_ATTESTATION_APPLICATION_ID_MISSING = -65 /* -65 */,
-    KM_ERR_CANNOT_ATTEST_IDS = -66 /* -66 */,
-    KM_ERR_ROLLBACK_RESISTANCE_UNAVAILABLE = -67 /* -67 */,
-    KM_ERR_HARDWARE_TYPE_UNAVAILABLE = -68 /* -68 */,
-    KM_ERR_PROOF_OF_PRESENCE_REQUIRED = -69 /* -69 */,
-    KM_ERR_CONCURRENT_PROOF_OF_PRESENCE_REQUESTED = -70 /* -70 */,
-    KM_ERR_NO_USER_CONFIRMATION = -71 /* -71 */,
-    KM_ERR_DEVICE_LOCKED = -72 /* -72 */,
-    KM_ERR_UNIMPLEMENTED = -100 /* -100 */,
-    KM_ERR_VERSION_MISMATCH = -101 /* -101 */,
-    KM_ERR_UNKNOWN_ERROR = -1000 /* -1000 */,
+    KM_OK = 0u,
+#define KM_DECL_ERR(name, value) \
+    KM_ERROR_##name = value,
 
-    /* Added in Keymaster 4.1 */
-    KM_ERR_EARLY_BOOT_ENDED = -73,
-    KM_ERR_ATTESTATION_KEYS_NOT_PROVISIONED = -74,
-    KM_ERR_ATTESTATION_IDS_NOT_PROVISIONED = -75,
-    KM_ERR_INVALID_OPERATION = -76,
-    KM_ERR_STORAGE_KEY_UNSUPPORTED = -77,
+    KM_ERR_LIST__
+#undef KM_DECL_ERR
 };
+const char * KM_ErrorCode_toString(int32_t e);
 
-/**
- * Key derivation functions, mostly used in ECIES.
- */
-enum KM_KeyDerivationFunction {
-    /**
-     * Do not apply a key derivation function; use the raw agreed key
-     */
-    KM_DERIVATION_NONE = 0u,
-    /**
-     * HKDF defined in RFC 5869 with SHA256
-     */
-    KM_DERIVATION_RFC5869_SHA256 = 1u,
-    /**
-     * KDF1 defined in ISO 18033-2 with SHA1
-     */
-    KM_DERIVATION_ISO18033_2_KDF1_SHA1 = 2u,
-    /**
-     * KDF1 defined in ISO 18033-2 with SHA256
-     */
-    KM_DERIVATION_ISO18033_2_KDF1_SHA256 = 3u,
-    /**
-     * KDF2 defined in ISO 18033-2 with SHA1
-     */
-    KM_DERIVATION_ISO18033_2_KDF2_SHA1 = 4u,
-    /**
-     * KDF2 defined in ISO 18033-2 with SHA256
-     */
-    KM_DERIVATION_ISO18033_2_KDF2_SHA256 = 5u,
-};
+/* for compatibility with `KM_dump_*` */
+static inline const char * KM_ErrorCode_toString_u32(uint32_t e)
+{
+    return KM_ErrorCode_toString((int32_t)e);
+}
 
-/**
- * Hardware authentication type, used by HardwareAuthTokens to specify the mechanism used to
- * authentiate the user, and in KeyCharacteristics to specify the allowable mechanisms for
- * authenticating to activate a key.
- */
 enum KM_HardwareAuthenticatorType {
-    KM_AUTHENTICATOR_NONE = 0u,
-    KM_AUTHENTICATOR_PASSWORD = 1u /* 1 << 0 */,
-    KM_AUTHENTICATOR_FINGERPRINT = 2u /* 1 << 1 */,
-    KM_AUTHENTICATOR_ANY = 4294967295u /* 0xFFFFFFFF */,
-};
+#define KM_DECL_ENUM_VAL(c_prefix, name, value) \
+    KM_AUTHENTICATOR_##name = value, \
 
-/**
- * Device security levels.
- */
-enum KM_SecurityLevel {
-    KM_SECURITY_LEVEL_SOFTWARE = 0u,
-    KM_SECURITY_LEVEL_TRUSTED_ENVIRONMENT = 1u,
-    /**
-     * STRONGBOX specifies that the secure hardware satisfies the requirements specified in CDD
-     * 9.11.2.
-     */
-    KM_SECURITY_LEVEL_STRONGBOX = 2u,
+    KM_HARDWARE_AUTHENTICATOR_TYPE_LIST__
+#undef KM_DECL_ENUM_VAL
 };
+const char * KM_HardwareAuthenticatorType_toString(uint32_t hwautht);
 
-/**
- * Formats for key import and export.
- */
-enum KM_KeyFormat {
-    /**
-     * X.509 certificate format, for public key export.
-     */
-    KM_FORMAT_X509 = 0u,
-    /**
-     * PCKS#8 format, asymmetric key pair import.
-     */
-    KM_FORMAT_PKCS8 = 1u,
-    /**
-     * Raw bytes, for symmetric key import.
-     */
-    KM_FORMAT_RAW = 3u,
-};
+#define KM_DECL_ENUM_VAL(c_prefix, name, value) c_prefix##name = value, \
+
+#define KM_DECL_ENUM(enum_name, list_name)  \
+enum KM_##enum_name {                                 \
+    KM_##list_name##_LIST__                           \
+};                                                    \
+const char * KM_##enum_name##_toString(uint32_t);     \
+
+KM_ENUM_LIST__
+#undef KM_DECL_ENUM
+#undef KM_DECL_ENUM_VAL
 
 union KM_IntegerParams {
     /*
@@ -479,15 +209,6 @@ KMHAL_HIDL_VEC_OF_STRUCT_DECL(KM_KeyParameter);
  */
 __attribute__ ((unused))
 static const char KM_kAttestionRecordOid[] = "1.3.6.1.4.1.11129.2.1.17";
-
-/* The C enum representation of the `VerifiedBootState` ASN.1 ENUMERATED type.
- * Present in the `RootOfTrust` struct. */
-enum KM_VerifiedBootState {
-    KM_VERIFIED_BOOT_VERIFIED = 0,
-    KM_VERIFIED_BOOT_SELF_SIGNED = 1,
-    KM_VERIFIED_BOOT_UNVERIFIED = 2,
-    KM_VERIFIED_BOOT_FAILED = 3,
-};
 
 /**
  * KeyCharacteristics defines the attributes of a key, including cryptographic parameters, and usage
@@ -697,7 +418,7 @@ typedef int64_t KM_DateTime_t;
  * For more information and detailed documentation, see
  *  https://source.android.com/docs/security/features/keystore/attestation#attestation-v3
  */
-typedef struct KM_kEY_DESC {
+typedef struct KM_KEY_DESC {
     ASN1_INTEGER *attestationVersion;
     ASN1_ENUMERATED *attestationSecurityLevel;
     ASN1_INTEGER *keymasterVersion;
@@ -714,25 +435,6 @@ typedef struct KM_kEY_DESC {
 DECLARE_ASN1_FUNCTIONS(KM_KEY_DESC);
 
 typedef const char * (*KM_enum_toString_proc_t)(uint32_t);
-
-bool KM_Tag_is_repeatable(uint32_t tag);
-
-const char * KM_TagType_toString(uint32_t tt);
-const char * KM_Tag_toString(uint32_t t);
-
-const char * KM_ErrorCode_toString(uint32_t o);
-const char * KM_SecurityLevel_toString(uint32_t sl);
-const char * KM_VerifiedBootState_toString(uint32_t vb);
-const char * KM_KeyPurpose_toString(uint32_t kp);
-const char * KM_Algorithm_toString(uint32_t alg);
-const char * KM_BlockMode_toString(uint32_t bm);
-const char * KM_Digest_toString(uint32_t dig);
-const char * KM_PaddingMode_toString(uint32_t pm);
-const char * KM_EcCurve_toString(uint32_t ec);
-const char * KM_KeyOrigin_toString(uint32_t ko);
-const char * KM_KeyBlobUsageRequirements_toString(uint32_t kbur);
-const char * KM_KeyDerivationFunction_toString(uint32_t kdf);
-const char * KM_HardwareAuthenticatorType_toString(uint32_t hwautht);
 
 #ifdef __cplusplus
 } /* extern "C" */

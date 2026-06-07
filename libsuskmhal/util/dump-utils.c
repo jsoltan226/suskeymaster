@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <strings.h>
+#include <inttypes.h>
 #include <stdatomic.h>
 #include <openssl/asn1.h>
 
@@ -336,8 +337,8 @@ void KM_dump_datetime(KM_dump_log_proc_t log_proc,
     }
 
     KM_datetime_to_str(datetime_buf, sizeof(datetime_buf), i);
-    log_proc("%s.%s = %lld%s // %s", indent_buf, field_name,
-            (long long int)i, (end_without_comma ? "" : ","), datetime_buf);
+    log_proc("%s.%s = %"PRIi64"%s // %s", indent_buf, field_name,
+            i, (end_without_comma ? "" : ","), datetime_buf);
 }
 
 int portable_localtime(const time_t *timep, struct tm *result)
@@ -352,10 +353,14 @@ void KM_datetime_to_str(char *buf, u32 buf_size, int64_t dt)
 {
     struct tm t = { 0 };
 
-    const time_t s = dt / 1000;
+    if (dt > INT64_C(1000000000000000)) {
+        /* The Keymaster implementation probably counts time in micro-seconds
+         * instead of milli-seconds, so normalize to ms */
+        dt /= 1000;
+    }
 
-    i32 ms = (i32)(dt % 1000);
-    if (ms < 1000) ms += 1000;
+    const time_t s = dt / 1000;
+    i32 ms = (i32)(dt % INT64_C(1000));
 
     if (portable_localtime(&s, &t)) {
         (void) snprintf(buf, buf_size, "N/A");

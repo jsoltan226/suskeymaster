@@ -114,6 +114,8 @@
      * generateKey() or importKey() must return ErrorCode::UNSUPPORTED_KEY_SIZE.                        \
      *                                                                                                  \
      * Must be hardware-enforced.                                                                       \
+     *                                                                                                  \
+     * In the early days, this was `KM_TAG_CHUNK_LENGTH`.                                               \
      */                                                                                                 \
     KM_DECL_TAG(MIN_MAC_LENGTH, UINT, 8, minMacLength, NULL, INTEGER, _)                                \
                                                                                                         \
@@ -132,6 +134,18 @@
     KM_DECL_TAG(EC_CURVE, ENUM, 10, ecCurve, EcCurve, INTEGER, _)                                       \
                                                                                                         \
     /**                                                                                                 \
+     * Removed long ago.                                                                                \
+     * Tags authorized for addition via rescoping.                                                      \
+     */                                                                                                 \
+    /* KM_DECL_TAG(KM_TAG_RESCOPING_ADD, ENUM_REP, 101, rescopingAdd, Tag, INTEGER, _SET_OF_) */        \
+                                                                                                        \
+    /**                                                                                                 \
+     * Removed long ago.                                                                                \
+     * Tags authorized for removal via rescoping.                                                       \
+     */                                                                                                 \
+    /* KM_DECL_TAG(KM_TAG_RESCOPING_DEL, ENUM_REP, 102, rescopingDel, Tag, INTEGER, _SET_OF_) */        \
+                                                                                                        \
+    /**                                                                                                 \
      * Tag::RSA_PUBLIC_EXPONENT specifies the value of the public exponent for an RSA key pair.         \
      * This tag is relevant only to RSA keys, and is required for all RSA keys.                         \
      *                                                                                                  \
@@ -144,6 +158,20 @@
      * Must be hardware-enforced.                                                                       \
      */                                                                                                 \
     KM_DECL_TAG(RSA_PUBLIC_EXPONENT, ULONG, 200, rsaPublicExponent, NULL, INTEGER, _)                   \
+                                                                                                        \
+                                                                                                        \
+    /**                                                                                                 \
+     * These three were removed very long ago alongside KM_ALGORITHM_DSA:                               \
+     *  KM_TAG_DSA_GENERATOR = KM_BIGNUM | 201,                                                         \
+     *  KM_TAG_DSA_P = KM_BIGNUM | 202,                                                                 \
+     *  KM_TAG_DSA_Q = KM_BIGNUM | 203,                                                                 \
+     *                                                                                                  \
+     * They are probably the reason why KM_TAG_TYPE_BIGNUM even exists lol                              \
+     *                                                                                                  \
+     * Obviously from looking below you can deduce that the numbers of these tags have been reused      \
+     * and therefore they, along with all the KM_ALGORITHM_DSA functionality,                           \
+     * are fundamentally incompatible with any remotely recent versions of Keymaster/KeyMint. :(        \
+     */                                                                                                 \
                                                                                                         \
     /**                                                                                                 \
      * Legacy Keymaster 3.0 tag. From AOSP (hardware/interfaces/keymaster/3.0/types.hal):               \
@@ -286,6 +314,9 @@
      * ErrorCode::TOO_MANY_OPERATIONS.                                                                  \
      *                                                                                                  \
      * Must be hardware-enforced.                                                                       \
+     *                                                                                                  \
+     * One day, this used to be `KM_TAG_SINGLE_USE_PER_BOOT` and had `KM_TAG_TYPE_BOOL`.                \
+     * The functionality has obviously since been expanded.                                             \
      */                                                                                                 \
     KM_DECL_TAG(MAX_USES_PER_BOOT, UINT, 404, maxUsesPerBoot, NULL, INTEGER, _)                         \
                                                                                                         \
@@ -405,6 +436,8 @@
      * specified by Tag::USER_AUTH_TYPE that the key can be used.                                       \
      *                                                                                                  \
      * Must be hardware-enforced.                                                                       \
+     *                                                                                                  \
+     * In very old keymaster versions, this used to be KM_TAG_RESCOPE_AUTH_TIMEOUT.                     \
      */                                                                                                 \
     KM_DECL_TAG(AUTH_TIMEOUT, UINT, 505, authTimeout, NULL, INTEGER, _)                                 \
                                                                                                         \
@@ -1117,3 +1150,534 @@
     /* KM_TAG_PROV_SGAC_RSA3 */                                                                         \
 
 #endif /* KM_TAG_LIST__ */
+
+#ifndef KM_ERR_LIST__
+#define KM_ERR_LIST__ /* (name, value) */                           \
+    KM_DECL_ERR(OK, 0)                                              \
+    KM_DECL_ERR(ROOT_OF_TRUST_ALREADY_SET, -1)                      \
+    KM_DECL_ERR(UNSUPPORTED_PURPOSE, -2)                            \
+    KM_DECL_ERR(INCOMPATIBLE_PURPOSE, -3)                           \
+    KM_DECL_ERR(UNSUPPORTED_ALGORITHM, -4)                          \
+    KM_DECL_ERR(INCOMPATIBLE_ALGORITHM, -5)                         \
+    KM_DECL_ERR(UNSUPPORTED_KEY_SIZE, -6)                           \
+    KM_DECL_ERR(UNSUPPORTED_BLOCK_MODE, -7)                         \
+    KM_DECL_ERR(INCOMPATIBLE_BLOCK_MODE, -8)                        \
+    KM_DECL_ERR(UNSUPPORTED_MAC_LENGTH, -9)                         \
+    KM_DECL_ERR(UNSUPPORTED_PADDING_MODE, -10)                      \
+    KM_DECL_ERR(INCOMPATIBLE_PADDING_MODE, -11)                     \
+    KM_DECL_ERR(UNSUPPORTED_DIGEST, -12)                            \
+    KM_DECL_ERR(INCOMPATIBLE_DIGEST, -13)                           \
+    KM_DECL_ERR(INVALID_EXPIRATION_TIME, -14)                       \
+    KM_DECL_ERR(INVALID_USER_ID, -15)                               \
+    KM_DECL_ERR(INVALID_AUTHORIZATION_TIMEOUT, -16)                 \
+    KM_DECL_ERR(UNSUPPORTED_KEY_FORMAT, -17)                        \
+    KM_DECL_ERR(INCOMPATIBLE_KEY_FORMAT, -18)                       \
+    KM_DECL_ERR(UNSUPPORTED_KEY_ENCRYPTION_ALGORITHM, -19)          \
+    /**                                                             \
+     * For PKCS8 & PKCS12                                           \
+     */                                                             \
+    KM_DECL_ERR(UNSUPPORTED_KEY_VERIFICATION_ALGORITHM, -20)        \
+    /**                                                             \
+     * For PKCS8 & PKCS12                                           \
+     */                                                             \
+    KM_DECL_ERR(INVALID_INPUT_LENGTH, -21)                          \
+    KM_DECL_ERR(KEY_EXPORT_OPTIONS_INVALID, -22)                    \
+    KM_DECL_ERR(DELEGATION_NOT_ALLOWED, -23)                        \
+    KM_DECL_ERR(KEY_NOT_YET_VALID, -24)                             \
+    KM_DECL_ERR(KEY_EXPIRED, -25)                                   \
+    KM_DECL_ERR(KEY_USER_NOT_AUTHENTICATED, -26)                    \
+    KM_DECL_ERR(OUTPUT_PARAMETER_NULL, -27)                         \
+    KM_DECL_ERR(INVALID_OPERATION_HANDLE, -28)                      \
+    KM_DECL_ERR(INSUFFICIENT_BUFFER_SPACE, -29)                     \
+    KM_DECL_ERR(VERIFICATION_FAILED, -30)                           \
+    KM_DECL_ERR(TOO_MANY_OPERATIONS, -31)                           \
+    KM_DECL_ERR(UNEXPECTED_NULL_POINTER, -32)                       \
+    KM_DECL_ERR(INVALID_KEY_BLOB, -33)                              \
+    KM_DECL_ERR(IMPORTED_KEY_NOT_ENCRYPTED, -34)                    \
+    KM_DECL_ERR(IMPORTED_KEY_DECRYPTION_FAILED, -35)                \
+    KM_DECL_ERR(IMPORTED_KEY_NOT_SIGNED, -36)                       \
+    KM_DECL_ERR(IMPORTED_KEY_VERIFICATION_FAILED, -37)              \
+    KM_DECL_ERR(INVALID_ARGUMENT, -38)                              \
+    KM_DECL_ERR(UNSUPPORTED_TAG, -39)                               \
+    KM_DECL_ERR(INVALID_TAG, -40)                                   \
+    KM_DECL_ERR(MEMORY_ALLOCATION_FAILED, -41)                      \
+                                                                    \
+    /* Removed before many people were born */                      \
+    KM_DECL_ERR(INVALID_RESCOPING, -42)                             \
+    KM_DECL_ERR(INVALID_DSA_PARAMS, -43)                            \
+                                                                    \
+    KM_DECL_ERR(IMPORT_PARAMETER_MISMATCH, -44)                     \
+    KM_DECL_ERR(SECURE_HW_ACCESS_DENIED, -45)                       \
+    KM_DECL_ERR(OPERATION_CANCELLED, -46)                           \
+    KM_DECL_ERR(CONCURRENT_ACCESS_CONFLICT, -47)                    \
+    KM_DECL_ERR(SECURE_HW_BUSY, -48)                                \
+    KM_DECL_ERR(SECURE_HW_COMMUNICATION_FAILED, -49)                \
+    KM_DECL_ERR(UNSUPPORTED_EC_FIELD, -50)                          \
+    KM_DECL_ERR(MISSING_NONCE, -51)                                 \
+    KM_DECL_ERR(INVALID_NONCE, -52)                                 \
+    KM_DECL_ERR(MISSING_MAC_LENGTH, -53)                            \
+    KM_DECL_ERR(KEY_RATE_LIMIT_EXCEEDED, -54)                       \
+    KM_DECL_ERR(CALLER_NONCE_PROHIBITED, -55)                       \
+    KM_DECL_ERR(KEY_MAX_OPS_EXCEEDED, -56)                          \
+    KM_DECL_ERR(INVALID_MAC_LENGTH, -57)                            \
+    KM_DECL_ERR(MISSING_MIN_MAC_LENGTH, -58)                        \
+    KM_DECL_ERR(UNSUPPORTED_MIN_MAC_LENGTH, -59)                    \
+    KM_DECL_ERR(UNSUPPORTED_KDF, -60)                               \
+    KM_DECL_ERR(UNSUPPORTED_EC_CURVE, -61)                          \
+    KM_DECL_ERR(KEY_REQUIRES_UPGRADE, -62)                          \
+    KM_DECL_ERR(ATTESTATION_CHALLENGE_MISSING, -63)                 \
+    KM_DECL_ERR(KEYMASTER_NOT_CONFIGURED, -64)                      \
+    KM_DECL_ERR(ATTESTATION_APPLICATION_ID_MISSING, -65)            \
+    KM_DECL_ERR(CANNOT_ATTEST_IDS, -66)                             \
+    KM_DECL_ERR(ROLLBACK_RESISTANCE_UNAVAILABLE, -67)               \
+    KM_DECL_ERR(HARDWARE_TYPE_UNAVAILABLE, -68)                     \
+    KM_DECL_ERR(PROOF_OF_PRESENCE_REQUIRED, -69)                    \
+    KM_DECL_ERR(CONCURRENT_PROOF_OF_PRESENCE_REQUESTED, -70)        \
+    KM_DECL_ERR(NO_USER_CONFIRMATION, -71)                          \
+    KM_DECL_ERR(DEVICE_LOCKED, -72)                                 \
+                                                                    \
+    /* Added in Keymaster 4.1 */                                    \
+    KM_DECL_ERR(EARLY_BOOT_ENDED, -73)                              \
+    KM_DECL_ERR(ATTESTATION_KEYS_NOT_PROVISIONED, -74)              \
+    KM_DECL_ERR(ATTESTATION_IDS_NOT_PROVISIONED, -75)               \
+    KM_DECL_ERR(INVALID_OPERATION, -76)                             \
+    KM_DECL_ERR(STORAGE_KEY_UNSUPPORTED, -77)                       \
+                                                                    \
+    /* Added in KeyMint */                                          \
+    KM_DECL_ERR(INCOMPATIBLE_MGF_DIGEST, -78)                       \
+    KM_DECL_ERR(UNSUPPORTED_MGF_DIGEST, -79)                        \
+    KM_DECL_ERR(MISSING_NOT_BEFORE, -80)                            \
+    KM_DECL_ERR(MISSING_NOT_AFTER, -81)                             \
+    KM_DECL_ERR(MISSING_ISSUER_SUBJECT, -82)                        \
+    KM_DECL_ERR(INVALID_ISSUER_SUBJECT, -83)                        \
+    KM_DECL_ERR(BOOT_LEVEL_EXCEEDED, -84)                           \
+    KM_DECL_ERR(HARDWARE_NOT_YET_AVAILABLE, -85)                    \
+    KM_DECL_ERR(MODULE_HASH_ALREADY_SET, -86)                       \
+                                                                    \
+    KM_DECL_ERR(UNIMPLEMENTED, -100)                                \
+    KM_DECL_ERR(VERSION_MISMATCH, -101)                             \
+    KM_DECL_ERR(UNKNOWN_ERROR, -1000)                               \
+                                                                    \
+                                                                    \
+    /* Implementer's namespace for error codes starts at -10000. */ \
+
+#endif /* KM_ERR_LIST__ */
+
+#ifndef KM_TAG_ENUM_LIST__
+/* Enums that are used as values for ENUM_REP tags */
+#define KM_TAG_ENUM_LIST__ /* (tag, enum_name, list_name) */            \
+    KM_DECL_TAG_ENUM(ALGORITHM, Algorithm, ALG)                         \
+    KM_DECL_TAG_ENUM(BLOCK_MODE, BlockMode, BLOCK_MODE)                 \
+    KM_DECL_TAG_ENUM(PADDING, PaddingMode, PADDING_MODE)                \
+    KM_DECL_TAG_ENUM(DIGEST, Digest, DIGEST)                            \
+    KM_DECL_TAG_ENUM(EC_CURVE, EcCurve, EC_CURVE)                       \
+    KM_DECL_TAG_ENUM(ORIGIN, KeyOrigin, KEY_ORIGIN)                     \
+    KM_DECL_TAG_ENUM(BLOB_USAGE_REQUIREMENTS, KeyBlobUsageRequirements, \
+                     KEY_BLOB_USAGE_REQUIREMENTS)                       \
+    KM_DECL_TAG_ENUM(PURPOSE, KeyPurpose, KEY_PURPOSE)                  \
+    KM_DECL_TAG_ENUM(KDF, KeyDerivationFunction, KDF)                   \
+
+#endif /* KM_TAG_ENUM_LIST__ */
+
+#ifndef KM_ENUM_LIST__
+/* Just normal KM enums */
+
+/* HardwareAuthenticatorType is missing here because it's a "flag" enum;
+ * the value of the Tag::USER_AUTH_TYPE is a mask of HardwareAuthenticatorType values,
+ * and since it's the only enum of this kind, it gets special handling later */
+
+/* KM_ErrorCode could also theoretically be here,
+ * but it's declared as an int32_t instead of uint32_t,
+ * and also it has the special KM_OK member,
+ * so adding it here would make things just unnecessarily complex. */
+
+#define KM_ENUM_LIST__ /* (enum_name, list_name) */                     \
+    KM_DECL_ENUM(Algorithm, ALG)                                        \
+    KM_DECL_ENUM(BlockMode, BLOCK_MODE)                                 \
+    KM_DECL_ENUM(PaddingMode, PADDING_MODE)                             \
+    KM_DECL_ENUM(Digest, DIGEST)                                        \
+    KM_DECL_ENUM(EcCurve, EC_CURVE)                                     \
+    KM_DECL_ENUM(KeyOrigin, KEY_ORIGIN)                                 \
+    KM_DECL_ENUM(KeyBlobUsageRequirements, KEY_BLOB_USAGE_REQUIREMENTS) \
+    KM_DECL_ENUM(KeyPurpose, KEY_PURPOSE)                               \
+    KM_DECL_ENUM(KeyDerivationFunction, KDF)                            \
+    KM_DECL_ENUM(SecurityLevel, SECURITY_LEVEL)                         \
+    KM_DECL_ENUM(KeyFormat, KEY_FORMAT)                                 \
+    KM_DECL_ENUM(VerifiedBootState, VERIFIED_BOOT_STATE)                \
+
+#endif /* KM_ENUM_LIST__ */
+
+
+#ifndef KM_ALG_LIST__
+/**
+ * Algorithms provided by IKeymasterDevice implementations.
+ */
+#define KM_ALG_LIST__ /* (c_prefix, name, value) */                 \
+    /**                                                             \
+     * Asymmetric algorithms.                                       \
+     */                                                             \
+    KM_DECL_ENUM_VAL(KM_ALG_, RSA, 1)                               \
+    KM_DECL_ENUM_VAL(KM_ALG_, DSA, 2) /* removed long ago :( */     \
+    KM_DECL_ENUM_VAL(KM_ALG_, EC, 3) /* used to only be ECDSA */    \
+    KM_DECL_ENUM_VAL(KM_ALG_, ECIES, 4) /* very legacy stuff */     \
+                                                                    \
+    /**                                                             \
+     * Block cipher algorithms                                      \
+     */                                                             \
+    KM_DECL_ENUM_VAL(KM_ALG_, AES, 32)                              \
+    KM_DECL_ENUM_VAL(KM_ALG_, TRIPLE_DES, 33)                       \
+    /* These were once optional,                                    \
+     * but don't exist in any modern KM versions */                 \
+    KM_DECL_ENUM_VAL(KM_ALG_, SKIPJACK, 34)                         \
+     /* AES Finalists */                                            \
+    KM_DECL_ENUM_VAL(KM_ALG_, MARS, 48)                             \
+    KM_DECL_ENUM_VAL(KM_ALG_, RC6, 49)                              \
+    KM_DECL_ENUM_VAL(KM_ALG_, SERPENT, 50)                          \
+    KM_DECL_ENUM_VAL(KM_ALG_, TWOFISH, 51)                          \
+    /* Other common block ciphers */                                \
+    KM_DECL_ENUM_VAL(KM_ALG_, IDEA, 52)                             \
+    KM_DECL_ENUM_VAL(KM_ALG_, RC5, 53)                              \
+    KM_DECL_ENUM_VAL(KM_ALG_, CAST5, 54)                            \
+    KM_DECL_ENUM_VAL(KM_ALG_, BLOWFISH, 55)                         \
+    /* Common stream ciphers */                                     \
+    KM_DECL_ENUM_VAL(KM_ALG_, RC4, 64)                              \
+    KM_DECL_ENUM_VAL(KM_ALG_, CHACHA20, 65)                         \
+                                                                    \
+    /**                                                             \
+     * MAC algorithms                                               \
+     */                                                             \
+    KM_DECL_ENUM_VAL(KM_ALG_, HMAC, 128)                            \
+
+#endif /* KM_ALG_LIST__ */
+
+#ifndef KM_BLOCK_MODE_LIST__
+/**
+ * Symmetric block cipher modes provided by keymaster implementations.
+ */
+#define KM_BLOCK_MODE_LIST__ /* (c_prefix, name, value) */              \
+    /*                                                                  \
+     * Unauthenticated modes, usable only for encryption/decryption     \
+     * and not generally recommended except for compatibility           \
+     * with existing other protocols.                                   \
+     */                                                                 \
+    KM_DECL_ENUM_VAL(KM_BLOCK_MODE_, ECB, 1)                            \
+    KM_DECL_ENUM_VAL(KM_BLOCK_MODE_, CBC, 2)                            \
+    KM_DECL_ENUM_VAL(KM_BLOCK_MODE_, CTR, 3)                            \
+                                                                        \
+    /* Legacy: KM_DECL_ENUM_VAL(KM_BLOCK_MODE_, CBC_CTS, 3)             \
+     *         KM_DECL_ENUM_VAL(KM_BLOCK_MODE_, CTR, 4)                 \
+     */                                                                 \
+    /* More legacy: */                                                  \
+    KM_DECL_ENUM_VAL(KM_BLOCK_MODE_, OFB, 5)                            \
+    KM_DECL_ENUM_VAL(KM_BLOCK_MODE_, CFB, 6)                            \
+     /* Note: requires double-length keys */                            \
+    KM_DECL_ENUM_VAL(KM_BLOCK_MODE_, XTS, 7)                            \
+                                                                        \
+    /*                                                                  \
+     * Authenticated modes, usable for encryption/decryption            \
+     * and signing/verification.                                        \
+     * Recommended over unauthenticated modes for all purposes.         \
+     */                                                                 \
+    KM_DECL_ENUM_VAL(KM_BLOCK_MODE_, GCM, 32)                           \
+                                                                        \
+    /* Only legacy modes follow */                                      \
+    KM_DECL_ENUM_VAL(KM_BLOCK_MODE_, OCB, 33)                           \
+    KM_DECL_ENUM_VAL(KM_BLOCK_MODE_, CCM, 34)                           \
+     /* MAC modes -- only for signing/verification */                   \
+    KM_DECL_ENUM_VAL(KM_BLOCK_MODE_, CMAC, 128)                         \
+    KM_DECL_ENUM_VAL(KM_BLOCK_MODE_, POLY1305, 129)                     \
+
+#endif /* KM_BLOCK_MODE_LIST__ */
+
+#ifndef KM_PADDING_MODE_LIST__
+/**
+ * Padding modes that may be applied to plaintext for encryption operations.  This list includes
+ * padding modes for both symmetric and asymmetric algorithms.  Note that implementations should not
+ * provide all possible combinations of algorithm and padding, only the
+ * cryptographically-appropriate pairs.
+ */
+#define KM_PADDING_MODE_LIST__ /* (c_prefix, name, value) */    \
+    KM_DECL_ENUM_VAL(KM_PADDING_, NONE, 1)                      \
+    KM_DECL_ENUM_VAL(KM_PADDING_, RSA_OAEP, 2)                  \
+    KM_DECL_ENUM_VAL(KM_PADDING_, RSA_PSS, 3)                   \
+    KM_DECL_ENUM_VAL(KM_PADDING_, RSA_PKCS1_1_5_ENCRYPT, 4)     \
+    KM_DECL_ENUM_VAL(KM_PADDING_, RSA_PKCS1_1_5_SIGN, 5)        \
+                                                                \
+    /* Legacy */                                                \
+    KM_DECL_ENUM_VAL(KM_PADDING_, ANSI_X923, 32)                \
+    KM_DECL_ENUM_VAL(KM_PADDING_, ISO_10126, 33)                \
+                                                                \
+    /* Legacy:                                                  \
+     *  KM_DECL_ENUM_VAL(KM_PADDING_, ZERO, 64)                 \
+     *  KM_DECL_ENUM_VAL(KM_PADDING_, PKCS7, 65)                \
+     * Current: */                                              \
+    KM_DECL_ENUM_VAL(KM_PADDING_, PKCS7, 64)                    \
+                                                                \
+    /* Also legacy */                                           \
+    KM_DECL_ENUM_VAL(KM_PADDING_, ISO_7816_4, 66)               \
+
+#endif /* KM_PADDING_MODE_LIST__ */
+
+#ifndef KM_DIGEST_LIST__
+/**
+ * Digests provided by keymaster implementations.
+ */
+#define KM_DIGEST_LIST__ /* (c_prefix, name, value) */  \
+    KM_DECL_ENUM_VAL(KM_DIGEST_, NONE, 0)               \
+    KM_DECL_ENUM_VAL(KM_DIGEST_, MD5, 1)                \
+    KM_DECL_ENUM_VAL(KM_DIGEST_, SHA1, 2)               \
+    KM_DECL_ENUM_VAL(KM_DIGEST_, SHA_2_224, 3)          \
+    KM_DECL_ENUM_VAL(KM_DIGEST_, SHA_2_256, 4)          \
+    KM_DECL_ENUM_VAL(KM_DIGEST_, SHA_2_384, 5)          \
+    KM_DECL_ENUM_VAL(KM_DIGEST_, SHA_2_512, 6)          \
+                                                        \
+    /* Legacy; unsupported in modern versions */        \
+    KM_DECL_ENUM_VAL(KM_DIGEST_, SHA_3_256, 7)          \
+    KM_DECL_ENUM_VAL(KM_DIGEST_, SHA_3_384, 8)          \
+    KM_DECL_ENUM_VAL(KM_DIGEST_, SHA_3_512, 9)          \
+
+#endif /* KM_DIGEST_LIST__ */
+
+#ifndef KM_EC_CURVE_LIST__
+/**
+ * Supported EC curves, used in ECDSA
+ */
+#define KM_EC_CURVE_LIST__ /* (c_prefix, name, value) */                    \
+    KM_DECL_ENUM_VAL(KM_EC_CURVE_, P_224, 0)                                \
+    KM_DECL_ENUM_VAL(KM_EC_CURVE_, P_256, 1)                                \
+    KM_DECL_ENUM_VAL(KM_EC_CURVE_, P_384, 2)                                \
+    KM_DECL_ENUM_VAL(KM_EC_CURVE_, P_521, 3)                                \
+    KM_DECL_ENUM_VAL(KM_EC_CURVE_, CURVE_25519, 4) /* added in KeyMint */   \
+
+#endif /* KM_EC_CURVE_LIST__ */
+
+#ifndef KM_KEY_ORIGIN_LIST__
+/**
+ * The origin of a key (or pair), i.e. where it was generated.  Note that ORIGIN can be found in
+ * either the hardware-enforced or software-enforced list for a key, indicating whether the key is
+ * hardware or software-based.  Specifically, a key with GENERATED in the hardware-enforced list
+ * must be guaranteed never to have existed outide the secure hardware.
+ */
+#define KM_KEY_ORIGIN_LIST__ /* (c_prefix, name, value) */                      \
+    /**                                                                         \
+     * Generated in keymaster.  Should not exist outside the TEE.               \
+     */                                                                         \
+    KM_DECL_ENUM_VAL(KM_ORIGIN_, GENERATED, 0)                                  \
+    /**                                                                         \
+     * Derived inside keymaster.  Likely exists off-device.                     \
+     */                                                                         \
+    KM_DECL_ENUM_VAL(KM_ORIGIN_, DERIVED, 1)                                    \
+    /**                                                                         \
+     * Imported into keymaster.  Existed as cleartext in Android.               \
+     */                                                                         \
+    KM_DECL_ENUM_VAL(KM_ORIGIN_, IMPORTED, 2)                                   \
+    /**                                                                         \
+     * Keymaster did not record origin.                                         \
+     * This value can only be seen on keys in a keymaster0 implementation.      \
+     * The keymaster0 adapter uses this value to document the fact that it is   \
+     * unkown whether the key was generated inside or imported into keymaster.  \
+     */                                                                         \
+    KM_DECL_ENUM_VAL(KM_ORIGIN_, UNKNOWN, 3)                                    \
+    /**                                                                         \
+     * Securely imported into Keymaster. Was created elsewhere,                 \
+     * and passed securely through Android to secure hardware.                  \
+     */                                                                         \
+    KM_DECL_ENUM_VAL(KM_ORIGIN_, SECURELY_IMPORTED, 4)                          \
+
+#endif /* KM_KEY_ORIGIN_LIST__ */
+
+#ifndef KM_KEY_BLOB_USAGE_REQUIREMENTS_LIST__
+/**
+ * Usability requirements of key blobs.  This defines what system functionality must be available
+ * for the key to function.  For example, key "blobs" which are actually handles referencing
+ * encrypted key material stored in the file system cannot be used until the file system is
+ * available, and should have BLOB_REQUIRES_FILE_SYSTEM.
+ */
+#define KM_KEY_BLOB_USAGE_REQUIREMENTS_LIST__ /* (c_prefix, name, value) */ \
+    KM_DECL_ENUM_VAL(KM_, BLOB_STANDALONE, 0)                               \
+    KM_DECL_ENUM_VAL(KM_, BLOB_REQUIRES_FILESYSTEM, 1)                      \
+
+#endif /* KM_KEY_BLOB_USAGE_REQUIREMENTS_LIST__ */
+
+#ifndef KM_KEY_PURPOSE_LIST__
+/**
+ * Possible purposes of a key (or pair).
+ */
+#define KM_KEY_PURPOSE_LIST__ /* (c_prefix, name, value) */                                     \
+    /**                                                                                         \
+     * Usable with RSA, EC and AES keys.                                                        \
+     */                                                                                         \
+    KM_DECL_ENUM_VAL(KM_PURPOSE_, ENCRYPT, 0)                                                   \
+                                                                                                \
+    /**                                                                                         \
+     * Usable with RSA, EC and AES keys.                                                        \
+     */                                                                                         \
+    KM_DECL_ENUM_VAL(KM_PURPOSE_, DECRYPT, 1)                                                   \
+                                                                                                \
+    /**                                                                                         \
+     * Usable with RSA, EC and HMAC keys.                                                       \
+     */                                                                                         \
+    KM_DECL_ENUM_VAL(KM_PURPOSE_, SIGN, 2)                                                      \
+                                                                                                \
+    /**                                                                                         \
+     * Usable with RSA, EC and HMAC keys.                                                       \
+     */                                                                                         \
+    KM_DECL_ENUM_VAL(KM_PURPOSE_, VERIFY, 3)                                                    \
+                                                                                                \
+    /**                                                                                         \
+     * Legacy Keymaster 3.0 KeyPurpose; in newer versions it's just "reserved".                 \
+     *                                                                                          \
+     * Usable with EC keys.                                                                     \
+     */                                                                                         \
+    KM_DECL_ENUM_VAL(KM_PURPOSE_, DERIVE_KEY, 4)                                                \
+                                                                                                \
+    /**                                                                                         \
+     * Usable with wrapping keys (RSA & maybe AES?)                                             \
+     */                                                                                         \
+    KM_DECL_ENUM_VAL(KM_PURPOSE_, WRAP_KEY, 5)                                                  \
+                                                                                                \
+    /**                                                                                         \
+     * Added in KeyMint.                                                                        \
+     *                                                                                          \
+     * Key Agreement, usable with EC keys.                                                      \
+     */                                                                                         \
+    KM_DECL_ENUM_VAL(KM_PURPOSE_, AGREE_KEY, 6)                                                 \
+                                                                                                \
+    /**                                                                                         \
+     * Added in KeyMint.                                                                        \
+     *                                                                                          \
+     * Usable as an attestation signing key.  Keys with this purpose must not have any other    \
+     * purpose; if they do, key generation/import must be rejected with                         \
+     * ErrorCode::INCOMPATIBLE_PURPOSE. (Rationale: If key also included KeyPurpose::SIGN, then \
+     * it could be used to sign arbitrary data, including any tbsCertificate, and so an         \
+     * attestation produced by the key would have no security properties.)                      \
+     */                                                                                         \
+    KM_DECL_ENUM_VAL(KM_PURPOSE_, ATTEST_KEY, 7)                                                \
+
+#endif /* KM_KEY_PURPOSE_LIST__ */
+
+#ifndef KM_KDF_LIST__
+/**
+ * Key derivation functions, mostly used in ECIES.
+ */
+#define KM_KDF_LIST__ /* (c_prefix, name, value) */                     \
+    /**                                                                 \
+     * Do not apply a key derivation function; use the raw agreed key   \
+     */                                                                 \
+    KM_DECL_ENUM_VAL(KM_DERIVATION_, NONE, 0)                           \
+    /**                                                                 \
+     * HKDF defined in RFC 5869 with SHA256                             \
+     */                                                                 \
+    KM_DECL_ENUM_VAL(KM_DERIVATION_, RFC5869_SHA256, 1)                 \
+    /**                                                                 \
+     * KDF1 defined in ISO 18033-2 with SHA1                            \
+     */                                                                 \
+    KM_DECL_ENUM_VAL(KM_DERIVATION_, ISO18033_2_KDF1_SHA1, 2)           \
+    /**                                                                 \
+     * KDF1 defined in ISO 18033-2 with SHA256                          \
+     */                                                                 \
+    KM_DECL_ENUM_VAL(KM_DERIVATION_, ISO18033_2_KDF1_SHA256, 3)         \
+    /**                                                                 \
+     * KDF2 defined in ISO 18033-2 with SHA1                            \
+     */                                                                 \
+    KM_DECL_ENUM_VAL(KM_DERIVATION_, ISO18033_2_KDF2_SHA1, 4)           \
+    /**                                                                 \
+     * KDF2 defined in ISO 18033-2 with SHA256                          \
+     */                                                                 \
+    KM_DECL_ENUM_VAL(KM_DERIVATION_, ISO18033_2_KDF2_SHA256, 5)         \
+
+#endif /* KM_KDF_LIST__ */
+
+#ifndef KM_HARDWARE_AUTHENTICATOR_TYPE_LIST__
+/**
+ * Hardware authentication type, used by HardwareAuthTokens to specify the mechanism used to
+ * authentiate the user, and in KeyCharacteristics to specify the allowable mechanisms for
+ * authenticating to activate a key.
+ */
+#define KM_HARDWARE_AUTHENTICATOR_TYPE_LIST__ /* (c_prefix, name, value) */ \
+    KM_DECL_ENUM_VAL(KM_AUTHENTICATOR_, NONE, 0)                            \
+    KM_DECL_ENUM_VAL(KM_AUTHENTICATOR_, PASSWORD, 1) /* 1 << 0 */           \
+    KM_DECL_ENUM_VAL(KM_AUTHENTICATOR_, FINGERPRINT, 2) /* 1 << 1 */        \
+    KM_DECL_ENUM_VAL(KM_AUTHENTICATOR_, ANY, 4294967295) /* 0xFFFFFFFF */   \
+
+#endif /* KM_HARDWARE_AUTHENTICATOR_TYPE_LIST__ */
+
+#ifndef KM_SECURITY_LEVEL_LIST__
+/**
+ * Device security levels.
+ */
+#define KM_SECURITY_LEVEL_LIST__ /* (c_prefix, name, value) */                                      \
+    /**                                                                                             \
+     * The SOFTWARE security level represents a KeyMint implementation that runs in an Android      \
+     * process, or a tag enforced by such an implementation.  An attacker who can compromise that   \
+     * process, or obtain root, or subvert the kernel on the device can defeat it.                  \
+     *                                                                                              \
+     * Note that the distinction between SOFTWARE and KEYSTORE is only relevant on-device.  For     \
+     * attestation purposes, these categories are combined into the software-enforced authorization \
+     * list.                                                                                        \
+     */                                                                                             \
+    KM_DECL_ENUM_VAL(KM_SECURITY_LEVEL_, SOFTWARE, 0)                                               \
+                                                                                                    \
+    /**                                                                                             \
+     * The TRUSTED_ENVIRONMENT security level represents a KeyMint implementation that runs in an   \
+     * isolated execution environment that is securely isolated from the code running on the kernel \
+     * and above, and which satisfies the requirements specified in CDD 9.11.1 [C-1-2]. An attacker \
+     * who completely compromises Android, including the Linux kernel, does not have the ability to \
+     * subvert it.  An attacker who can find an exploit that gains them control of the trusted      \
+     * environment, or who has access to the physical device and can mount a sophisticated hardware \
+     * attack, may be able to defeat it.                                                            \
+     */                                                                                             \
+    KM_DECL_ENUM_VAL(KM_SECURITY_LEVEL_, TRUSTED_ENVIRONMENT, 1)                                    \
+                                                                                                    \
+    /**                                                                                             \
+     * The STRONGBOX security level represents a KeyMint implementation that runs in security       \
+     * hardware that satisfies the requirements specified in CDD 9.11.2.  Roughly speaking, these   \
+     * are discrete, security-focus computing environments that are hardened against physical and   \
+     * side channel attack, and have had their security formally validated by a competent           \
+     * penetration testing lab.                                                                     \
+     */                                                                                             \
+    KM_DECL_ENUM_VAL(KM_SECURITY_LEVEL_, STRONGBOX, 2)                                              \
+                                                                                                    \
+    /**                                                                                             \
+     * Added in KeyMint.                                                                            \
+     *                                                                                              \
+     * KeyMint implementations must never return the KEYSTORE security level from getHardwareInfo.  \
+     * It is used to specify tags that are not enforced by the IKeyMintDevice, but are instead      \
+     * to be enforced by Keystore.  An attacker who can subvert the keystore process or gain root   \
+     * or subvert the kernel can prevent proper enforcement of these tags.                          \
+     *                                                                                              \
+     *                                                                                              \
+     * Note that the distinction between SOFTWARE and KEYSTORE is only relevant on-device.  When    \
+     * KeyMint generates an attestation certificate, these categories are combined into the         \
+     * software-enforced authorization list.                                                        \
+     */                                                                                             \
+    KM_DECL_ENUM_VAL(KM_SECURITY_LEVEL_, KEYSTORE, 100)                                             \
+
+#endif /* KM_SECURITY_LEVEL_LIST__ */
+
+#ifndef KM_KEY_FORMAT_LIST__
+/**
+ * Formats for key import and export.
+ */
+#define KM_KEY_FORMAT_LIST__ /* (name, value) */                                                    \
+    /** X.509 certificate format, for public key export. */                                         \
+    KM_DECL_ENUM_VAL(KM_FORMAT_, X509, 0)                                                           \
+    /** PKCS#8 format, asymmetric key pair import. */                                               \
+    KM_DECL_ENUM_VAL(KM_FORMAT_, PKCS8, 1)                                                          \
+    /**                                                                                             \
+     * Raw bytes, for symmetric key import, and for import of raw asymmetric keys for curve 25519.  \
+     */                                                                                             \
+    KM_DECL_ENUM_VAL(KM_FORMAT_, RAW, 3)                                                            \
+
+#endif /* KM_KEY_FORMAT_LIST__ */
+
+#ifndef KM_VERIFIED_BOOT_STATE_LIST__
+/* The C enum representation of the `VerifiedBootState` ASN.1 ENUMERATED type.
+ * Present in the `RootOfTrust` struct. */
+#define KM_VERIFIED_BOOT_STATE_LIST__ /* (name, value) */   \
+    KM_DECL_ENUM_VAL(KM_VERIFIED_BOOT_, VERIFIED, 0)        \
+    KM_DECL_ENUM_VAL(KM_VERIFIED_BOOT_, SELF_SIGNED, 1)     \
+    KM_DECL_ENUM_VAL(KM_VERIFIED_BOOT_, UNVERIFIED, 2)      \
+    KM_DECL_ENUM_VAL(KM_VERIFIED_BOOT_, FAILED, 3)          \
+
+#endif /* KM_VERIFIED_BOOT_STATE_LIST__ */

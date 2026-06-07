@@ -238,6 +238,10 @@ int wrap_key(hidl_vec<uint8_t> const& in_private_key,
         case Algorithm::HMAC:
             format = KeyFormat::RAW;
             break;
+        default:
+            std::cerr << "Algorithm " << static_cast<int>(pkey_alg)
+                << " (" << toString(pkey_alg) << ") is not supported" << std::endl;
+            return -1;
     }
 
     std::cout << "Private key algorithm is " << toString(pkey_alg) <<

@@ -23,12 +23,12 @@ INCLUDES += -I$(PWD)/libsuskmhal/include
 COMMON_DEFINES := -USUSKEYMASTER_BUILD_HOST -DSUSKEYMASTER_BUILD_ANDROID -DSUSKEYMASTER_ENABLE_3_0 -DSUSKEYMASTER_ENABLE_4_0 -DSUSKEYMASTER_ENABLE_4_1
 
 COMMON_CFLAGS := -std=c11 -Wall -Wextra -pipe -fPIC -fvisibility=hidden $(COMMON_DEFINES) $(INCLUDES)
-COMMON_CXXFLAGS := -std=c++17 -Wall -Wno-switch -Wno-unknown-pragmas -pipe -fPIC -fno-exceptions -fno-rtti $(COMMON_DEFINES) $(INCLUDES)
+COMMON_CXXFLAGS := -std=c++17 -Wall -Wno-unknown-pragmas -pipe -fPIC -fvisibility=hidden -fno-exceptions -fno-rtti $(COMMON_DEFINES) $(INCLUDES)
 DEPFLAGS ?= -MMD -MP
 
 ASAN_FLAGS := -fsanitize=address
 
-LDFLAGS ?=
+LDFLAGS ?= -fvisibility=hidden
 ifeq ($(PLATFORM), windows)
 LDFLAGS += -mconsole
 endif
@@ -87,7 +87,7 @@ BINDIR := bin
 
 # Sources and objects
 _sus_hook_handler := libsuskeymaster/handler.cpp libsuskeymaster/sus-samsung-indata.cpp
-_cli_srcs := $(wildcard ./cli/*.c) $(wildcard ./cli/*.cpp)
+_cli_srcs := $(wildcard cli/*.c) $(wildcard cli/*.cpp)
 
 C_SRCS := $(wildcard */*/*.c) $(wildcard */*.c) $(wildcard *.c)
 CXX_SRCS := $(wildcard */*/*/*.cpp) $(wildcard */*/*.cpp) $(wildcard */*.cpp) $(wildcard *.cpp)
@@ -135,7 +135,7 @@ cli: $(OBJDIR) $(BINDIR) $(EXE)
 
 lib: CFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
 lib: CXXFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
-lib: LDFLAGS += $(ASAN_FLAGS)
+lib: LDFLAGS += $(ASAN_FLAGS) -Wl,--version-script=libsuskeymaster/libsuskeymaster.map
 lib: $(OBJDIR) $(BINDIR) $(SO_LIB)
 
 trace: CFLAGS = -g -O0 -Wall -DCGD_ENABLE_TRACE $(ASAN_FLAGS)

@@ -1,0 +1,7 @@
+{
+    global:
+        sus_attest_cb;
+
+    local:
+        *;
+};
