@@ -7,6 +7,7 @@
 #include <libsuskmhal/util/km-params.hpp>
 #include <libsuskmhal/transport/hal.h>
 #include <libsuskmhal/transport/serdes-aidl.h>
+#include <libsuskmhal/transport/aidl-util.h>
 #include <strings.h>
 #include <cstdio>
 #include <string>
@@ -1345,6 +1346,15 @@ static const std::vector<cli_command> cmds = {
 
             return 0;
         };
+
+        i32 ver = 0;
+        s = kmhal_get_aidl_interface_version(aidl_hal, &ver);
+        std::cout << "getInterfaceVersion result: " << static_cast<int>(s)
+            << " (" << kmhal_android_status_toString(s) << ")" << std::endl;
+        if (s != OK)
+            return EXIT_FAILURE;
+
+        std::cout << "KeyMint interface version: " << ver << std::endl;
 
         s = kmhal_call(aidl_hal, 1, nullptr, 0, &desc, 1);
         std::cout << "call result: " << static_cast<int>(s)

@@ -62,7 +62,11 @@ kmhal_hidl_base_ping(struct kmhal_binder_ctx *binder,
     }
 
 err:
-    kmhal_util_destroy_txn_tmps(txn_p, &parcel);
+    if (ret != OK)
+        kmhal_util_destroy_txn_tmps(txn_p, &parcel);
+    else
+        kmhal_parcel_destroy(&parcel);
+
     return ret;
 }
 

@@ -3,6 +3,7 @@
 #include "aidl-util.h"
 #include "binder.h"
 #include "parcel.h"
+#include "status.h"
 #include "txn-util.h"
 #include <core/int.h>
 #include <core/log.h>
@@ -210,6 +211,74 @@ err:
         free(fqinstname_str);
         fqinstname_str = NULL;
     }
+
+    return ret;
+}
+
+enum kmhal_android_status
+kmhal_aidl_ping(struct kmhal_binder_ctx *binder,
+                struct kmhal_binder_txn **txn_p,
+                u32 handle)
+{
+    u_check_params(kmhal_binder_ctx_ok(binder) && txn_p != NULL);
+    enum kmhal_android_status ret = UNKNOWN_ERROR;
+    struct kmhal_parcel *parcel = NULL;
+
+    if ((ret = kmhal_util_check_allocate_txn_tmps(txn_p, &parcel)) != OK)
+        goto err;
+
+    kmhal_parcel_pack(*txn_p, parcel, handle, AIDL_PING_TRANSACTION, 0);
+
+    ret = kmhal_util_transact_and_unpack(binder, txn_p, &parcel, NULL, 1, 1);
+
+err:
+    if (ret != OK)
+        kmhal_util_destroy_txn_tmps(txn_p, &parcel);
+    else
+        kmhal_parcel_destroy(&parcel);
+
+    return ret;
+}
+
+enum kmhal_android_status
+kmhal_aidl_get_interface_version(struct kmhal_binder_ctx *binder,
+                                 struct kmhal_binder_txn **txn_p,
+                                 enum kmhal_aidl_tx_header_type hdr_type,
+                                 const char16_t *interface_token,
+
+                                 u32 in_handle,
+
+                                 i32 *out_interface_version)
+{
+    u_check_params(kmhal_binder_ctx_ok(binder) && txn_p != NULL);
+    u_check_params(out_interface_version != NULL);
+
+    enum kmhal_android_status ret = UNKNOWN_ERROR;
+    struct kmhal_parcel *parcel = NULL;
+
+    if ((ret = kmhal_util_check_allocate_txn_tmps(txn_p, &parcel)) != OK)
+        goto err;
+
+    kmhal_aidl_write_tx_header(parcel, hdr_type, interface_token);
+
+    kmhal_parcel_pack(*txn_p, parcel, in_handle,
+            AIDL_META_CMD_GET_INTERFACE_VERSION, 0);
+
+    if ((ret = kmhal_util_transact_and_unpack(binder, txn_p,
+                    &parcel, NULL, 1, 1)) != OK)
+        goto err;
+
+    size_t off = KMHAL_PARCEL_DATA_START_OFFSET;
+    if (kmhal_parcel_read_u32(parcel, &off, (u32 *)out_interface_version)) {
+        ret = BAD_VALUE;
+        goto_error("Failed to read the returned interface version");
+    }
+
+err:
+    if (ret != OK)
+        kmhal_util_destroy_txn_tmps(txn_p, &parcel);
+    else
+        kmhal_parcel_destroy(&parcel);
 
     return ret;
 }

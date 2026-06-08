@@ -182,7 +182,37 @@ kmhal_ping(struct kmhal_sp *hal)
         return UNEXPECTED_NULL;
     }
 
-    return kmhal_hidl_base_ping(hal->binder, &hal->txn, hal->handle);
+    if (hal->aidl)
+        return kmhal_aidl_ping(hal->binder, &hal->txn, hal->handle);
+    else
+        return kmhal_hidl_base_ping(hal->binder, &hal->txn, hal->handle);
+}
+
+enum kmhal_android_status
+kmhal_get_aidl_interface_version(struct kmhal_sp *hal,
+                                 i32 *out_interface_version)
+{
+    if (hal == NULL || !atomic_load(&hal->initialized_)) {
+        s_log_error("HAL is invalid or NULL");
+        return UNEXPECTED_NULL;
+    } else if (!hal->aidl) {
+        s_log_error("Not an AIDL HAL!");
+        return BAD_TYPE;
+    }
+
+    i32 tmp = 0;
+    enum kmhal_android_status ret = UNKNOWN_ERROR;
+    ret = kmhal_aidl_get_interface_version(hal->binder, &hal->txn,
+            hal->aidl_tx_hdr_type, hal->aidl_fqname16, hal->handle, &tmp);
+    if (ret != OK) {
+        s_log_error("%s.getInterfaceVersion: ret: %d (%s)",
+                hal->fqname, ret, kmhal_android_status_toString(ret));
+        return ret;
+    }
+
+    if (out_interface_version != NULL)
+        *out_interface_version = tmp;
+    return OK;
 }
 
 enum kmhal_android_status

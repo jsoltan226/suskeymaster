@@ -97,6 +97,21 @@ void kmhal_sp_destroy(struct kmhal_sp **hal_p);
 enum kmhal_android_status kmhal_ping(struct kmhal_sp *hal);
 
 /**
+ * Calls the special `getInterfaceVersion` on an AIDL HAL.
+ * Invalid for HIDL HALs.
+ *
+ * @param the HAL instance whose interface version to query.
+ *
+ * @param out_interface_version Output pointer for the returned
+ *  interface version. May be NULL.
+ *
+ * @return OK if successful, anything else otherwise.
+ */
+enum kmhal_android_status
+kmhal_get_aidl_interface_version(struct kmhal_sp *hal,
+                                 i32 *out_interface_version);
+
+/**
  * The types of data that can be serialized/deserialized
  * from/to a binder transaction.
  */

@@ -155,6 +155,134 @@ kmhal_aidl_manager_get(struct kmhal_binder_ctx *binder,
 
                        u32 *out_handle);
 
+/* See "frameworks/native/libs/binder/include/binder/IBinder.h" in AOSP */
+enum kmhal_aidl_transaction_ids {
+    AIDL_FIRST_CALL_TRANSACTION = 0x00000001,
+    AIDL_LAST_CALL_TRANSACTION = 0x00ffffff,
+
+    /** AIDL "meta" transactions -
+     ** special methods shared by all AIDL interfaces, similar to hidlbase **/
+
+    /* "frameworks/native/libs/binder/ndk/ibinder.cpp",
+     * "system/tools/aidl/aidl.cpp" */
+
+    /* IDs for meta transactions. Most of the meta transactions are implemented
+     * in the framework side (Binder.java or Binder.cpp).
+     * But these are the ones that are auto-implemented by the AIDL compiler. */
+
+    /* Additional meta transactions implemented by AIDL should use
+     * kFirstMetaMethodId -1, -2, ...and so on. */
+
+    /* Note: In AOSP, `*_METHOD_ID` mean offsets from
+     * `AIDL_FIRST_CALL_TRANSACTION`, but here, for convenience,
+     * we define them as absolute values. */
+    AIDL_FIRST_META_METHOD_ID = AIDL_LAST_CALL_TRANSACTION,
+
+    /* Reserve 100 IDs for meta methods, which is more than enough.
+     * If we don't reserve, in the future, a newly added meta transaction ID
+     * will have a chance to collide with the user-defined methods
+     * that were added in the past. So, let's prevent users from using IDs
+     * in this range from the beginning. */
+    AIDL_LAST_META_METHOD_ID = AIDL_FIRST_META_METHOD_ID - 99,
+
+    /* AIDL getInterfaceVersion */
+    AIDL_META_CMD_GET_INTERFACE_VERSION = AIDL_FIRST_META_METHOD_ID,
+
+    /* AIDL getInterfaceHash */
+    AIDL_META_CMD_GET_INTERFACE_HASH = AIDL_FIRST_META_METHOD_ID - 1,
+
+    /* Range of IDs that is allowed for user-defined methods. */
+    AIDL_FIRST_USER_METHOD_ID = AIDL_FIRST_CALL_TRANSACTION,
+    AIDL_LAST_USER_METHOD_ID = AIDL_LAST_META_METHOD_ID - 1,
+
+    /** Special transaction codes **/
+
+    AIDL_PING_TRANSACTION = B_PACK_CHARS('_', 'P', 'N', 'G'),
+    AIDL_START_RECORDING_TRANSACTION = B_PACK_CHARS('_', 'S', 'R', 'D'),
+    AIDL_STOP_RECORDING_TRANSACTION = B_PACK_CHARS('_', 'E', 'R', 'D'),
+    AIDL_DUMP_TRANSACTION = B_PACK_CHARS('_', 'D', 'M', 'P'),
+    AIDL_SHELL_COMMAND_TRANSACTION = B_PACK_CHARS('_', 'C', 'M', 'D'),
+    AIDL_INTERFACE_TRANSACTION = B_PACK_CHARS('_', 'N', 'T', 'F'),
+    AIDL_SYSPROPS_TRANSACTION = B_PACK_CHARS('_', 'S', 'P', 'R'),
+    AIDL_EXTENSION_TRANSACTION = B_PACK_CHARS('_', 'E', 'X', 'T'),
+    AIDL_DEBUG_PID_TRANSACTION = B_PACK_CHARS('_', 'P', 'I', 'D'),
+    AIDL_SET_RPC_CLIENT_TRANSACTION = B_PACK_CHARS('_', 'R', 'P', 'C'),
+
+    /* See android.os.IBinder.TWEET_TRANSACTION
+     * Most importantly, messages can be anything not exceeding 130 UTF-8
+     * characters, and callees should exclaim "jolly good message old boy!" */
+    AIDL_TWEET_TRANSACTION = B_PACK_CHARS('_', 'T', 'W', 'T'),
+
+    /* See android.os.IBinder.LIKE_TRANSACTION
+     * Improve binder self-esteem. */
+    AIDL_LIKE_TRANSACTION = B_PACK_CHARS('_', 'L', 'I', 'K'),
+
+    /** Transaction/binder flags **/
+
+    /* Corresponds to TF_ONE_WAY -- an asynchronous call. */
+    AIDL_FLAG_ONEWAY = 0x00000001,
+
+    /* Corresponds to TF_CLEAR_BUF -- clear transaction buffers after call
+     * is made */
+    AIDL_FLAG_CLEAR_BUF = 0x00000020,
+
+    /* Private userspace flag for transaction which is being requested from
+     * a vendor context. */
+    AIDL_FLAG_PRIVATE_VENDOR = 0x10000000,
+};
+
+/**
+ * Pings the given AIDL service.
+ *
+ * @param binder The binder device context.
+ *
+ * @param txn_p Pointer to binder transaction context.
+ *  It itself must not be NULL, but `*txn_p` may be, in which case
+ *  a new transaction context will be allocated on-the-fly and written there.
+ *  See `kmhal_util_check_allocate_txn_tmps`.
+ *
+ * @param handle A handle to the service to ping.
+ *
+ * @return OK on success, anything else otherwise.
+ */
+enum kmhal_android_status
+kmhal_aidl_ping(struct kmhal_binder_ctx *binder,
+                struct kmhal_binder_txn **txn_p,
+                u32 handle);
+
+/**
+ * Calls the special `getInterfaceVersion` method on the given AIDL service.
+ *
+ * @param binder The binder device context.
+ *
+ * @param txn_p Pointer to binder transaction context.
+ *  It itself must not be NULL, but `*txn_p` may be, in which case
+ *  a new transaction context will be allocated on-the-fly and written there.
+ *  See `kmhal_util_check_allocate_txn_tmps`.
+ *
+ * @param hdr_type AIDL parcel header type.
+ *  See `kmhal_aidl_get_tx_header_type`.
+ *
+ * @param interface_token The interface token (fqname) of the service.
+ *
+ * @param in_handle A handle to the AIDL server
+ *  whose interface version is to be queried.
+ *
+ * @param out_interface_version Output pointer
+ *  for the returned interface version. Must not be NULL.
+ *
+ * @return OK on success, anything else on failure.
+ */
+enum kmhal_android_status
+kmhal_aidl_get_interface_version(struct kmhal_binder_ctx *binder,
+                                 struct kmhal_binder_txn **txn_p,
+                                 enum kmhal_aidl_tx_header_type hdr_type,
+                                 const char16_t *interface_token,
+
+                                 u32 in_handle,
+
+                                 i32 *out_interface_version);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif /* __cplusplus */
