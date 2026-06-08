@@ -5,10 +5,12 @@
 #include "keymaster-types-c.h"
 #include "transport/aosp-hidl-support.hpp"
 #include <cstdint>
+#include <vector>
+#include <array>
 
-namespace android {
-namespace hardware {
-namespace keymaster {
+namespace suskeymaster {
+namespace kmhal {
+
 namespace generic {
 
 // Forward declaration for forward reference support:
@@ -137,6 +139,23 @@ KM_ENUM_LIST__
 #undef KM_DECL_ENUM
 #undef KM_DECL_ENUM_VAL
 
+typedef uint64_t OperationHandle;
+
+struct KeyParameter;
+struct KeyCharacteristics;
+struct HardwareAuthToken;
+struct HmacSharingParameters;
+struct VerificationToken;
+
+} /* namespace generic */
+
+namespace hidl {
+
+using namespace ::android::hardware;
+
+std::vector<u8> fromHidl(const hidl_vec<u8>&);
+std::vector<std::vector<u8>> fromHidl(const hidl_vec<hidl_vec<u8>>&);
+
 struct KeyParameter final {
     // Forward declaration for forward reference support:
     union IntegerParams;
@@ -145,17 +164,17 @@ struct KeyParameter final {
         /*
          * Enum types
          */
-        ::android::hardware::keymaster::generic::Algorithm algorithm __attribute__ ((aligned(4)));
-        ::android::hardware::keymaster::generic::BlockMode blockMode __attribute__ ((aligned(4)));
-        ::android::hardware::keymaster::generic::PaddingMode paddingMode __attribute__ ((aligned(4)));
-        ::android::hardware::keymaster::generic::Digest digest __attribute__ ((aligned(4)));
-        ::android::hardware::keymaster::generic::EcCurve ecCurve __attribute__ ((aligned(4)));
-        ::android::hardware::keymaster::generic::KeyOrigin origin __attribute__ ((aligned(4)));
-        ::android::hardware::keymaster::generic::KeyBlobUsageRequirements keyBlobUsageRequirements __attribute__ ((aligned(4)));
-        ::android::hardware::keymaster::generic::KeyPurpose purpose __attribute__ ((aligned(4)));
-        ::android::hardware::keymaster::generic::KeyDerivationFunction keyDerivationFunction __attribute__ ((aligned(4)));
-        ::android::hardware::keymaster::generic::HardwareAuthenticatorType hardwareAuthenticatorType __attribute__ ((aligned(4)));
-        ::android::hardware::keymaster::generic::SecurityLevel hardwareType __attribute__ ((aligned(4)));
+        generic::Algorithm algorithm __attribute__ ((aligned(4)));
+        generic::BlockMode blockMode __attribute__ ((aligned(4)));
+        generic::PaddingMode paddingMode __attribute__ ((aligned(4)));
+        generic::Digest digest __attribute__ ((aligned(4)));
+        generic::EcCurve ecCurve __attribute__ ((aligned(4)));
+        generic::KeyOrigin origin __attribute__ ((aligned(4)));
+        generic::KeyBlobUsageRequirements keyBlobUsageRequirements __attribute__ ((aligned(4)));
+        generic::KeyPurpose purpose __attribute__ ((aligned(4)));
+        generic::KeyDerivationFunction keyDerivationFunction __attribute__ ((aligned(4)));
+        generic::HardwareAuthenticatorType hardwareAuthenticatorType __attribute__ ((aligned(4)));
+        generic::SecurityLevel hardwareType __attribute__ ((aligned(4)));
         /*
          * Other types
          */
@@ -170,16 +189,19 @@ struct KeyParameter final {
      * Discriminates the union/blob field used.  The blob cannot be placed in the union, but only
      * one of "f" and "blob" may ever be used at a time.
      */
-    ::android::hardware::keymaster::generic::Tag tag __attribute__ ((aligned(4)));
-    ::android::hardware::keymaster::generic::KeyParameter::IntegerParams f __attribute__ ((aligned(8)));
-    ::android::hardware::hidl_vec<uint8_t> blob __attribute__ ((aligned(8)));
+    generic::Tag tag __attribute__ ((aligned(4)));
+    hidl::KeyParameter::IntegerParams f __attribute__ ((aligned(8)));
+    hidl_vec<uint8_t> blob __attribute__ ((aligned(8)));
 };
 
-static_assert(offsetof(::android::hardware::keymaster::generic::KeyParameter, tag) == 0, "wrong offset");
-static_assert(offsetof(::android::hardware::keymaster::generic::KeyParameter, f) == 8, "wrong offset");
-static_assert(offsetof(::android::hardware::keymaster::generic::KeyParameter, blob) == 16, "wrong offset");
-static_assert(sizeof(::android::hardware::keymaster::generic::KeyParameter) == 32, "wrong size");
-static_assert(__alignof(::android::hardware::keymaster::generic::KeyParameter) == 8, "wrong alignment");
+static_assert(offsetof(hidl::KeyParameter, tag) == 0, "wrong offset");
+static_assert(offsetof(hidl::KeyParameter, f) == 8, "wrong offset");
+static_assert(offsetof(hidl::KeyParameter, blob) == 16, "wrong offset");
+static_assert(sizeof(hidl::KeyParameter) == 32, "wrong size");
+static_assert(__alignof(hidl::KeyParameter) == 8, "wrong alignment");
+
+generic::KeyParameter fromHidl(const KeyParameter&);
+std::vector<generic::KeyParameter> fromHidl(const hidl_vec<KeyParameter>&);
 
 /**
  * KeyCharacteristics defines the attributes of a key, including cryptographic parameters, and usage
@@ -195,14 +217,16 @@ static_assert(__alignof(::android::hardware::keymaster::generic::KeyParameter) =
  * must never appear in KeyCharacteristics.
  */
 struct KeyCharacteristics final {
-    ::android::hardware::hidl_vec<::android::hardware::keymaster::generic::KeyParameter> softwareEnforced __attribute__ ((aligned(8)));
-    ::android::hardware::hidl_vec<::android::hardware::keymaster::generic::KeyParameter> hardwareEnforced __attribute__ ((aligned(8)));
+    hidl_vec<KeyParameter> softwareEnforced __attribute__ ((aligned(8)));
+    hidl_vec<KeyParameter> hardwareEnforced __attribute__ ((aligned(8)));
 };
 
-static_assert(offsetof(::android::hardware::keymaster::generic::KeyCharacteristics, softwareEnforced) == 0, "wrong offset");
-static_assert(offsetof(::android::hardware::keymaster::generic::KeyCharacteristics, hardwareEnforced) == 16, "wrong offset");
-static_assert(sizeof(::android::hardware::keymaster::generic::KeyCharacteristics) == 32, "wrong size");
-static_assert(__alignof(::android::hardware::keymaster::generic::KeyCharacteristics) == 8, "wrong alignment");
+static_assert(offsetof(KeyCharacteristics, softwareEnforced) == 0, "wrong offset");
+static_assert(offsetof(KeyCharacteristics, hardwareEnforced) == 16, "wrong offset");
+static_assert(sizeof(KeyCharacteristics) == 32, "wrong size");
+static_assert(__alignof(KeyCharacteristics) == 8, "wrong alignment");
+
+generic::KeyCharacteristics fromHidl(const KeyCharacteristics&);
 
 /**
  * HardwareAuthToken is used to prove successful user authentication, to unlock the use of a key.
@@ -235,7 +259,7 @@ struct HardwareAuthToken final {
      * authenticatorType describes the type of authentication that took place, e.g. password or
      * fingerprint.
      */
-    ::android::hardware::keymaster::generic::HardwareAuthenticatorType authenticatorType __attribute__ ((aligned(4)));
+    generic::HardwareAuthenticatorType authenticatorType __attribute__ ((aligned(4)));
     /**
      * timestamp indicates when the user authentication took place, in milliseconds since some
      * starting point (generally the most recent device boot) which all of the applications within
@@ -263,19 +287,19 @@ struct HardwareAuthToken final {
      * IKeymasterDevice::update and IKeymasterDevice::finish doc comments, an empty mac indicates
      * that this auth token is empty.
      */
-    ::android::hardware::hidl_vec<uint8_t> mac __attribute__ ((aligned(8)));
+    hidl_vec<uint8_t> mac __attribute__ ((aligned(8)));
 };
 
-static_assert(offsetof(::android::hardware::keymaster::generic::HardwareAuthToken, challenge) == 0, "wrong offset");
-static_assert(offsetof(::android::hardware::keymaster::generic::HardwareAuthToken, userId) == 8, "wrong offset");
-static_assert(offsetof(::android::hardware::keymaster::generic::HardwareAuthToken, authenticatorId) == 16, "wrong offset");
-static_assert(offsetof(::android::hardware::keymaster::generic::HardwareAuthToken, authenticatorType) == 24, "wrong offset");
-static_assert(offsetof(::android::hardware::keymaster::generic::HardwareAuthToken, timestamp) == 32, "wrong offset");
-static_assert(offsetof(::android::hardware::keymaster::generic::HardwareAuthToken, mac) == 40, "wrong offset");
-static_assert(sizeof(::android::hardware::keymaster::generic::HardwareAuthToken) == 56, "wrong size");
-static_assert(__alignof(::android::hardware::keymaster::generic::HardwareAuthToken) == 8, "wrong alignment");
+generic::HardwareAuthToken fromHidl(const HardwareAuthToken&);
 
-typedef uint64_t OperationHandle;
+static_assert(offsetof(HardwareAuthToken, challenge) == 0, "wrong offset");
+static_assert(offsetof(HardwareAuthToken, userId) == 8, "wrong offset");
+static_assert(offsetof(HardwareAuthToken, authenticatorId) == 16, "wrong offset");
+static_assert(offsetof(HardwareAuthToken, authenticatorType) == 24, "wrong offset");
+static_assert(offsetof(HardwareAuthToken, timestamp) == 32, "wrong offset");
+static_assert(offsetof(HardwareAuthToken, mac) == 40, "wrong offset");
+static_assert(sizeof(HardwareAuthToken) == 56, "wrong size");
+static_assert(__alignof(HardwareAuthToken) == 8, "wrong alignment");
 
 /**
  * HmacSharingParameters holds the data used in the process of establishing a shared HMAC key
@@ -289,19 +313,22 @@ struct HmacSharingParameters final {
      * agreement key (see documentation of computeSharedHmac in @4.0::IKeymaster).  It is either
      * empty or 32 bytes in length.
      */
-    ::android::hardware::hidl_vec<uint8_t> seed __attribute__ ((aligned(8)));
+    hidl_vec<uint8_t> seed __attribute__ ((aligned(8)));
     /**
      * A 32-byte value which is guaranteed to be different each time
      * getHmacSharingParameters() is called.  Probabilistic uniqueness (i.e. random) is acceptable,
      * though a stronger uniqueness guarantee (e.g. counter) is recommended where possible.
      */
-    ::android::hardware::hidl_array<uint8_t, 32> nonce __attribute__ ((aligned(1)));
+    hidl_array<uint8_t, 32> nonce __attribute__ ((aligned(1)));
 };
 
-static_assert(offsetof(::android::hardware::keymaster::generic::HmacSharingParameters, seed) == 0, "wrong offset");
-static_assert(offsetof(::android::hardware::keymaster::generic::HmacSharingParameters, nonce) == 16, "wrong offset");
-static_assert(sizeof(::android::hardware::keymaster::generic::HmacSharingParameters) == 48, "wrong size");
-static_assert(__alignof(::android::hardware::keymaster::generic::HmacSharingParameters) == 8, "wrong alignment");
+static_assert(offsetof(HmacSharingParameters, seed) == 0, "wrong offset");
+static_assert(offsetof(HmacSharingParameters, nonce) == 16, "wrong offset");
+static_assert(sizeof(HmacSharingParameters) == 48, "wrong size");
+static_assert(__alignof(HmacSharingParameters) == 8, "wrong alignment");
+
+generic::HmacSharingParameters fromHidl(const HmacSharingParameters&);
+std::vector<generic::HmacSharingParameters> fromHidl(const hidl_vec<HmacSharingParameters>&);
 
 /**
  * VerificationToken enables one Keymaster instance to validate authorizations for another.  See
@@ -322,11 +349,11 @@ struct VerificationToken final {
      * A list of the parameters verified.  Empty if the only parameters verified are time-related.
      * In that case the timestamp is the payload.
      */
-    ::android::hardware::hidl_vec<::android::hardware::keymaster::generic::KeyParameter> parametersVerified __attribute__ ((aligned(8)));
+    hidl_vec<KeyParameter> parametersVerified __attribute__ ((aligned(8)));
     /**
      * SecurityLevel of the secure environment that generated the token.
      */
-    ::android::hardware::keymaster::generic::SecurityLevel securityLevel __attribute__ ((aligned(4)));
+    generic::SecurityLevel securityLevel __attribute__ ((aligned(4)));
     /**
      * 32-byte HMAC-SHA256 of the above values, computed as:
      *
@@ -347,234 +374,257 @@ struct VerificationToken final {
      * from the Keystore attestation documentation.  If parametersVerified is empty, it is simply
      * omitted from the HMAC computation.
      */
-    ::android::hardware::hidl_vec<uint8_t> mac __attribute__ ((aligned(8)));
+    hidl_vec<uint8_t> mac __attribute__ ((aligned(8)));
 };
 
-static_assert(offsetof(::android::hardware::keymaster::generic::VerificationToken, challenge) == 0, "wrong offset");
-static_assert(offsetof(::android::hardware::keymaster::generic::VerificationToken, timestamp) == 8, "wrong offset");
-static_assert(offsetof(::android::hardware::keymaster::generic::VerificationToken, parametersVerified) == 16, "wrong offset");
-static_assert(offsetof(::android::hardware::keymaster::generic::VerificationToken, securityLevel) == 32, "wrong offset");
-static_assert(offsetof(::android::hardware::keymaster::generic::VerificationToken, mac) == 40, "wrong offset");
-static_assert(sizeof(::android::hardware::keymaster::generic::VerificationToken) == 56, "wrong size");
-static_assert(__alignof(::android::hardware::keymaster::generic::VerificationToken) == 8, "wrong alignment");
+static_assert(offsetof(VerificationToken, challenge) == 0, "wrong offset");
+static_assert(offsetof(VerificationToken, timestamp) == 8, "wrong offset");
+static_assert(offsetof(VerificationToken, parametersVerified) == 16, "wrong offset");
+static_assert(offsetof(VerificationToken, securityLevel) == 32, "wrong offset");
+static_assert(offsetof(VerificationToken, mac) == 40, "wrong offset");
+static_assert(sizeof(VerificationToken) == 56, "wrong size");
+static_assert(__alignof(VerificationToken) == 8, "wrong alignment");
+
+generic::VerificationToken fromHidl(const VerificationToken&);
 
 //
 // type declarations for package
 //
 
-static inline std::string toString(const ::android::hardware::keymaster::generic::KeyParameter::IntegerParams& o);
-static inline void PrintTo(const ::android::hardware::keymaster::generic::KeyParameter::IntegerParams& o, ::std::ostream*);
+std::string toString(const KeyParameter::IntegerParams& o);
+void PrintTo(const KeyParameter::IntegerParams& o, ::std::ostream*);
 // operator== and operator!= are not generated for IntegerParams
 
-static inline std::string toString(const ::android::hardware::keymaster::generic::KeyParameter& o);
-static inline void PrintTo(const ::android::hardware::keymaster::generic::KeyParameter& o, ::std::ostream*);
+std::string toString(const KeyParameter& o);
+void PrintTo(const KeyParameter& o, ::std::ostream*);
 // operator== and operator!= are not generated for KeyParameter
 
-static inline std::string toString(const ::android::hardware::keymaster::generic::KeyCharacteristics& o);
-static inline void PrintTo(const ::android::hardware::keymaster::generic::KeyCharacteristics& o, ::std::ostream*);
+std::string toString(const KeyCharacteristics& o);
+void PrintTo(const KeyCharacteristics& o, ::std::ostream*);
 // operator== and operator!= are not generated for KeyCharacteristics
 
-static inline std::string toString(const ::android::hardware::keymaster::generic::HardwareAuthToken& o);
-static inline void PrintTo(const ::android::hardware::keymaster::generic::HardwareAuthToken& o, ::std::ostream*);
-static inline bool operator==(const ::android::hardware::keymaster::generic::HardwareAuthToken& lhs, const ::android::hardware::keymaster::generic::HardwareAuthToken& rhs);
-static inline bool operator!=(const ::android::hardware::keymaster::generic::HardwareAuthToken& lhs, const ::android::hardware::keymaster::generic::HardwareAuthToken& rhs);
+std::string toString(const HardwareAuthToken& o);
+void PrintTo(const HardwareAuthToken& o, ::std::ostream*);
+bool operator==(const HardwareAuthToken& lhs, const HardwareAuthToken& rhs);
+bool operator!=(const HardwareAuthToken& lhs, const HardwareAuthToken& rhs);
 
-static inline std::string toString(const ::android::hardware::keymaster::generic::HmacSharingParameters& o);
-static inline void PrintTo(const ::android::hardware::keymaster::generic::HmacSharingParameters& o, ::std::ostream*);
-static inline bool operator==(const ::android::hardware::keymaster::generic::HmacSharingParameters& lhs, const ::android::hardware::keymaster::generic::HmacSharingParameters& rhs);
-static inline bool operator!=(const ::android::hardware::keymaster::generic::HmacSharingParameters& lhs, const ::android::hardware::keymaster::generic::HmacSharingParameters& rhs);
+std::string toString(const HmacSharingParameters& o);
+void PrintTo(const HmacSharingParameters& o, ::std::ostream*);
+bool operator==(const HmacSharingParameters& lhs, const HmacSharingParameters& rhs);
+bool operator!=(const HmacSharingParameters& lhs, const HmacSharingParameters& rhs);
 
-static inline std::string toString(const ::android::hardware::keymaster::generic::VerificationToken& o);
-static inline void PrintTo(const ::android::hardware::keymaster::generic::VerificationToken& o, ::std::ostream*);
+std::string toString(const VerificationToken& o);
+void PrintTo(const VerificationToken& o, ::std::ostream*);
 // operator== and operator!= are not generated for VerificationToken
 
 //
 // type header definitions for package
 //
 
-static inline std::string toString(const ::android::hardware::keymaster::generic::KeyParameter::IntegerParams& o) {
-    using ::android::hardware::toString;
-    std::string os;
-    os += "{";
-    os += ".algorithm = ";
-    os += ::android::hardware::keymaster::generic::toString(o.algorithm);
-    os += ", .blockMode = ";
-    os += ::android::hardware::keymaster::generic::toString(o.blockMode);
-    os += ", .paddingMode = ";
-    os += ::android::hardware::keymaster::generic::toString(o.paddingMode);
-    os += ", .digest = ";
-    os += ::android::hardware::keymaster::generic::toString(o.digest);
-    os += ", .ecCurve = ";
-    os += ::android::hardware::keymaster::generic::toString(o.ecCurve);
-    os += ", .origin = ";
-    os += ::android::hardware::keymaster::generic::toString(o.origin);
-    os += ", .keyBlobUsageRequirements = ";
-    os += ::android::hardware::keymaster::generic::toString(o.keyBlobUsageRequirements);
-    os += ", .purpose = ";
-    os += ::android::hardware::keymaster::generic::toString(o.purpose);
-    os += ", .keyDerivationFunction = ";
-    os += ::android::hardware::keymaster::generic::toString(o.keyDerivationFunction);
-    os += ", .hardwareAuthenticatorType = ";
-    os += ::android::hardware::keymaster::generic::toString(o.hardwareAuthenticatorType);
-    os += ", .hardwareType = ";
-    os += ::android::hardware::keymaster::generic::toString(o.hardwareType);
-    os += ", .boolValue = ";
-    os += ::android::hardware::toString(o.boolValue);
-    os += ", .integer = ";
-    os += ::android::hardware::toString(o.integer);
-    os += ", .longInteger = ";
-    os += ::android::hardware::toString(o.longInteger);
-    os += ", .dateTime = ";
-    os += ::android::hardware::toString(o.dateTime);
-    os += "}"; return os;
-}
+//
+} /* namespace hidl */
 
-static inline void PrintTo(const ::android::hardware::keymaster::generic::KeyParameter::IntegerParams& o, ::std::ostream* os) {
-    *os << toString(o);
-}
+namespace generic {
 
-// operator== and operator!= are not generated for IntegerParams
+using ::android::hardware::hidl_vec;
 
-static inline std::string toString(const ::android::hardware::keymaster::generic::KeyParameter& o) {
-    using ::android::hardware::toString;
-    std::string os;
-    os += "{";
-    os += ".tag = ";
-    os += ::android::hardware::keymaster::generic::toString(o.tag);
-    os += ", .f = ";
-    os += ::android::hardware::keymaster::generic::toString(o.f);
-    os += ", .blob = ";
-    os += ::android::hardware::toString(o.blob);
-    os += "}"; return os;
-}
+const hidl_vec<u8> toHidlView(const std::vector<u8>&);
+const hidl_vec<hidl_vec<u8>> toHidlView(const std::vector<std::vector<u8>>&);
 
-static inline void PrintTo(const ::android::hardware::keymaster::generic::KeyParameter& o, ::std::ostream* os) {
-    *os << toString(o);
-}
+struct KeyParameter final {
+    union IntegerParams final {
+        /*
+         * Enum types
+         */
+        Algorithm algorithm;
+        BlockMode blockMode;
+        PaddingMode paddingMode;
+        Digest digest;
+        EcCurve ecCurve;
+        KeyOrigin origin;
+        KeyBlobUsageRequirements keyBlobUsageRequirements;
+        KeyPurpose purpose;
+        KeyDerivationFunction keyDerivationFunction;
+        HardwareAuthenticatorType hardwareAuthenticatorType;
+        SecurityLevel hardwareType;
+        /*
+         * Other types
+         */
+        bool boolValue;
+        uint32_t integer;
+        uint64_t longInteger;
+        uint64_t dateTime;
+    };
 
-// operator== and operator!= are not generated for KeyParameter
 
-static inline std::string toString(const ::android::hardware::keymaster::generic::KeyCharacteristics& o) {
-    using ::android::hardware::toString;
-    std::string os;
-    os += "{";
-    os += ".softwareEnforced = ";
-    os += ::android::hardware::toString(o.softwareEnforced);
-    os += ", .hardwareEnforced = ";
-    os += ::android::hardware::toString(o.hardwareEnforced);
-    os += "}"; return os;
-}
+    /**
+     * Discriminates the union/blob field used
+     * The blob cannot be placed in the union, but only
+     * one of "f" and "blob" may ever be used at a time.
+     */
+    Tag tag;
+    KeyParameter::IntegerParams f;
+    std::vector<u8> blob;
+};
+const hidl::KeyParameter toHidlView(const KeyParameter& kp);
+const hidl_vec<hidl::KeyParameter> toHidlView(const std::vector<KeyParameter>&);
 
-static inline void PrintTo(const ::android::hardware::keymaster::generic::KeyCharacteristics& o, ::std::ostream* os) {
-    *os << toString(o);
-}
+/**
+ * KeyCharacteristics defines the attributes of a key, including cryptographic parameters, and usage
+ * restrictions.  It consits of two vectors of KeyParameters, one for "softwareEnforced" attributes
+ * and one for "hardwareEnforced" attributes.
+ *
+ * KeyCharacteristics objects are returned by generateKey, importKey, importWrappedKey and
+ * getKeyCharacteristics.  The IKeymasterDevice secure environment is responsible for allocating the
+ * parameters, all of which are Tags with associated values, to the correct vector.  The
+ * hardwareEnforced vector must contain only those attributes which are enforced by secure hardware.
+ * All others should be in the softwareEnforced vector.  See the definitions of individual Tag enums
+ * for specification of which must be hardware-enforced, which may be software-enforced and which
+ * must never appear in KeyCharacteristics.
+ */
+struct KeyCharacteristics final {
+    std::vector<KeyParameter> softwareEnforced;
+    std::vector<KeyParameter> hardwareEnforced;
+};
+const hidl::KeyCharacteristics toHidlView(const KeyCharacteristics&);
 
-// operator== and operator!= are not generated for KeyCharacteristics
+/**
+ * HardwareAuthToken is used to prove successful user authentication, to unlock the use of a key.
+ *
+ * HardwareAuthTokens are produced by other secure environment applications, notably GateKeeper and
+ * Fingerprint, in response to successful user authentication events.  These tokens are passed to
+ * begin(), update(), and finish() to prove that authentication occurred.  See those methods for
+ * more details.  It is up to the caller to determine which of the generated auth tokens is
+ * appropriate for a given key operation.
+ */
+struct HardwareAuthToken final {
+    /**
+     * challenge is a value that's used to enable authentication tokens to authorize specific
+     * events.  The primary use case for challenge is to authorize an IKeymasterDevice cryptographic
+     * operation, for keys that require authentication per operation. See begin() for details.
+     */
+    uint64_t challenge;
+    /**
+     *  userId is the a "secure" user ID.  It is not related to any Android user ID or UID, but is
+     *  created in the Gatekeeper application in the secure environment.
+     */
+    uint64_t userId;
+    /**
+     *  authenticatorId is the a "secure" user ID.  It is not related to any Android user ID or UID,
+     *  but is created in an authentication application in the secure environment, such as the
+     *  Fingerprint application.
+     */
+    uint64_t authenticatorId;
+    /**
+     * authenticatorType describes the type of authentication that took place, e.g. password or
+     * fingerprint.
+     */
+    HardwareAuthenticatorType authenticatorType;
+    /**
+     * timestamp indicates when the user authentication took place, in milliseconds since some
+     * starting point (generally the most recent device boot) which all of the applications within
+     * one secure environment must agree upon.  This timestamp is used to determine whether or not
+     * the authentication occurred recently enough to unlock a key (see Tag::AUTH_TIMEOUT).
+     */
+    uint64_t timestamp;
+    /**
+     * MACs are computed with a backward-compatible method, used by Keymaster 3.0, Gatekeeper 1.0
+     * and Fingerprint 1.0, as well as pre-treble HALs.
+     *
+     * The MAC is Constants::AUTH_TOKEN_MAC_LENGTH bytes in length and is computed as follows:
+     *
+     *     HMAC_SHA256(
+     *         H, 0 || challenge || user_id || authenticator_id || authenticator_type || timestamp)
+     *
+     * where ``||'' represents concatenation, the leading zero is a single byte, and all integers
+     * are represented as unsigned values, the full width of the type.  The challenge, userId and
+     * authenticatorId values are in machine order, but authenticatorType and timestamp are in
+     * network order (big-endian).  This odd construction is compatible with the hw_auth_token_t
+     * structure,
+     *
+     * Note that mac is a vec rather than an array, not because it's actually variable-length but
+     * because it could be empty.  As documented in the IKeymasterDevice::begin,
+     * IKeymasterDevice::update and IKeymasterDevice::finish doc comments, an empty mac indicates
+     * that this auth token is empty.
+     */
+    std::vector<uint8_t> mac;
+};
+const hidl::HardwareAuthToken toHidlView(const HardwareAuthToken&);
 
-static inline std::string toString(const ::android::hardware::keymaster::generic::HardwareAuthToken& o) {
-    using ::android::hardware::toString;
-    std::string os;
-    os += "{";
-    os += ".challenge = ";
-    os += ::android::hardware::toString(o.challenge);
-    os += ", .userId = ";
-    os += ::android::hardware::toString(o.userId);
-    os += ", .authenticatorId = ";
-    os += ::android::hardware::toString(o.authenticatorId);
-    os += ", .authenticatorType = ";
-    os += ::android::hardware::keymaster::generic::toString(o.authenticatorType);
-    os += ", .timestamp = ";
-    os += ::android::hardware::toString(o.timestamp);
-    os += ", .mac = ";
-    os += ::android::hardware::toString(o.mac);
-    os += "}"; return os;
-}
+/**
+ * HmacSharingParameters holds the data used in the process of establishing a shared HMAC key
+ * between multiple Keymaster instances.  Sharing parameters are returned in this struct by
+ * getHmacSharingParameters() and send to computeSharedHmac().  See the named methods in IKeymaster
+ * for details of usage.
+ */
+struct HmacSharingParameters final {
+    /**
+     * Either empty or contains a persistent value that is associated with the pre-shared HMAC
+     * agreement key (see documentation of computeSharedHmac in @4.0::IKeymaster).  It is either
+     * empty or 32 bytes in length.
+     */
+    std::vector<uint8_t> seed;
+    /**
+     * A 32-byte value which is guaranteed to be different each time
+     * getHmacSharingParameters() is called.  Probabilistic uniqueness (i.e. random) is acceptable,
+     * though a stronger uniqueness guarantee (e.g. counter) is recommended where possible.
+     */
+    std::array<uint8_t, 32> nonce;
+};
+const hidl::HmacSharingParameters toHidlView(const HmacSharingParameters&);
+const hidl_vec<hidl::HmacSharingParameters> toHidlView(const std::vector<HmacSharingParameters>&);
 
-static inline void PrintTo(const ::android::hardware::keymaster::generic::HardwareAuthToken& o, ::std::ostream* os) {
-    *os << toString(o);
-}
+/**
+ * VerificationToken enables one Keymaster instance to validate authorizations for another.  See
+ * verifyAuthorizations() in IKeymaster for details.
+ */
+struct VerificationToken final {
+    /**
+     * The operation handle, used to ensure freshness.
+     */
+    uint64_t challenge __attribute__ ((aligned(8)));
+    /**
+     * The current time of the secure environment that generates the VerificationToken.  This can be
+     * checked against auth tokens generated by the same secure environment, which avoids needing to
+     * synchronize clocks.
+     */
+    uint64_t timestamp __attribute__ ((aligned(8)));
+    /**
+     * A list of the parameters verified.  Empty if the only parameters verified are time-related.
+     * In that case the timestamp is the payload.
+     */
+    std::vector<KeyParameter> parametersVerified __attribute__ ((aligned(8)));
+    /**
+     * SecurityLevel of the secure environment that generated the token.
+     */
+    SecurityLevel securityLevel __attribute__ ((aligned(4)));
+    /**
+     * 32-byte HMAC-SHA256 of the above values, computed as:
+     *
+     *    HMAC(H,
+     *         "Auth Verification" || challenge || timestamp || securityLevel || parametersVerified)
+     *
+     * where:
+     *
+     *   ``HMAC'' is the shared HMAC key (see computeSharedHmac() in IKeymaster).
+     *
+     *   ``||'' represents concatenation
+     *
+     * The representation of challenge and timestamp is as 64-bit unsigned integers in big-endian
+     * order.  securityLevel is represented as a 32-bit unsigned integer in big-endian order.
+     *
+     * If parametersVerified is non-empty, the representation of parametersVerified is an ASN.1 DER
+     * encoded representation of the values.  The ASN.1 schema used is the AuthorizationList schema
+     * from the Keystore attestation documentation.  If parametersVerified is empty, it is simply
+     * omitted from the HMAC computation.
+     */
+    std::vector<uint8_t> mac __attribute__ ((aligned(8)));
+};
+const hidl::VerificationToken toHidlView(const VerificationToken&);
 
-static inline bool operator==(const ::android::hardware::keymaster::generic::HardwareAuthToken& lhs, const ::android::hardware::keymaster::generic::HardwareAuthToken& rhs) {
-    if (lhs.challenge != rhs.challenge) {
-        return false;
-    }
-    if (lhs.userId != rhs.userId) {
-        return false;
-    }
-    if (lhs.authenticatorId != rhs.authenticatorId) {
-        return false;
-    }
-    if (lhs.authenticatorType != rhs.authenticatorType) {
-        return false;
-    }
-    if (lhs.timestamp != rhs.timestamp) {
-        return false;
-    }
-    if (lhs.mac != rhs.mac) {
-        return false;
-    }
-    return true;
-}
+} /* namespace generic */
 
-static inline bool operator!=(const ::android::hardware::keymaster::generic::HardwareAuthToken& lhs, const ::android::hardware::keymaster::generic::HardwareAuthToken& rhs){
-    return !(lhs == rhs);
-}
-
-static inline std::string toString(const ::android::hardware::keymaster::generic::HmacSharingParameters& o) {
-    using ::android::hardware::toString;
-    std::string os;
-    os += "{";
-    os += ".seed = ";
-    os += ::android::hardware::toString(o.seed);
-    os += ", .nonce = ";
-    os += ::android::hardware::toString(o.nonce);
-    os += "}"; return os;
-}
-
-static inline void PrintTo(const ::android::hardware::keymaster::generic::HmacSharingParameters& o, ::std::ostream* os) {
-    *os << toString(o);
-}
-
-static inline bool operator==(const ::android::hardware::keymaster::generic::HmacSharingParameters& lhs, const ::android::hardware::keymaster::generic::HmacSharingParameters& rhs) {
-    if (lhs.seed != rhs.seed) {
-        return false;
-    }
-    if (lhs.nonce != rhs.nonce) {
-        return false;
-    }
-    return true;
-}
-
-static inline bool operator!=(const ::android::hardware::keymaster::generic::HmacSharingParameters& lhs, const ::android::hardware::keymaster::generic::HmacSharingParameters& rhs){
-    return !(lhs == rhs);
-}
-
-static inline std::string toString(const ::android::hardware::keymaster::generic::VerificationToken& o) {
-    using ::android::hardware::toString;
-    std::string os;
-    os += "{";
-    os += ".challenge = ";
-    os += ::android::hardware::toString(o.challenge);
-    os += ", .timestamp = ";
-    os += ::android::hardware::toString(o.timestamp);
-    os += ", .parametersVerified = ";
-    os += ::android::hardware::toString(o.parametersVerified);
-    os += ", .securityLevel = ";
-    os += ::android::hardware::keymaster::generic::toString(o.securityLevel);
-    os += ", .mac = ";
-    os += ::android::hardware::toString(o.mac);
-    os += "}"; return os;
-}
-
-static inline void PrintTo(const ::android::hardware::keymaster::generic::VerificationToken& o, ::std::ostream* os) {
-    *os << toString(o);
-}
-
-// operator== and operator!= are not generated for VerificationToken
-
-}  // namespace GENERIC
-}  // namespace keymaster
-}  // namespace hardware
-}  // namespace android
+} /* namespace kmhal */
+} /* namespace suskeymaster */
 
 #endif  // HIDL_GENERATED_ANDROID_HARDWARE_KEYMASTER_GENERIC_TYPES_H

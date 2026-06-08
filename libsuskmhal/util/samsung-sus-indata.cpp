@@ -1,6 +1,8 @@
 #define HIDL_DISABLE_INSTRUMENTATION
 #include "samsung-sus-indata.hpp"
 #include <core/log.h>
+#include <vector>
+#include <cstring>
 #include <openssl/asn1t.h>
 #include <openssl/crypto.h>
 
@@ -15,7 +17,7 @@ ASN1_SEQUENCE(SUSKEYMASTER_SEND_INDATA_ERR) = {
 } ASN1_SEQUENCE_END(SUSKEYMASTER_SEND_INDATA_ERR)
 IMPLEMENT_ASN1_FUNCTIONS(SUSKEYMASTER_SEND_INDATA_ERR)
 
-int serialize_send_indata_err(hidl_vec<uint8_t>& out, send_indata_err e)
+int serialize_send_indata_err(std::vector<uint8_t>& out, send_indata_err e)
 {
 
     SUSKEYMASTER_SEND_INDATA_ERR *asn1 = SUSKEYMASTER_SEND_INDATA_ERR_new();
@@ -42,7 +44,7 @@ int serialize_send_indata_err(hidl_vec<uint8_t>& out, send_indata_err e)
     return 0;
 }
 
-int deserialize_send_indata_err(send_indata_err& out, hidl_vec<uint8_t> const& der)
+int deserialize_send_indata_err(send_indata_err& out, std::vector<uint8_t> const& der)
 {
     const unsigned char *p = der.data();
     SUSKEYMASTER_SEND_INDATA_ERR *asn1 =

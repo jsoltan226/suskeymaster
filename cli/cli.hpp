@@ -5,7 +5,6 @@
 #include <libsuskmhal/suskmhal.hpp>
 #include <libsuskmhal/util/km-params.hpp>
 #include <libsuskmhal/keymaster-types-cpp.hpp>
-#include <libsuskmhal/transport/hidl-base.h>
 #include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <libsuscertmod/samsung-sus-indata.h>
 #include <vector>
@@ -20,52 +19,58 @@ namespace suskeymaster {
 namespace cli {
 
 using ::suskeymaster::kmhal::SusKMHal;
-using namespace ::android::hardware::keymaster::generic;
-using ::android::hardware::hidl_vec;
+using namespace kmhal::generic;
 
 namespace hal_ops {
 
 int get_print_key_characteristics(SusKMHal& hal,
-                                  hidl_vec<u8> const& key,
-                                  hidl_vec<KeyParameter> const& in_application_id_data);
+                                  std::vector<u8> const& key,
+                                  std::vector<KeyParameter> const& in_application_id_data);
 
 int generate_key(SusKMHal& hal,
-                 hidl_vec<KeyParameter> const& in_gen_params,
-                 hidl_vec<u8>& out_wrapped_blob);
+                 std::vector<KeyParameter> const& in_gen_params,
+                 std::vector<u8>& out_wrapped_blob);
 
 int attest_key(SusKMHal& hal,
-               hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& in_attest_params,
-               hidl_vec<hidl_vec<u8>>& out_cert_chain);
+               std::vector<u8> const& key,
+               std::vector<KeyParameter> const& in_attest_params,
+               std::vector<std::vector<u8>>& out_cert_chain);
 
 int import_key(SusKMHal& hal,
-               hidl_vec<u8> const& priv_pkcs8, hidl_vec<KeyParameter> const& in_import_params,
-               hidl_vec<u8>& out_wrapped_blob);
+               std::vector<u8> const& priv_pkcs8,
+               std::vector<KeyParameter> const& in_import_params,
+               std::vector<u8>& out_wrapped_blob);
 
 int export_key(SusKMHal& hal,
-               hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& in_application_id_data,
-               hidl_vec<u8>& out_public_key_x509);
+               std::vector<u8> const& key,
+               std::vector<KeyParameter> const& in_application_id_data,
+               std::vector<u8>& out_public_key_x509);
 
 int upgrade_key(SusKMHal& hal,
-                hidl_vec<u8> const& in_keyblob_to_upgrade,
-                hidl_vec<KeyParameter> const& in_upgrade_params,
-                hidl_vec<u8>& out_upgraded_keyblob);
+                std::vector<u8> const& in_keyblob_to_upgrade,
+                std::vector<KeyParameter> const& in_upgrade_params,
+                std::vector<u8>& out_upgraded_keyblob);
 
 namespace crypto {
-    int encrypt(SusKMHal& hal, hidl_vec<u8> const& plaintext,
-                hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& encrypt_params,
-                hidl_vec<u8>& out_ciphertext, hidl_vec<u8>& out_aes_gcm_iv);
+    int encrypt(SusKMHal& hal, std::vector<u8> const& plaintext,
+                std::vector<u8> const& key, std::vector<KeyParameter> const& encrypt_params,
+                HardwareAuthToken const& auth_token,
+                std::vector<u8>& out_ciphertext, std::vector<u8>& out_nonce);
 
-    int decrypt(SusKMHal& hal, hidl_vec<u8> const& ciphertext,
-                hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& decrypt_params,
-                hidl_vec<u8>& out_plaintext);
+    int decrypt(SusKMHal& hal, std::vector<u8> const& ciphertext,
+                std::vector<u8> const& key, std::vector<KeyParameter> const& decrypt_params,
+                HardwareAuthToken const& auth_token,
+                std::vector<u8>& out_plaintext);
 
-    int sign(SusKMHal& hal, hidl_vec<u8> const& message,
-             hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& in_sign_params,
-             hidl_vec<u8>& out_signature);
+    int sign(SusKMHal& hal, std::vector<u8> const& message,
+             std::vector<u8> const& key, std::vector<KeyParameter> const& in_sign_params,
+             HardwareAuthToken const& auth_token,
+             std::vector<u8>& out_signature);
 
     int verify(SusKMHal& hal,
-               hidl_vec<u8> const& message, hidl_vec<u8> const& signature,
-               hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& in_verify_params);
+               std::vector<u8> const& message, std::vector<u8> const& signature,
+               std::vector<u8> const& key, std::vector<KeyParameter> const& in_verify_params,
+               HardwareAuthToken const& auth_token);
 } /* namespace crypto */
 
 } /* namespace hal_ops */
@@ -84,43 +89,43 @@ namespace keybox {
 namespace transact {
     namespace client {
         int generate_and_attest_wrapping_key(SusKMHal& hal,
-            hidl_vec<u8>& out_wrapping_blob, hidl_vec<u8>& out_wrapping_pubkey,
-            hidl_vec<hidl_vec<u8>> * out_opt_cert_chain,
-            hidl_vec<KeyParameter> const& in_gen_params
+            std::vector<u8>& out_wrapping_blob, std::vector<u8>& out_wrapping_pubkey,
+            std::vector<std::vector<u8>> * out_opt_cert_chain,
+            std::vector<KeyParameter> const& in_gen_params
         );
     }
 
     namespace server {
-        int verify_attestation(hidl_vec<hidl_vec<u8>> const& cert_chain);
+        int verify_attestation(std::vector<std::vector<u8>> const& cert_chain);
 
-        int wrap_key(hidl_vec<u8> const& in_private_key,
-            hidl_vec<u8> const& in_wrapping_key, hidl_vec<KeyParameter> const& in_key_params,
-            hidl_vec<u8>& out_wrapped_data, hidl_vec<u8>& out_masking_key);
+        int wrap_key(std::vector<u8> const& in_private_key,
+            std::vector<u8> const& in_wrapping_key, std::vector<KeyParameter> const& in_key_params,
+            std::vector<u8>& out_wrapped_data, std::vector<u8>& out_masking_key);
     }
 
     namespace client {
-        int import_wrapped_key(SusKMHal& hal, hidl_vec<u8> const& in_wrapped_data,
-            hidl_vec<u8> const& in_masking_key, hidl_vec<u8> const& in_wrapping_blob,
-            hidl_vec<KeyParameter> const& in_unwrapping_params,
-            hidl_vec<u8>& out_key_blob);
+        int import_wrapped_key(SusKMHal& hal, std::vector<u8> const& in_wrapped_data,
+            std::vector<u8> const& in_masking_key, std::vector<u8> const& in_wrapping_blob,
+            std::vector<KeyParameter> const& in_unwrapping_params,
+            std::vector<u8>& out_key_blob);
     };
 
 } /* namespace transact */
 
 namespace vold {
-    int generate_app_id(hidl_vec<u8> const& in_secdiscardable,
-            hidl_vec<u8> const& in_secret,
-            hidl_vec<u8>& out_app_id);
+    int generate_app_id(std::vector<u8> const& in_secdiscardable,
+            std::vector<u8> const& in_secret,
+            std::vector<u8>& out_app_id);
 
     int decrypt_de_key(SusKMHal& hal,
-            hidl_vec<u8> const& in_keystore_key, hidl_vec<u8> const& in_secdiscardable,
-            hidl_vec<u8> const& in_encrypted_key, hidl_vec<u8>& out_decrypted_key);
+            std::vector<u8> const& in_keystore_key, std::vector<u8> const& in_secdiscardable,
+            std::vector<u8> const& in_encrypted_key, std::vector<u8>& out_decrypted_key);
 
     int decrypt_ce_key(
-            hidl_vec<u8> const& in_secret, hidl_vec<u8> const& in_secdiscardable,
-            hidl_vec<u8> const& in_encrypted_key, hidl_vec<u8>& out_decrypted_key);
+            std::vector<u8> const& in_secret, std::vector<u8> const& in_secdiscardable,
+            std::vector<u8> const& in_encrypted_key, std::vector<u8>& out_decrypted_key);
 
-    int fscrypt_legacy_install_key(hidl_vec<u8> const& key);
+    int fscrypt_legacy_install_key(std::vector<u8> const& key);
 };
 
 namespace gatekeeper {
@@ -150,8 +155,8 @@ namespace gatekeeper {
         struct kmhal_sp * get_hal_sp() const { return this->hal_sp; }
     };
 
-    int verify(SusKMHal& kmhal, u32 uid, u64 challenge, hidl_vec<uint8_t> const& cred,
-               hidl_vec<uint8_t> const& handle, hidl_vec<uint8_t>& out,
+    int verify(SusKMHal& kmhal, u32 uid, u64 challenge, std::vector<uint8_t> const& cred,
+               std::vector<uint8_t> const& handle, HardwareAuthToken& out,
                struct gk_hal *opt_gk_hal = nullptr);
 
     /* See "frameworks/base/core/java/com/android/internal/widget/LockPatternUtils.java"
@@ -183,52 +188,56 @@ namespace gatekeeper {
            P = PASSWORD_SCRYPT_LOG_P;
 
         static constexpr u8 PASSWORD_SALT_LENGTH = 16;
-        hidl_vec<u8> salt = hidl_vec<u8>(PASSWORD_SALT_LENGTH);
+        std::vector<u8> salt = std::vector<u8>(PASSWORD_SALT_LENGTH);
 
-        hidl_vec<u8> handle;
+        std::vector<u8> handle;
 
         static constexpr i32 PIN_LENGTH_UNAVAILABLE = -1;
         static constexpr i32 MIN_AUTO_PIN_REQUIREMENT_LENGTH = 6;
         i32 pin_length = PIN_LENGTH_UNAVAILABLE;
     };
 
-    int read_pwd_data(hidl_vec<u8> const& pwd_data, sp_pwd_data& out, bool log);
+    int read_pwd_data(std::vector<u8> const& pwd_data, sp_pwd_data& out, bool log);
 
     constexpr const u8 DEFAULT_PASSWORD[] = "default-password";
     static constexpr u32 STRETCHED_LSKF_LENGTH = 32;
-    int stretch_lskf(hidl_vec<u8> const& credential, sp_pwd_data const& pwd,
-                     hidl_vec<u8>& out, bool warn_if_default_password = true);
+    int stretch_lskf(std::vector<u8> const& credential, sp_pwd_data const& pwd,
+                     std::vector<u8>& out, bool warn_if_default_password = true);
 
-    int unwrap_sp_blob(SusKMHal& kmhal, u32 uid, hidl_vec<u8> const& keystore_key_blob,
-                       hidl_vec<u8> const& stretched_cred, hidl_vec<u8> const& secdiscardable,
-                       hidl_vec<u8> const& sp_blob, hidl_vec<u8>& out, u8& out_blob_version,
-                       hidl_vec<u8> const& gk_pwd_handle = {});
+    int unwrap_sp_blob(SusKMHal& kmhal, u32 uid, std::vector<u8> const& keystore_key_blob,
+                       std::vector<u8> const& stretched_cred,
+                       std::vector<u8> const& secdiscardable,
+                       std::vector<u8> const& sp_blob,
+                       std::vector<u8>& out, u8& out_blob_version,
+                       std::vector<u8> const& gk_pwd_handle = {});
 
     int validate_synthetic_password(SusKMHal& kmhal, u32 uid,
-                                    hidl_vec<u8> const& synthetic_password, u8 sp_blob_ver,
-                                    hidl_vec<u8> const& null_pwd_handle);
+                                    std::vector<u8> const& synthetic_password, u8 sp_blob_ver,
+                                    std::vector<u8> const& null_pwd_handle);
 
-    int derive_synthetic_password_subkey(hidl_vec<u8> const& synthetic_password, u8 sp_blob_ver,
-                                         const char *personalization, hidl_vec<u8>& out);
+    int derive_synthetic_password_subkey(std::vector<u8> const& synthetic_password, u8 sp_blob_ver,
+                                         const char *personalization, std::vector<u8>& out);
 }; /* namespace gatekeeper */
 
 namespace samsung {
     namespace ekey {
-        int list_tags(hidl_vec<u8> const& in_keyblob);
+        int list_tags(std::vector<u8> const& in_keyblob);
 
-        int add_tags(hidl_vec<u8> const& in_keyblob,
-                     hidl_vec<KeyParameter> const& in_tags_to_add, hidl_vec<u8>& out_keyblob);
+        int add_tags(std::vector<u8> const& in_keyblob,
+                     std::vector<KeyParameter> const& in_tags_to_add,
+                     std::vector<u8>& out_keyblob);
 
-        int del_tags(hidl_vec<u8> const& in_keyblob,
-                     hidl_vec<KeyParameter> const& in_tags_to_del, hidl_vec<u8>& out_keyblob);
+        int del_tags(std::vector<u8> const& in_keyblob,
+                     std::vector<KeyParameter> const& in_tags_to_del,
+                     std::vector<u8>& out_keyblob);
     } /* namespace ekey */
 
 #ifdef SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA
     int send_indata(SusKMHal& hal,
                     u32 *ver, u32 *km_ver, u32 cmd, u32 *pid,
-                    u32 *int0, u64 *long0, u64 *long1, const hidl_vec<u8> *bin0,
-                    const hidl_vec<u8> *bin1, const hidl_vec<u8> *bin2,
-                    const hidl_vec<u8> *key, const hidl_vec<KeyParameter> *par);
+                    u32 *int0, u64 *long0, u64 *long1, const std::vector<u8> *bin0,
+                    const std::vector<u8> *bin1, const std::vector<u8> *bin2,
+                    const std::vector<u8> *key, const std::vector<KeyParameter> *par);
 #endif /* SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA */
 } /* namespace samsung */
 
@@ -236,19 +245,19 @@ namespace util {
 
 /* Key parameter utilities */
 
-void extract_application_id_and_data(hidl_vec<KeyParameter> const& params,
-                                     hidl_vec<u8>& out_application_id,
-                                     hidl_vec<u8>& out_application_data);
+void extract_application_id_and_data(std::vector<KeyParameter> const& params,
+                                     std::vector<u8>& out_application_id,
+                                     std::vector<u8>& out_application_data);
 
-Algorithm find_algorithm(hidl_vec<KeyParameter> const& params,
+Algorithm find_algorithm(std::vector<KeyParameter> const& params,
                          const std::vector<Algorithm>& allowed_algs);
 
-const hidl_vec<u8> * find_blob_tag(Tag t, hidl_vec<KeyParameter> const& params);
-std::vector<hidl_vec<u8>> find_rep_blob_tag(Tag t, hidl_vec<KeyParameter> const& params);
+const std::vector<u8> * find_blob_tag(Tag t, std::vector<KeyParameter> const& params);
+std::vector<std::vector<u8>> find_rep_blob_tag(Tag t, std::vector<KeyParameter> const& params);
 
 template<typename R>
 static inline std::vector<R>
-find_rep_tag(Tag t, hidl_vec<KeyParameter> const& params)
+find_rep_tag(Tag t, std::vector<KeyParameter> const& params)
 {
     std::vector<R> ret;
 
@@ -261,7 +270,7 @@ find_rep_tag(Tag t, hidl_vec<KeyParameter> const& params)
 }
 
 template<typename R>
-static inline R find_tag(Tag t, hidl_vec<KeyParameter> const& params)
+static inline R find_tag(Tag t, std::vector<KeyParameter> const& params)
 {
     for (const auto& kp : params) {
         if (kp.tag == t)
@@ -271,48 +280,51 @@ static inline R find_tag(Tag t, hidl_vec<KeyParameter> const& params)
     return static_cast<R>(-1);
 }
 
-Algorithm determine_pkey_algorithm(hidl_vec<u8> const& priv_pkcs8);
+Algorithm determine_pkey_algorithm(std::vector<u8> const& priv_pkcs8);
 
-Algorithm determine_algorithm_from_params_and_pkey(hidl_vec<KeyParameter> const& params,
-                                                   hidl_vec<u8> const& pkey);
+Algorithm determine_algorithm_from_params_and_pkey(std::vector<KeyParameter> const& params,
+                                                   std::vector<u8> const& pkey);
 
-void init_default_params_for_alg_and_purposes(hidl_vec<KeyParameter>& params,
+void init_default_params_for_alg_and_purposes(std::vector<KeyParameter>& params,
                                               Algorithm alg,
                                               const std::vector<KeyPurpose>& purposes,
                                               bool is_generate_key);
 
 /* Gatekeeper/vold crypto utilities */
 
-hidl_vec<u8> keystore_blob_to_km_blob(hidl_vec<u8> const& keystore_blob);
+std::vector<u8> keystore_blob_to_km_blob(std::vector<u8> const& keystore_blob);
 
-hidl_vec<uint8_t> to_uppercase_hex_string(hidl_vec<uint8_t> const& data);
+std::vector<uint8_t> to_uppercase_hex_string(std::vector<uint8_t> const& data);
 
-int parse_hex_string(const hidl_vec<uint8_t>& hex, hidl_vec<uint8_t>& out);
+int parse_hex_string(const std::vector<uint8_t>& hex, std::vector<uint8_t>& out);
 
 static constexpr u32 AES_GCM_KEY_SIZE = 32;
 static constexpr u32 AES_GCM_IV_SIZE = 12;
 static constexpr u32 AES_GCM_TAG_SIZE = 16;
 
-int extract_gcm_data(hidl_vec<u8> const& blob,
-                     hidl_vec<u8>& out_iv, hidl_vec<u8>& out_ciphertext_with_tag);
+int extract_gcm_data(std::vector<u8> const& blob,
+                     std::vector<u8>& out_iv, std::vector<u8>& out_ciphertext_with_tag);
 
-int extract_gcm_data(hidl_vec<u8> const& blob,
-                     hidl_vec<u8>& out_iv, hidl_vec<u8>& out_ciphertext, hidl_vec<u8>& out_tag);
+int extract_gcm_data(std::vector<u8> const& blob,
+                     std::vector<u8>& out_iv,
+                     std::vector<u8>& out_ciphertext,
+                     std::vector<u8>& out_tag);
 
-int aes256gcm_software_decrypt(hidl_vec<u8> const& key, hidl_vec<u8> const& blob,
-                               hidl_vec<u8>& out_plaintext);
+int aes256gcm_software_decrypt(std::vector<u8> const& key, std::vector<u8> const& blob,
+                               std::vector<u8>& out_plaintext);
 
-int aes256gcm_software_decrypt(hidl_vec<u8> const& key, hidl_vec<u8> const& iv,
-                               hidl_vec<u8> const& ciphertext, hidl_vec<u8> const& tag,
-                               hidl_vec<u8>& out_plaintext);
+int aes256gcm_software_decrypt(std::vector<u8> const& key, std::vector<u8> const& iv,
+                               std::vector<u8> const& ciphertext,
+                               std::vector<u8> const& tag,
+                               std::vector<u8>& out_plaintext);
 
-int personalized_hash(hidl_vec<uint8_t> const& in_data, const char *personalization,
-                      hidl_vec<uint8_t>& out_hash);
+int personalized_hash(std::vector<uint8_t> const& in_data, const char *personalization,
+                      std::vector<uint8_t>& out_hash);
 
-int sp800_derive_with_context(hidl_vec<uint8_t> const& in_key,
+int sp800_derive_with_context(std::vector<uint8_t> const& in_key,
                               const char *label, size_t label_size,
                               const char *context, size_t context_size,
-                              hidl_vec<uint8_t>& out);
+                              std::vector<uint8_t>& out);
 
 } /* namespace util */
 

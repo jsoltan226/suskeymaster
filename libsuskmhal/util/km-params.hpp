@@ -5,7 +5,6 @@
 
 #include "../keymaster-types-c.h"
 #include "../keymaster-types-cpp.hpp"
-#include "../transport/aosp-hidl-support.hpp"
 #include <vector>
 #include <cstdint>
 
@@ -13,11 +12,11 @@ namespace suskeymaster {
 namespace kmhal {
 namespace util {
 
-using namespace ::android::hardware::keymaster::generic;
+using namespace generic;
 using namespace ::android::hardware;
 
 int parse_km_tag_params(const char *arg,
-        hidl_vec<KeyParameter>& out);
+        std::vector<KeyParameter>& out);
 
 struct km_default {
 public:
@@ -44,13 +43,13 @@ private:
     std::vector<KeyParameter> val = {};
     bool found = false;
 
-    friend void init_default_params(hidl_vec<KeyParameter>&,
+    friend void init_default_params(std::vector<KeyParameter>&,
         std::vector<struct km_default> const&);
 };
-void init_default_params(hidl_vec<KeyParameter>& params,
+void init_default_params(std::vector<KeyParameter>& params,
     std::vector<struct km_default> const& defaults);
 
-KM_PARAM_LIST * key_params_2_param_list(hidl_vec<KeyParameter> const& params);
+KM_PARAM_LIST * key_params_2_param_list(std::vector<KeyParameter> const& params);
 
 int b64decode(std::string const& in, std::vector<uint8_t> &out);
 

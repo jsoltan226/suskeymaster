@@ -586,10 +586,39 @@ init_parse(const char *name, const T **out_p,
     struct kmhal_arg_parse_desc ret;
 
     ret.name = name;
-    ret.type = KMHAL_ARG_PRIMITIVE;
+    ret.type = KMHAL_ARG_BUFFER_OBJECT;
     ret.arg.b.proc = proc;
     ret.arg.b.out_p = reinterpret_cast<const void **>(out_p);
     ret.arg.b.exp_out_size = sizeof(T);
+
+    return ret;
+}
+
+template<typename T> static inline struct kmhal_arg_write_desc
+init_write_i(const char *name, const T *data,
+             kmhal_arg_write_inline_data_proc_t proc)
+{
+    struct kmhal_arg_write_desc ret;
+
+    ret.name = name;
+    ret.type = KMHAL_ARG_INLINE_DATA;
+    ret.arg.i.proc = proc;
+    ret.arg.i.data = data;
+
+    return ret;
+}
+
+template<typename T> static inline struct kmhal_arg_parse_desc
+init_parse_i(const char *name, T *out,
+             kmhal_arg_parse_inline_data_proc_t proc)
+{
+    struct kmhal_arg_parse_desc ret;
+
+    ret.name = name;
+    ret.type = KMHAL_ARG_INLINE_DATA;
+    ret.arg.i.proc = proc;
+    ret.arg.i.out = out;
+    ret.arg.i.size = sizeof(T);
 
     return ret;
 }

@@ -19,7 +19,7 @@ namespace suskeymaster {
 namespace cli {
 namespace keybox {
 
-using namespace ::android::hardware::keymaster::generic;
+using namespace kmhal::generic;
 
 static VECTOR(uint8_t) read_file(std::string const& path);
 static int write_file(std::string const& path, VECTOR(uint8_t const) data);

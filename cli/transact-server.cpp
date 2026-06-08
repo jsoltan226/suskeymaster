@@ -7,11 +7,11 @@
 #include <libsuskmhal/keymaster-types-c.h>
 #include <libsuskmhal/keymaster-types-cpp.hpp>
 #include <libsuskmhal/util/km-params.hpp>
-#include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <libsuscertmod/certmod.h>
 #include <libsuscertmod/key-desc.h>
 #include <libsuscertmod/leaf-cert.h>
 #include <cstdio>
+#include <vector>
 #include <cstddef>
 #include <cstring>
 #include <iostream>
@@ -63,17 +63,16 @@ namespace cli {
 namespace transact {
 namespace server {
 
-using ::android::hardware::hidl_vec;
-using namespace ::android::hardware::keymaster::generic;
+using namespace kmhal::generic;
 
 /** Functions used by `verify_attestation` */
 
-static int deserialize_cert_chain(hidl_vec<hidl_vec<uint8_t>> const& in_cert_chain,
+static int deserialize_cert_chain(std::vector<std::vector<u8>> const& in_cert_chain,
         X509 **out_leaf, STACK_OF(X509) **out_intermediates, X509 **out_root);
 static int verify_cert_chain(bool root_old, int root_depth,
         X509 *leaf, STACK_OF(X509) *intermediates, X509 *root,
         bool *out_ok);
-static int check_google_root(hidl_vec<uint8_t> const& root_der, bool *is_old_root);
+static int check_google_root(std::vector<u8> const& root_der, bool *is_old_root);
 static void destroy_certs(X509 **leaf_p, STACK_OF(X509) **intermediates_p, X509 **root_p);
 
 struct verify_exdata {
@@ -87,40 +86,40 @@ static void print_openssl_errors(void);
 
 
 /** Functions used by `wrap_key` */
-static EVP_PKEY * extract_x509_public_key(hidl_vec<uint8_t> const& x509_der);
+static EVP_PKEY * extract_x509_public_key(std::vector<u8> const& x509_der);
 
 #define TRANSPORT_KEY_SIZE 32
 #define TRANSPORT_IV_SIZE 12
 #define TRANSPORT_TAG_SIZE 16
 static int wrap_with_transport_key(
-        const uint8_t transport_key[TRANSPORT_KEY_SIZE],
-        const uint8_t iv[TRANSPORT_IV_SIZE],
-        const uint8_t *aad, int aad_size,
-        uint8_t *data, int data_size,
-        uint8_t out_tag[TRANSPORT_TAG_SIZE]
+        const u8 transport_key[TRANSPORT_KEY_SIZE],
+        const u8 iv[TRANSPORT_IV_SIZE],
+        const u8 *aad, int aad_size,
+        u8 *data, int data_size,
+        u8 out_tag[TRANSPORT_TAG_SIZE]
 );
 
-static int encrypt_transport_key(const uint8_t plaintext[TRANSPORT_KEY_SIZE],
-        const uint8_t masking_key[TRANSPORT_KEY_SIZE], EVP_PKEY *wrapping_key,
-        hidl_vec<uint8_t>& out_ciphertext);
+static int encrypt_transport_key(const u8 plaintext[TRANSPORT_KEY_SIZE],
+        const u8 masking_key[TRANSPORT_KEY_SIZE], EVP_PKEY *wrapping_key,
+        std::vector<u8>& out_ciphertext);
 
 static int do_transport_encryption(
-        hidl_vec<uint8_t> const& in_wrapping_key_x509, hidl_vec<uint8_t> const& in_aad,
-        hidl_vec<uint8_t> &private_key, hidl_vec<uint8_t>& out_encrypted_transport_key,
-        hidl_vec<uint8_t>& out_iv, hidl_vec<uint8_t>& out_tag, hidl_vec<uint8_t>& out_masking_key
+        std::vector<u8> const& in_wrapping_key_x509, std::vector<u8> const& in_aad,
+        std::vector<u8> &private_key, std::vector<u8>& out_encrypted_transport_key,
+        std::vector<u8>& out_iv, std::vector<u8>& out_tag, std::vector<u8>& out_masking_key
 );
 
-static int encode_iwk_key_desc_der(hidl_vec<uint8_t>& out_der,
-        IWK_KEY_DESC *& out_key_desc,
-        hidl_vec<KeyParameter> const& params,
-        KeyFormat format);
+static int encode_iwk_key_desc_der(std::vector<u8>& out_der,
+                                   IWK_KEY_DESC *& out_key_desc,
+                                   std::vector<KeyParameter> const& params,
+                                   KeyFormat format);
 
-static int encode_iwk_secure_key_wrapper_der(hidl_vec<uint8_t>& out_der,
-        hidl_vec<uint8_t> const& encrypted_transport_key,
-        hidl_vec<uint8_t> const& initialization_vector,
-        IWK_KEY_DESC *    const& iwk_key_desc,
-        hidl_vec<uint8_t> const& encrypted_key,
-        hidl_vec<uint8_t> const& tag
+static int encode_iwk_secure_key_wrapper_der(std::vector<u8>& out_der,
+        std::vector<u8> const& encrypted_transport_key,
+        std::vector<u8> const& initialization_vector,
+        IWK_KEY_DESC * const& iwk_key_desc,
+        std::vector<u8> const& encrypted_key,
+        std::vector<u8> const& tag
 );
 
 static void pr_info(const char *fmt, ...)
@@ -132,7 +131,7 @@ static void pr_info(const char *fmt, ...)
     va_end(vlist);
 }
 
-int verify_attestation(const hidl_vec<hidl_vec<uint8_t>> &cert_chain)
+int verify_attestation(const std::vector<std::vector<u8>> &cert_chain)
 {
     if (cert_chain.size() < 2) {
         std::cerr << "Cert chain size (" << cert_chain.size() << ") too small!" << std::endl;
@@ -140,8 +139,8 @@ int verify_attestation(const hidl_vec<hidl_vec<uint8_t>> &cert_chain)
     }
 
     const int root_idx = static_cast<int>(cert_chain.size() - 1);
-    hidl_vec<uint8_t> const& root_der = cert_chain[cert_chain.size() - 1];
-    hidl_vec<uint8_t> const& leaf_der = cert_chain[0];
+    std::vector<u8> const& root_der = cert_chain[cert_chain.size() - 1];
+    std::vector<u8> const& leaf_der = cert_chain[0];
 
     X509 *leaf = NULL;
     STACK_OF(X509) *intermediates = NULL;
@@ -206,21 +205,21 @@ err:
     }
 }
 
-int wrap_key(hidl_vec<uint8_t> const& in_private_key,
-        hidl_vec<uint8_t> const& in_wrapping_key, hidl_vec<KeyParameter> const& in_key_params,
-        hidl_vec<uint8_t>& out_wrapped_data, hidl_vec<uint8_t>& out_masking_key)
+int wrap_key(std::vector<u8> const& in_private_key,
+        std::vector<u8> const& in_wrapping_key, std::vector<KeyParameter> const& in_key_params,
+        std::vector<u8>& out_wrapped_data, std::vector<u8>& out_masking_key)
 {
-    hidl_vec<KeyParameter> params(in_key_params);
+    std::vector<KeyParameter> params(in_key_params);
     Algorithm pkey_alg;
     KeyFormat format;
 
     IWK_KEY_DESC *iwk_key_desc = NULL;
-    hidl_vec<uint8_t> iwk_key_desc_der = {};
+    std::vector<u8> iwk_key_desc_der = {};
 
-    hidl_vec<uint8_t> encrypted_transport_key;
-    hidl_vec<uint8_t> transport_iv;
-    hidl_vec<uint8_t> transport_tag;
-    hidl_vec<uint8_t> encrypted_key(in_private_key);
+    std::vector<u8> encrypted_transport_key;
+    std::vector<u8> transport_iv;
+    std::vector<u8> transport_tag;
+    std::vector<u8> encrypted_key(in_private_key);
 
     pkey_alg = util::determine_algorithm_from_params_and_pkey(params, in_private_key);
     if (pkey_alg == static_cast<Algorithm>(-1)) {
@@ -277,7 +276,7 @@ int wrap_key(hidl_vec<uint8_t> const& in_private_key,
     return 0;
 }
 
-static int deserialize_cert_chain(hidl_vec<hidl_vec<uint8_t>> const& in_cert_chain,
+static int deserialize_cert_chain(std::vector<std::vector<u8>> const& in_cert_chain,
         X509 **out_leaf, STACK_OF(X509) **out_intermediates, X509 **out_root)
 {
     const unsigned char *p = NULL;
@@ -286,8 +285,8 @@ static int deserialize_cert_chain(hidl_vec<hidl_vec<uint8_t>> const& in_cert_cha
     *out_intermediates = NULL;
     *out_root = NULL;
 
-    hidl_vec<uint8_t> const& leaf_hidl = in_cert_chain[0];
-    hidl_vec<uint8_t> const& root_hidl = in_cert_chain[in_cert_chain.size() - 1];
+    std::vector<u8> const& leaf_hidl = in_cert_chain[0];
+    std::vector<u8> const& root_hidl = in_cert_chain[in_cert_chain.size() - 1];
 
     /* De-serialize everything */
     p = leaf_hidl.data();
@@ -309,7 +308,7 @@ static int deserialize_cert_chain(hidl_vec<hidl_vec<uint8_t>> const& in_cert_cha
         std::cerr << "Couldn't create the intermediate cert stack" << std::endl;
         return 1;
     }
-    for (uint32_t i = 1; i <= in_cert_chain.size() - 2; i++) {
+    for (u32 i = 1; i <= in_cert_chain.size() - 2; i++) {
         p = in_cert_chain[i].data();
         X509 *curr = d2i_X509(NULL, &p, in_cert_chain[i].size());
         if (curr == NULL) {
@@ -401,7 +400,7 @@ err:
     return ret;
 }
 
-static int check_google_root(hidl_vec<uint8_t> const& root_der, bool *is_old_root)
+static int check_google_root(std::vector<u8> const& root_der, bool *is_old_root)
 {
     *is_old_root = false;
 
@@ -512,9 +511,9 @@ static void print_openssl_errors(void)
     std::cerr << "END OPENSSL ERRORS" << std::endl;
 }
 
-static EVP_PKEY * extract_x509_public_key(hidl_vec<uint8_t> const& x509_der)
+static EVP_PKEY * extract_x509_public_key(std::vector<u8> const& x509_der)
 {
-    const uint8_t *p = NULL;
+    const u8 *p = NULL;
 
     EVP_PKEY *ret = NULL;
     const RSA *rsa = NULL;
@@ -555,11 +554,11 @@ err:
 }
 
 static int wrap_with_transport_key(
-        const uint8_t transport_key[TRANSPORT_KEY_SIZE],
-        const uint8_t iv[TRANSPORT_IV_SIZE],
-        const uint8_t *aad, int aad_size,
-        uint8_t *data, int data_size,
-        uint8_t out_tag[TRANSPORT_TAG_SIZE]
+        const u8 transport_key[TRANSPORT_KEY_SIZE],
+        const u8 iv[TRANSPORT_IV_SIZE],
+        const u8 *aad, int aad_size,
+        u8 *data, int data_size,
+        u8 out_tag[TRANSPORT_TAG_SIZE]
 )
 {
     EVP_CIPHER_CTX *ctx = NULL;
@@ -627,12 +626,12 @@ err:
     return ok ? 0 : 1;
 }
 
-static int encrypt_transport_key(const uint8_t plaintext[TRANSPORT_KEY_SIZE],
-        const uint8_t masking_key[TRANSPORT_KEY_SIZE], EVP_PKEY *wrapping_key,
-        hidl_vec<uint8_t>& out_ciphertext)
+static int encrypt_transport_key(const u8 plaintext[TRANSPORT_KEY_SIZE],
+        const u8 masking_key[TRANSPORT_KEY_SIZE], EVP_PKEY *wrapping_key,
+        std::vector<u8>& out_ciphertext)
 {
     EVP_PKEY_CTX *ctx = NULL;
-    uint8_t masked_plaintext[TRANSPORT_KEY_SIZE] = { 0 };
+    u8 masked_plaintext[TRANSPORT_KEY_SIZE] = { 0 };
     size_t out_len = 0;
 
     bool ok = false;
@@ -662,7 +661,7 @@ static int encrypt_transport_key(const uint8_t plaintext[TRANSPORT_KEY_SIZE],
     }
 
     /* Apply the masking key */
-    for (uint32_t i = 0; i < TRANSPORT_KEY_SIZE; i++)
+    for (u32 i = 0; i < TRANSPORT_KEY_SIZE; i++)
         masked_plaintext[i] = plaintext[i] ^ masking_key[i];
 
     if (EVP_PKEY_encrypt(ctx, NULL, &out_len, masked_plaintext, TRANSPORT_KEY_SIZE) <= 0) {
@@ -691,17 +690,17 @@ err:
 }
 
 static int do_transport_encryption(
-        hidl_vec<uint8_t> const& in_wrapping_key_x509, hidl_vec<uint8_t> const& in_aad,
-        hidl_vec<uint8_t> &private_key, hidl_vec<uint8_t>& out_encrypted_transport_key,
-        hidl_vec<uint8_t>& out_iv, hidl_vec<uint8_t>& out_tag, hidl_vec<uint8_t>& out_masking_key
+        std::vector<u8> const& in_wrapping_key_x509, std::vector<u8> const& in_aad,
+        std::vector<u8> &private_key, std::vector<u8>& out_encrypted_transport_key,
+        std::vector<u8>& out_iv, std::vector<u8>& out_tag, std::vector<u8>& out_masking_key
 )
 {
     bool ok = false;
 
-    uint8_t transport_key[TRANSPORT_KEY_SIZE] = { 0 };
-    uint8_t iv[TRANSPORT_IV_SIZE] = { 0 };
-    uint8_t tag[TRANSPORT_TAG_SIZE] = { 0 };
-    uint8_t masking_key[TRANSPORT_KEY_SIZE] = { 0 };
+    u8 transport_key[TRANSPORT_KEY_SIZE] = { 0 };
+    u8 iv[TRANSPORT_IV_SIZE] = { 0 };
+    u8 tag[TRANSPORT_TAG_SIZE] = { 0 };
+    u8 masking_key[TRANSPORT_KEY_SIZE] = { 0 };
 
     out_iv.resize(TRANSPORT_IV_SIZE);
     out_tag.resize(TRANSPORT_TAG_SIZE);
@@ -778,10 +777,10 @@ err:
     return ok ? 0 : 1;
 }
 
-static int encode_iwk_key_desc_der(hidl_vec<uint8_t>& out_der,
-        IWK_KEY_DESC *& out_key_desc,
-        hidl_vec<KeyParameter> const& params,
-        KeyFormat format)
+static int encode_iwk_key_desc_der(std::vector<u8>& out_der,
+                                   IWK_KEY_DESC *& out_key_desc,
+                                   std::vector<KeyParameter> const& params,
+                                   KeyFormat format)
 {
     out_der.resize(0);
     out_key_desc = NULL;
@@ -840,12 +839,12 @@ err:
     return 1;
 }
 
-static int encode_iwk_secure_key_wrapper_der(hidl_vec<uint8_t>& out_der,
-        hidl_vec<uint8_t> const& encrypted_transport_key,
-        hidl_vec<uint8_t> const& initialization_vector,
-        IWK_KEY_DESC *    const& iwk_key_desc,
-        hidl_vec<uint8_t> const& encrypted_key,
-        hidl_vec<uint8_t> const& tag
+static int encode_iwk_secure_key_wrapper_der(std::vector<u8>& out_der,
+        std::vector<u8> const& encrypted_transport_key,
+        std::vector<u8> const& initialization_vector,
+        IWK_KEY_DESC * const& iwk_key_desc,
+        std::vector<u8> const& encrypted_key,
+        std::vector<u8> const& tag
 )
 {
     int out_der_len = 0;
@@ -912,8 +911,7 @@ static int encode_iwk_secure_key_wrapper_der(hidl_vec<uint8_t>& out_der,
             goto err;
         }
 
-        out_der.resize(out_der_len);
-        p = out_der.data();
+        out_der.resize(out_der_len); p = out_der.data();
         if (i2d_IWK_SECURE_KEY_WRAPPER(skw, &p) != out_der_len ||
                 p != out_der.data() + out_der.size())
         {

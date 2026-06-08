@@ -2,8 +2,10 @@
 #define SUSKEYMASTER_SUSKMHAL_HPP_
 
 #include "keymaster-types-cpp.hpp"
-#include <cstdint>
+#include <core/int.h>
 #include <memory>
+#include <vector>
+#include <string>
 
 #ifndef SUSKEYMASTER_BUILD_HOST
 #include "transport/hal.h"
@@ -12,7 +14,7 @@
 namespace suskeymaster {
 namespace kmhal {
 
-using namespace ::android::hardware::keymaster::generic;
+using namespace generic;
 using namespace ::android::hardware;
 
 class SusKMHal {
@@ -20,12 +22,14 @@ public:
     SusKMHal(void) = default;
     virtual ~SusKMHal(void) = default;
 
-    virtual struct kmhal_sp * getHalSp(void) { return nullptr; }
+    virtual struct kmhal_sp * getHalSp(void) const { return nullptr; }
 
-    virtual bool isHALOk(void) { return false; };
+    virtual bool isHALOk(void) const { return false; };
+
+    virtual u32 getVersion(void) const { return -1; };
 
     virtual void getHardwareInfo(SecurityLevel& out_securityLevel,
-            hidl_string& out_keymasterName, hidl_string& out_keymasterAuthorName)
+            std::string& out_keymasterName, std::string& out_keymasterAuthorName)
     {
         out_securityLevel = SecurityLevel::SOFTWARE;
         out_keymasterName = "N/A";
@@ -37,54 +41,55 @@ public:
         return ErrorCode::UNIMPLEMENTED;
     }
 
-    virtual ErrorCode computeSharedHmac(hidl_vec<HmacSharingParameters> const& params,
-            hidl_vec<uint8_t>& out_sharingCheck)
+    virtual ErrorCode computeSharedHmac(std::vector<HmacSharingParameters> const& params,
+            std::vector<u8>& out_sharingCheck)
     {
         (void) params; (void) out_sharingCheck;
         return ErrorCode::UNIMPLEMENTED;
     }
 
-    virtual ErrorCode verifyAuthorization(uint64_t operationHandle,
-            hidl_vec<KeyParameter> const& parametersToVerify, HardwareAuthToken const& authToken,
+    virtual ErrorCode verifyAuthorization(u64 operationHandle,
+            std::vector<KeyParameter> const& parametersToVerify,
+            HardwareAuthToken const& authToken,
             VerificationToken& out_token)
     {
         (void) operationHandle; (void) parametersToVerify; (void) authToken; (void) out_token;
         return ErrorCode::UNIMPLEMENTED;
     }
 
-    virtual ErrorCode addRngEntropy(hidl_vec<uint8_t> const& data) {
+    virtual ErrorCode addRngEntropy(std::vector<u8> const& data) {
         (void) data; return ErrorCode::UNIMPLEMENTED;
     }
 
-    virtual ErrorCode generateKey(hidl_vec<KeyParameter> const& keyParams,
-            hidl_vec<uint8_t>& out_keyBlob, KeyCharacteristics& out_keyCharacteristics)
+    virtual ErrorCode generateKey(std::vector<KeyParameter> const& keyParams,
+            std::vector<u8>& out_keyBlob, KeyCharacteristics& out_keyCharacteristics)
     {
         (void) keyParams; (void) out_keyBlob; (void) out_keyCharacteristics;
         return ErrorCode::UNIMPLEMENTED;
     }
 
-    virtual ErrorCode importKey(hidl_vec<KeyParameter> const& keyParams,
-            KeyFormat keyFormat, hidl_vec<uint8_t> const& keyData,
-            hidl_vec<uint8_t>& out_keyBlob, KeyCharacteristics& out_keyCharacteristics)
+    virtual ErrorCode importKey(std::vector<KeyParameter> const& keyParams,
+            KeyFormat keyFormat, std::vector<u8> const& keyData,
+            std::vector<u8>& out_keyBlob, KeyCharacteristics& out_keyCharacteristics)
     {
         (void) keyParams; (void) keyFormat; (void) keyData;
         (void) out_keyBlob; (void) out_keyCharacteristics;
         return ErrorCode::UNIMPLEMENTED;
     }
 
-    virtual ErrorCode importWrappedKey(hidl_vec<uint8_t> const& wrappedKeyData,
-            hidl_vec<uint8_t> const& wrappingKeyBlob, hidl_vec<uint8_t> const& maskingKey,
-            hidl_vec<KeyParameter> const& unwrappingParams,
-            uint64_t passwordSid, uint64_t biometricSid,
-            hidl_vec<uint8_t>& out_keyBlob, KeyCharacteristics& out_keyCharacteristics)
+    virtual ErrorCode importWrappedKey(std::vector<u8> const& wrappedKeyData,
+            std::vector<u8> const& wrappingKeyBlob, std::vector<u8> const& maskingKey,
+            std::vector<KeyParameter> const& unwrappingParams,
+            u64 passwordSid, u64 biometricSid,
+            std::vector<u8>& out_keyBlob, KeyCharacteristics& out_keyCharacteristics)
     {
         (void) wrappedKeyData; (void) wrappingKeyBlob; (void) maskingKey; (void) unwrappingParams;
         (void) passwordSid; (void) biometricSid; (void) out_keyBlob; (void) out_keyCharacteristics;
         return ErrorCode::UNIMPLEMENTED;
     }
 
-    virtual ErrorCode getKeyCharacteristics(hidl_vec<uint8_t> const& keyBlob,
-            hidl_vec<uint8_t> const& applicationId, hidl_vec<uint8_t> const& applicationData,
+    virtual ErrorCode getKeyCharacteristics(std::vector<u8> const& keyBlob,
+            std::vector<u8> const& applicationId, std::vector<u8> const& applicationData,
             KeyCharacteristics& out_keyCharacteristics)
     {
         (void) keyBlob; (void) applicationId; (void) applicationData;
@@ -92,31 +97,32 @@ public:
         return ErrorCode::UNIMPLEMENTED;
     }
 
-    virtual ErrorCode exportKey(KeyFormat keyFormat, hidl_vec<uint8_t> const& keyBlob,
-            hidl_vec<uint8_t> const& applicationId, hidl_vec<uint8_t> const& applicationData,
-            hidl_vec<uint8_t>& out_keyMaterial)
+    virtual ErrorCode exportKey(KeyFormat keyFormat, std::vector<u8> const& keyBlob,
+            std::vector<u8> const& applicationId, std::vector<u8> const& applicationData,
+            std::vector<u8>& out_keyMaterial)
     {
         (void) keyFormat; (void) keyBlob; (void) applicationId; (void) applicationData;
         (void) out_keyMaterial;
         return ErrorCode::UNIMPLEMENTED;
     }
 
-    virtual ErrorCode attestKey(hidl_vec<uint8_t> const& keyToAttest,
-            hidl_vec<KeyParameter> const& attestParams,
-            hidl_vec<hidl_vec<uint8_t>>& out_certChain)
+    virtual ErrorCode attestKey(std::vector<u8> const& keyToAttest,
+            std::vector<KeyParameter> const& attestParams,
+            std::vector<std::vector<u8>>& out_certChain)
     {
         (void) keyToAttest; (void) attestParams; (void) out_certChain;
         return ErrorCode::UNIMPLEMENTED;
     }
 
-    virtual ErrorCode upgradeKey(hidl_vec<uint8_t> const& keyBlobToUpgrade,
-            hidl_vec<KeyParameter> const& upgradeParams, hidl_vec<uint8_t>& out_upgradedKeyBlob)
+    virtual ErrorCode upgradeKey(std::vector<u8> const& keyBlobToUpgrade,
+            std::vector<KeyParameter> const& upgradeParams,
+            std::vector<u8>& out_upgradedKeyBlob)
     {
         (void) keyBlobToUpgrade; (void) upgradeParams; (void) out_upgradedKeyBlob;
         return ErrorCode::UNIMPLEMENTED;
     }
 
-    virtual ErrorCode deleteKey(hidl_vec<uint8_t> const& keyBlob) {
+    virtual ErrorCode deleteKey(std::vector<u8> const& keyBlob) {
         (void) keyBlob; return ErrorCode::UNIMPLEMENTED;
     }
 
@@ -124,20 +130,20 @@ public:
 
     virtual ErrorCode destroyAttestationIds(void) { return ErrorCode::UNIMPLEMENTED; }
 
-    virtual ErrorCode begin(KeyPurpose purpose, hidl_vec<uint8_t> const& keyBlob,
-            hidl_vec<KeyParameter> const& inParams, HardwareAuthToken const& authToken,
-            hidl_vec<KeyParameter>& out_outParams, uint64_t& out_operationHandle)
+    virtual ErrorCode begin(KeyPurpose purpose, std::vector<u8> const& keyBlob,
+            std::vector<KeyParameter> const& inParams, HardwareAuthToken const& authToken,
+            std::vector<KeyParameter>& out_outParams, u64& out_operationHandle)
     {
         (void) purpose; (void) keyBlob; (void) inParams; (void) authToken;
         (void) out_outParams; (void) out_operationHandle;
         return ErrorCode::UNIMPLEMENTED;
     }
 
-    virtual ErrorCode update(uint64_t operationHandle,
-            hidl_vec<KeyParameter> const& inParams, hidl_vec<uint8_t> const& input,
+    virtual ErrorCode update(u64 operationHandle,
+            std::vector<KeyParameter> const& inParams, std::vector<u8> const& input,
             HardwareAuthToken const& authToken, VerificationToken const& verificationToken,
-            uint32_t& out_inputConsumed, hidl_vec<KeyParameter>& out_outParams,
-            hidl_vec<uint8_t>& out_output)
+            u32& out_inputConsumed, std::vector<KeyParameter>& out_outParams,
+            std::vector<u8>& out_output)
     {
         (void) operationHandle; (void) inParams; (void) input;
         (void) authToken; (void) verificationToken;
@@ -145,10 +151,10 @@ public:
         return ErrorCode::UNIMPLEMENTED;
     }
 
-    virtual ErrorCode finish(uint64_t operationHandle, hidl_vec<KeyParameter> const& inParams,
-            hidl_vec<uint8_t> const& input, hidl_vec<uint8_t> const& signature,
+    virtual ErrorCode finish(u64 operationHandle, std::vector<KeyParameter> const& inParams,
+            std::vector<u8> const& input, std::vector<u8> const& signature,
             HardwareAuthToken const& authToken, VerificationToken const& verificationToken,
-            hidl_vec<KeyParameter>& out_outParams, hidl_vec<uint8_t>& out_output)
+            std::vector<KeyParameter>& out_outParams, std::vector<u8>& out_output)
     {
         (void) operationHandle; (void) inParams; (void) input; (void) signature;
         (void) authToken; (void) verificationToken;
@@ -156,7 +162,7 @@ public:
         return ErrorCode::UNIMPLEMENTED;
     }
 
-    virtual ErrorCode abort(uint64_t operationHandle) {
+    virtual ErrorCode abort(u64 operationHandle) {
         (void) operationHandle; return ErrorCode::UNIMPLEMENTED;
     }
 };
@@ -174,8 +180,8 @@ public:
     SusHidlKeymasterHALCommon(SusHidlKeymasterHALCommon&&) = default;
     SusHidlKeymasterHALCommon& operator=(SusHidlKeymasterHALCommon&&) = default;
 
-    struct kmhal_sp * getHalSp(void) override;
-    bool isHALOk(void) override;
+    struct kmhal_sp * getHalSp(void) const override;
+    bool isHALOk(void) const override;
 
 #ifndef SUSKEYMASTER_BUILD_HOST
 
@@ -183,38 +189,40 @@ public:
     /** All of the below methods are the exact same for all
      * supported HIDL KeyMaster versions (3.0, 4.0, 4.1) **/
 
-    ErrorCode addRngEntropy(hidl_vec<uint8_t> const& data) override;
+    ErrorCode addRngEntropy(std::vector<u8> const& data) override;
 
-    ErrorCode generateKey(hidl_vec<KeyParameter> const& keyParams,
-            hidl_vec<uint8_t>& out_keyBlob, KeyCharacteristics& out_keyCharacteristics) override;
-
-    ErrorCode importKey(hidl_vec<KeyParameter> const& keyParams,
-            KeyFormat keyFormat, hidl_vec<uint8_t> const& keyData,
-            hidl_vec<uint8_t>& out_keyBlob, KeyCharacteristics& out_keyCharacteristics) override;
-
-    ErrorCode getKeyCharacteristics(hidl_vec<uint8_t> const& keyBlob,
-            hidl_vec<uint8_t> const& applicationId, hidl_vec<uint8_t> const& applicationData,
+    ErrorCode generateKey(std::vector<KeyParameter> const& keyParams,
+            std::vector<u8>& out_keyBlob,
             KeyCharacteristics& out_keyCharacteristics) override;
 
-    ErrorCode exportKey(KeyFormat keyFormat, hidl_vec<uint8_t> const& keyBlob,
-            hidl_vec<uint8_t> const& applicationId, hidl_vec<uint8_t> const& applicationData,
-            hidl_vec<uint8_t>& out_keyMaterial) override;
+    ErrorCode importKey(std::vector<KeyParameter> const& keyParams,
+            KeyFormat keyFormat, std::vector<u8> const& keyData,
+            std::vector<u8>& out_keyBlob,
+            KeyCharacteristics& out_keyCharacteristics) override;
 
-    ErrorCode attestKey(hidl_vec<uint8_t> const& keyToAttest,
-            hidl_vec<KeyParameter> const& attestParams,
-            hidl_vec<hidl_vec<uint8_t>>& out_certChain) override;
+    ErrorCode getKeyCharacteristics(std::vector<u8> const& keyBlob,
+            std::vector<u8> const& applicationId, std::vector<u8> const& applicationData,
+            KeyCharacteristics& out_keyCharacteristics) override;
 
-    ErrorCode upgradeKey(hidl_vec<uint8_t> const& keyBlobToUpgrade,
-            hidl_vec<KeyParameter> const& upgradeParams, hidl_vec<uint8_t>& out_upgradedKeyBlob)
-        override;
+    ErrorCode exportKey(KeyFormat keyFormat, std::vector<u8> const& keyBlob,
+            std::vector<u8> const& applicationId, std::vector<u8> const& applicationData,
+            std::vector<u8>& out_keyMaterial) override;
 
-    ErrorCode deleteKey(hidl_vec<uint8_t> const& keyBlob) override;
+    ErrorCode attestKey(std::vector<u8> const& keyToAttest,
+            std::vector<KeyParameter> const& attestParams,
+            std::vector<std::vector<u8>>& out_certChain) override;
+
+    ErrorCode upgradeKey(std::vector<u8> const& keyBlobToUpgrade,
+            std::vector<KeyParameter> const& upgradeParams,
+            std::vector<u8>& out_upgradedKeyBlob) override;
+
+    ErrorCode deleteKey(std::vector<u8> const& keyBlob) override;
 
     ErrorCode deleteAllKeys(void) override;
 
     ErrorCode destroyAttestationIds(void) override;
 
-    ErrorCode abort(uint64_t operationHandle) override;
+    ErrorCode abort(u64 operationHandle) override;
 
 protected:
     /* While the argument structure is always the exact same for these common methods,
@@ -238,7 +246,7 @@ protected:
 
     /* Used for initializing the unique_ptr from derived classes */
     explicit SusHidlKeymasterHALCommon(struct kmhal_sp *new_hal) :
-        hal_(new_hal, &transport::kmhal_sp_deleter) {}
+        hal_(new_hal, transport::kmhal_sp_deleter) {}
 
     struct kmhal_sp * getHal() const { return hal_.get(); }
 
@@ -252,6 +260,7 @@ private:
 class SusHidlKeymaster3_0 : public SusHidlKeymasterHALCommon {
 public:
     SusHidlKeymaster3_0(void);
+    u32 getVersion(void) const override;
 
 #ifndef SUSKEYMASTER_BUILD_HOST
 protected:
@@ -260,7 +269,7 @@ protected:
 public:
     /* For Keymaster 3.0, this is a wrapper around the older `getHardwareFeatures` method */
     void getHardwareInfo(SecurityLevel& out_securityLevel,
-            hidl_string& out_keymasterName, hidl_string& out_keymasterAuthorName) override;
+            std::string& out_keymasterName, std::string& out_keymasterAuthorName) override;
 
     /* Almost the same as in Keymaster 4.0 and 4.1,
      * but the `authToken` and `verificationToken` are actually unused by the HAL methods.
@@ -271,20 +280,20 @@ public:
      * it will be automatically added to the parameter list as a `Tag::AUTH_TOKEN`.
      * `verificationToken` is always ignored because unfortunately there's no equivalent. */
 
-    ErrorCode begin(KeyPurpose purpose, hidl_vec<uint8_t> const& keyBlob,
-            hidl_vec<KeyParameter> const& inParams, HardwareAuthToken const& authToken,
-            hidl_vec<KeyParameter>& out_outParams, uint64_t& out_operationHandle) override;
+    ErrorCode begin(KeyPurpose purpose, std::vector<u8> const& keyBlob,
+            std::vector<KeyParameter> const& inParams, HardwareAuthToken const& authToken,
+            std::vector<KeyParameter>& out_outParams, u64& out_operationHandle) override;
 
-    ErrorCode update(uint64_t operationHandle,
-            hidl_vec<KeyParameter> const& inParams, hidl_vec<uint8_t> const& input,
+    ErrorCode update(u64 operationHandle,
+            std::vector<KeyParameter> const& inParams, std::vector<u8> const& input,
             HardwareAuthToken const& authToken, VerificationToken const& verificationToken,
-            uint32_t& out_inputConsumed, hidl_vec<KeyParameter>& out_outParams,
-            hidl_vec<uint8_t>& out_output) override;
+            u32& out_inputConsumed, std::vector<KeyParameter>& out_outParams,
+            std::vector<u8>& out_output) override;
 
-    ErrorCode finish(uint64_t operationHandle, hidl_vec<KeyParameter> const& inParams,
-            hidl_vec<uint8_t> const& input, hidl_vec<uint8_t> const& signature,
+    ErrorCode finish(u64 operationHandle, std::vector<KeyParameter> const& inParams,
+            std::vector<u8> const& input, std::vector<u8> const& signature,
             HardwareAuthToken const& authToken, VerificationToken const& verificationToken,
-            hidl_vec<KeyParameter>& out_outParams, hidl_vec<uint8_t>& out_output) override;
+            std::vector<KeyParameter>& out_outParams, std::vector<u8>& out_output) override;
 
 #endif /* SUSKEYMASTER_BUILD_HOST */
 };
@@ -296,6 +305,7 @@ public:
 class SusHidlKeymaster4_0 : public SusHidlKeymasterHALCommon {
 public:
     SusHidlKeymaster4_0(void);
+    u32 getVersion(void) const override;
 
 protected:
     /* c++ sucks */
@@ -307,37 +317,39 @@ protected:
 
 public:
     void getHardwareInfo(SecurityLevel& out_securityLevel,
-            hidl_string& out_keymasterName, hidl_string& out_keymasterAuthorName) override;
+            std::string& out_keymasterName, std::string& out_keymasterAuthorName) override;
 
     ErrorCode getHmacSharingParameters(HmacSharingParameters &out_params) override;
 
-    ErrorCode computeSharedHmac(hidl_vec<HmacSharingParameters> const& params,
-            hidl_vec<uint8_t>& out_sharingCheck) override;
+    ErrorCode computeSharedHmac(std::vector<HmacSharingParameters> const& params,
+            std::vector<u8>& out_sharingCheck) override;
 
-    ErrorCode verifyAuthorization(uint64_t operationHandle,
-            hidl_vec<KeyParameter> const& parametersToVerify, HardwareAuthToken const& authToken,
+    ErrorCode verifyAuthorization(u64 operationHandle,
+            std::vector<KeyParameter> const& parametersToVerify,
+            HardwareAuthToken const& authToken,
             VerificationToken& out_token) override;
 
-    ErrorCode importWrappedKey(hidl_vec<uint8_t> const& wrappedKeyData,
-            hidl_vec<uint8_t> const& wrappingKeyBlob, hidl_vec<uint8_t> const& maskingKey,
-            hidl_vec<KeyParameter> const& unwrappingParams,
-            uint64_t passwordSid, uint64_t biometricSid,
-            hidl_vec<uint8_t>& out_keyBlob, KeyCharacteristics& out_keyCharacteristics) override;
+    ErrorCode importWrappedKey(std::vector<u8> const& wrappedKeyData,
+            std::vector<u8> const& wrappingKeyBlob, std::vector<u8> const& maskingKey,
+            std::vector<KeyParameter> const& unwrappingParams,
+            u64 passwordSid, u64 biometricSid,
+            std::vector<u8>& out_keyBlob,
+            KeyCharacteristics& out_keyCharacteristics) override;
 
-    ErrorCode begin(KeyPurpose purpose, hidl_vec<uint8_t> const& keyBlob,
-            hidl_vec<KeyParameter> const& inParams, HardwareAuthToken const& authToken,
-            hidl_vec<KeyParameter>& out_outParams, uint64_t& out_operationHandle) override;
+    ErrorCode begin(KeyPurpose purpose, std::vector<u8> const& keyBlob,
+            std::vector<KeyParameter> const& inParams, HardwareAuthToken const& authToken,
+            std::vector<KeyParameter>& out_outParams, u64& out_operationHandle) override;
 
-    ErrorCode update(uint64_t operationHandle,
-            hidl_vec<KeyParameter> const& inParams, hidl_vec<uint8_t> const& input,
+    ErrorCode update(u64 operationHandle,
+            std::vector<KeyParameter> const& inParams, std::vector<u8> const& input,
             HardwareAuthToken const& authToken, VerificationToken const& verificationToken,
-            uint32_t& out_inputConsumed, hidl_vec<KeyParameter>& out_outParams,
-            hidl_vec<uint8_t>& out_output) override;
+            u32& out_inputConsumed, std::vector<KeyParameter>& out_outParams,
+            std::vector<u8>& out_output) override;
 
-    ErrorCode finish(uint64_t operationHandle, hidl_vec<KeyParameter> const& inParams,
-            hidl_vec<uint8_t> const& input, hidl_vec<uint8_t> const& signature,
+    ErrorCode finish(u64 operationHandle, std::vector<KeyParameter> const& inParams,
+            std::vector<u8> const& input, std::vector<u8> const& signature,
             HardwareAuthToken const& authToken, VerificationToken const& verificationToken,
-            hidl_vec<KeyParameter>& out_outParams, hidl_vec<uint8_t>& out_output) override;
+            std::vector<KeyParameter>& out_outParams, std::vector<u8>& out_output) override;
 #endif /* SUSKEYMASTER_BUILD_HOST */
 };
 
@@ -355,9 +367,99 @@ public:
 class SusHidlKeymaster4_1 : public SusHidlKeymaster4_0 {
 public:
     SusHidlKeymaster4_1(void);
+    u32 getVersion(void) const override;
 };
 
 #endif /* SUSKEYMASTER_HAL_DISABLE_4_1 */
+
+#ifndef SUSKEYMASTER_HAL_DISABLE_KEYMINT
+class SusAidlKeyMint : public SusKMHal {
+public:
+    SusAidlKeyMint();
+
+#ifndef SUSKEYMASTER_BUILD_HOST
+private:
+    std::unique_ptr<struct kmhal_sp, decltype(&transport::kmhal_sp_deleter)> hal_;
+    i32 keymint_version = -1;
+
+public:
+    struct kmhal_sp * getHalSp(void) const override;
+    bool isHALOk(void) const override;
+
+    u32 getVersion(void) const override;
+
+    void getHardwareInfo(SecurityLevel& out_securityLevel,
+            std::string& out_keymasterName, std::string& out_keymasterAuthorName) override;
+
+    ErrorCode computeSharedHmac(std::vector<HmacSharingParameters> const& params,
+            std::vector<u8>& out_sharingCheck) override;
+
+    ErrorCode verifyAuthorization(u64 operationHandle,
+            std::vector<KeyParameter> const& parametersToVerify,
+            HardwareAuthToken const& authToken,
+            VerificationToken& out_token) override;
+
+    ErrorCode addRngEntropy(std::vector<u8> const& data) override;
+
+    ErrorCode generateKey(std::vector<KeyParameter> const& keyParams,
+            std::vector<u8>& out_keyBlob,
+            KeyCharacteristics& out_keyCharacteristics) override;
+
+    ErrorCode importKey(std::vector<KeyParameter> const& keyParams,
+            KeyFormat keyFormat, std::vector<u8> const& keyData,
+            std::vector<u8>& out_keyBlob,
+            KeyCharacteristics& out_keyCharacteristics) override;
+
+    ErrorCode importWrappedKey(std::vector<u8> const& wrappedKeyData,
+            std::vector<u8> const& wrappingKeyBlob, std::vector<u8> const& maskingKey,
+            std::vector<KeyParameter> const& unwrappingParams,
+            u64 passwordSid, u64 biometricSid,
+            std::vector<u8>& out_keyBlob,
+            KeyCharacteristics& out_keyCharacteristics) override;
+
+    ErrorCode getKeyCharacteristics(std::vector<u8> const& keyBlob,
+            std::vector<u8> const& applicationId, std::vector<u8> const& applicationData,
+            KeyCharacteristics& out_keyCharacteristics) override;
+
+    ErrorCode exportKey(KeyFormat keyFormat, std::vector<u8> const& keyBlob,
+            std::vector<u8> const& applicationId, std::vector<u8> const& applicationData,
+            std::vector<u8>& out_keyMaterial) override;
+
+    ErrorCode attestKey(std::vector<u8> const& keyToAttest,
+            std::vector<KeyParameter> const& attestParams,
+            std::vector<std::vector<u8>>& out_certChain) override;
+
+    ErrorCode upgradeKey(std::vector<u8> const& keyBlobToUpgrade,
+            std::vector<KeyParameter> const& upgradeParams,
+            std::vector<u8>& out_upgradedKeyBlob) override;
+
+    ErrorCode deleteKey(std::vector<u8> const& keyBlob) override;
+
+    ErrorCode deleteAllKeys(void) override;
+
+    ErrorCode destroyAttestationIds(void) override;
+
+    ErrorCode begin(KeyPurpose purpose, std::vector<u8> const& keyBlob,
+            std::vector<KeyParameter> const& inParams, HardwareAuthToken const& authToken,
+            std::vector<KeyParameter>& out_outParams, u64& out_operationHandle) override;
+
+    ErrorCode update(u64 operationHandle,
+            std::vector<KeyParameter> const& inParams, std::vector<u8> const& input,
+            HardwareAuthToken const& authToken, VerificationToken const& verificationToken,
+            u32& out_inputConsumed, std::vector<KeyParameter>& out_outParams,
+            std::vector<u8>& out_output) override;
+
+    ErrorCode finish(u64 operationHandle, std::vector<KeyParameter> const& inParams,
+            std::vector<u8> const& input, std::vector<u8> const& signature,
+            HardwareAuthToken const& authToken, VerificationToken const& verificationToken,
+            std::vector<KeyParameter>& out_outParams, std::vector<u8>& out_output) override;
+
+    ErrorCode abort(u64 operationHandle) override;
+
+    ErrorCode getHmacSharingParameters(HmacSharingParameters &out_params) override;
+#endif /* SUSKEYMASTER_BUILD_HOST */
+};
+#endif /* SUSKEYMASTER_HAL_DISABLE_KEYMINT */
 
 } /* namespace kmhal */
 } /* namespace suskeymaster */

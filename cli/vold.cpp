@@ -3,6 +3,7 @@
 #include <libsuskmhal/suskmhal.hpp>
 #include <libsuskmhal/keymaster-types-cpp.hpp>
 #include <cstdio>
+#include <vector>
 #include <cstring>
 #include <cstdlib>
 #ifndef SUSKEYMASTER_BUILD_WINDOWS
@@ -18,8 +19,7 @@ namespace suskeymaster {
 namespace cli {
 namespace vold {
 
-using namespace ::android::hardware::keymaster::generic;
-using ::android::hardware::hidl_vec;
+using namespace kmhal::generic;
 using kmhal::SusKMHal;
 
 /* from keyutils.h */
@@ -40,9 +40,9 @@ typedef int32_t key_serial_t;
 #define KEYCTL_SEARCH            10    /* search for a key in a keyring */
 
 #ifndef SUSKEYMASTER_BUILD_WINDOWS
-static int derive_key_ref(hidl_vec<u8> const& key, hidl_vec<u8>& out);
+static int derive_key_ref(std::vector<u8> const& key, std::vector<u8>& out);
 
-static std::string get_key_name(const char *prefix, hidl_vec<u8> const& ref);
+static std::string get_key_name(const char *prefix, std::vector<u8> const& ref);
 
 static long keyctl_search(key_serial_t ringid,
                           const char *type, const char *description,
@@ -53,9 +53,9 @@ static key_serial_t add_key(const char *type, const char *description,
                             key_serial_t ringid);
 #endif /* SUSKEYMASTER_BUILD_WINDOWS */
 
-int generate_app_id(hidl_vec<u8> const& in_secdiscardable,
-        hidl_vec<u8> const& in_secret,
-        hidl_vec<u8>& out_app_id)
+int generate_app_id(std::vector<u8> const& in_secdiscardable,
+        std::vector<u8> const& in_secret,
+        std::vector<u8>& out_app_id)
 {
     /* AOSP constants */
     static constexpr const char HASH_PREFIX_SECDISCARDABLE[] = "Android secdiscardable SHA512";
@@ -78,14 +78,14 @@ int generate_app_id(hidl_vec<u8> const& in_secdiscardable,
 }
 
 int decrypt_de_key(SusKMHal& hal,
-        hidl_vec<u8> const& in_keystore_key, hidl_vec<u8> const& in_secdiscardable,
-        hidl_vec<u8> const& in_encrypted_key, hidl_vec<u8>& out_decrypted_key)
+        std::vector<u8> const& in_keystore_key, std::vector<u8> const& in_secdiscardable,
+        std::vector<u8> const& in_encrypted_key, std::vector<u8>& out_decrypted_key)
 {
 
-    hidl_vec<u8> km_blob = util::keystore_blob_to_km_blob(in_keystore_key);
+    std::vector<u8> km_blob = util::keystore_blob_to_km_blob(in_keystore_key);
 
-    hidl_vec<u8> secret{}; /* empty secret for keystore decryption */
-    hidl_vec<u8> app_id;
+    std::vector<u8> secret{}; /* empty secret for keystore decryption */
+    std::vector<u8> app_id;
     if (generate_app_id(in_secdiscardable, secret, app_id)) {
         std::cerr << "Failed to generate Tag::APPLICATION_ID from secdiscardable" << std::endl;
         return 1;
@@ -99,22 +99,26 @@ int decrypt_de_key(SusKMHal& hal,
     std::puts("=====  END APPLICATION ID HEX DUMP  =====");
     */
 
-    hidl_vec<u8> enc_key_iv, enc_key_ciphertext_with_tag;
+    std::vector<u8> enc_key_iv, enc_key_ciphertext_with_tag;
     if (util::extract_gcm_data(in_encrypted_key, enc_key_iv, enc_key_ciphertext_with_tag)) {
         std::cerr << "Failed to extract the AES-GCM data from the encrypted key" << std::endl;
         return 1;
     }
 
-    hidl_vec<KeyParameter> params(3);
-    params[0].tag = Tag::APPLICATION_ID;
-    params[0].blob = app_id;
-    params[1].tag = Tag::NONCE;
-    params[1].blob = enc_key_iv;
-    params[2].tag = Tag::MAC_LENGTH;
-    params[2].f.integer = util::AES_GCM_TAG_SIZE * 8;
+    std::vector<KeyParameter> params(5);
+    params[0].tag = Tag::BLOCK_MODE;
+    params[0].f.blockMode = BlockMode::GCM;
+    params[1].tag = Tag::PADDING;
+    params[1].f.paddingMode = PaddingMode::NONE;
+    params[2].tag = Tag::NONCE;
+    params[2].blob = enc_key_iv;
+    params[3].tag = Tag::MAC_LENGTH;
+    params[3].f.integer = util::AES_GCM_TAG_SIZE * 8;
+    params[4].tag = Tag::APPLICATION_ID;
+    params[4].blob = app_id;
 
     if (hal_ops::crypto::decrypt(hal, enc_key_ciphertext_with_tag,
-                                 km_blob, params, out_decrypted_key))
+                                 km_blob, params, {}, out_decrypted_key))
     {
         std::cerr << "Failed to decrypt vold encrypted key" << std::endl;
         return 1;
@@ -125,16 +129,16 @@ int decrypt_de_key(SusKMHal& hal,
 }
 
 int decrypt_ce_key(
-        hidl_vec<u8> const& in_secret, hidl_vec<u8> const& in_secdiscardable,
-        hidl_vec<u8> const& in_encrypted_key, hidl_vec<u8>& out_decrypted_key)
+        std::vector<u8> const& in_secret, std::vector<u8> const& in_secdiscardable,
+        std::vector<u8> const& in_encrypted_key, std::vector<u8>& out_decrypted_key)
 {
-    hidl_vec<u8> app_id;
+    std::vector<u8> app_id;
     if (generate_app_id(in_secdiscardable, in_secret, app_id)) {
         std::cerr << "Failed to generate app ID from vold auth secret" << std::endl;
         return 1;
     }
 
-    hidl_vec<u8> key;
+    std::vector<u8> key;
     static constexpr const char HASH_PREFIX_KEYGEN[] =
         "Android key wrapping key generation SHA512";
     if (util::personalized_hash(app_id, HASH_PREFIX_KEYGEN, key)) {
@@ -153,7 +157,7 @@ int decrypt_ce_key(
     return 0;
 }
 
-int fscrypt_legacy_install_key(hidl_vec<u8> const& key)
+int fscrypt_legacy_install_key(std::vector<u8> const& key)
 {
 #ifndef SUSKEYMASTER_BUILD_WINDOWS
     if (key.size() != FSCRYPT_MAX_KEY_SIZE) {
@@ -168,7 +172,7 @@ int fscrypt_legacy_install_key(hidl_vec<u8> const& key)
     fs_key.size = FSCRYPT_MAX_KEY_SIZE,
     memcpy(fs_key.raw, key.data(), FSCRYPT_MAX_KEY_SIZE);
 
-    hidl_vec<u8> key_ref;
+    std::vector<u8> key_ref;
     if (derive_key_ref(key, key_ref)) {
         std::cerr << "Failed to derive the key reference" << std::endl;
         return EXIT_FAILURE;
@@ -204,7 +208,7 @@ int fscrypt_legacy_install_key(hidl_vec<u8> const& key)
 }
 
 #ifndef SUSKEYMASTER_BUILD_WINDOWS
-static int derive_key_ref(hidl_vec<u8> const& key, hidl_vec<u8>& out)
+static int derive_key_ref(std::vector<u8> const& key, std::vector<u8>& out)
 {
     static_assert(FSCRYPT_KEY_DESCRIPTOR_SIZE <= SHA512_DIGEST_LENGTH,
                   "Hash too short for descriptor");
@@ -243,7 +247,7 @@ static int derive_key_ref(hidl_vec<u8> const& key, hidl_vec<u8>& out)
     return 0;
 }
 
-static std::string get_key_name(const char *prefix, hidl_vec<u8> const& ref)
+static std::string get_key_name(const char *prefix, std::vector<u8> const& ref)
 {
     std::ostringstream o;
     for (u8 b : ref) {

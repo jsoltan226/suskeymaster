@@ -8,9 +8,9 @@
 #include <libsuskmhal/transport/hal.h>
 #include <libsuskmhal/transport/hidl-base.h>
 #include <libsuskmhal/transport/hidl-types.h>
+#include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #endif /* SUSKEYMASTER_BUILD_HOST */
 #include <libsuskmhal/keymaster-types-cpp.hpp>
-#include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <cstdio>
 #include <cstdlib>
 #include <cstdint>
@@ -37,20 +37,20 @@ static constexpr u8 PROTECTOR_TYPE_WEAK_TOKEN_BASED = 2;
 */
 static constexpr const char PROTECTOR_SECRET_PERSONALIZATION[] = "application-id";
 
-static int decrypt_keymaster(SusKMHal& hal, hidl_vec<u8> const& auth_token,
-                             hidl_vec<u8> const& keyblob, hidl_vec<u8> const& blob,
-                             hidl_vec<u8>& out);
+static int decrypt_keymaster(SusKMHal& hal, HardwareAuthToken const& auth_token,
+                             std::vector<u8> const& keyblob, std::vector<u8> const& blob,
+                             std::vector<u8>& out);
 
-static int decrypt_software(hidl_vec<u8> const& secret, hidl_vec<u8> const& blob,
-                            hidl_vec<u8>& out);
+static int decrypt_software(std::vector<u8> const& secret, std::vector<u8> const& blob,
+                            std::vector<u8>& out);
 
-static int decrypt_v1_blob(SusKMHal& hal, hidl_vec<u8> const& auth_token,
-                           hidl_vec<u8> const& keyblob, hidl_vec<u8> const& protector_secret,
-                           hidl_vec<u8> const& blob, hidl_vec<u8>& out);
+static int decrypt_v1_blob(SusKMHal& hal, HardwareAuthToken const& auth_token,
+                           std::vector<u8> const& keyblob, std::vector<u8> const& protector_secret,
+                           std::vector<u8> const& blob, std::vector<u8>& out);
 
-static int decrypt_v2_v3_blob(SusKMHal& hal, hidl_vec<u8> const& auth_token,
-                              hidl_vec<u8> const& keyblob, hidl_vec<u8> const& protector_secret,
-                              hidl_vec<u8> const& blob, hidl_vec<u8>& out);
+static int decrypt_v2_v3_blob(SusKMHal& hal, HardwareAuthToken const& auth_token,
+                              std::vector<u8> const& keyblob, std::vector<u8> const& protector_secret,
+                              std::vector<u8> const& blob, std::vector<u8>& out);
 
 /** See "hardware/interfaces/gatekeeper/1.0/types.hal"
  ** and "hardware/interfaces/gatekeeper/1.0/IGatekeeper.hal" **/
@@ -78,7 +78,7 @@ static const char * gatekeeper_status_toString(i32 s);
 /**
  * Gatekeeper response to any/all requests has this structure as mandatory part
  */
-struct GatekeeperResponse {
+struct hidl_GatekeeperResponse {
     /** request completion status */
     GatekeeperStatusCode code __attribute__((aligned(8)));
     /**
@@ -89,11 +89,11 @@ struct GatekeeperResponse {
     /** optional crypto blob. Opaque to Android system. */
     hidl_vec<u8> data __attribute((aligned(8)));
 };
-static_assert(offsetof(GatekeeperResponse, code) == 0, "wrong offset");
-static_assert(offsetof(GatekeeperResponse, timeout) == 4, "wrong offset");
-static_assert(offsetof(GatekeeperResponse, data) == 8, "wrong offset");
-static_assert(sizeof(GatekeeperResponse) == 24, "wrong size");
-static_assert(alignof(GatekeeperResponse) == 8, "wrong alignment");
+static_assert(offsetof(hidl_GatekeeperResponse, code) == 0, "wrong offset");
+static_assert(offsetof(hidl_GatekeeperResponse, timeout) == 4, "wrong offset");
+static_assert(offsetof(hidl_GatekeeperResponse, data) == 8, "wrong offset");
+static_assert(sizeof(hidl_GatekeeperResponse) == 24, "wrong size");
+static_assert(alignof(hidl_GatekeeperResponse) == 8, "wrong alignment");
 
 /* "system/gatekeeper/include/gatekeeper/password_handle.h" */
 #define HANDLE_FLAG_THROTTLE_SECURE 1;
@@ -176,8 +176,8 @@ gk_hal::~gk_hal() {
 #endif /* SUSKEYMASTER_BUILD_HOST */
 }
 
-int verify(SusKMHal& kmhal, u32 uid, u64 challenge, hidl_vec<u8> const& cred,
-           hidl_vec<u8> const& handle, hidl_vec<u8>& out,
+int verify(SusKMHal& kmhal, u32 uid, u64 challenge, std::vector<u8> const& cred,
+           std::vector<u8> const& handle, HardwareAuthToken& out,
            gk_hal *opt_gk_hal)
 {
     gk_hal gk_hal(opt_gk_hal ? *opt_gk_hal : kmhal);
@@ -186,15 +186,15 @@ int verify(SusKMHal& kmhal, u32 uid, u64 challenge, hidl_vec<u8> const& cred,
         return EXIT_FAILURE;
     }
 
-    GatekeeperResponse res;
+    hidl_GatekeeperResponse res;
 
     {
 #ifndef SUSKEYMASTER_BUILD_HOST
         u64 challenge = 0;
-        hidl_vec<u8> pwd_handle = handle;
-        hidl_vec<u8> gk_password = cred;
+        hidl_vec<u8> pwd_handle = toHidlView(handle);
+        hidl_vec<u8> gk_password = toHidlView(cred);
 
-        const GatekeeperResponse *res_p = nullptr;
+        const hidl_GatekeeperResponse *res_p = nullptr;
 
         const struct kmhal_arg_write_desc in_args[] = {
             kmhal::transport::init_write("uid", uid, kmhal_arg_write_u32),
@@ -227,13 +227,44 @@ int verify(SusKMHal& kmhal, u32 uid, u64 challenge, hidl_vec<u8> const& cred,
     std::cout << "Gatekeeper call result status: " << c
         << " (" << gatekeeper_status_toString(c) << ")" << std::endl;
 
-    if (res.code == GatekeeperStatusCode::STATUS_OK)
-        out = res.data;
+    if (res.code == GatekeeperStatusCode::STATUS_OK) {
+        constexpr size_t TOKEN_MAC_LENGTH = static_cast<size_t>(Constants::AUTH_TOKEN_MAC_LENGTH);
+
+        /* "hardware/libhardware/include_all/hardware/hw_auth_token.h" */
+        typedef struct __attribute__((__packed__)) {
+            uint8_t version;  // Current version is 0
+            uint64_t challenge;
+            uint64_t user_id;             // secure user ID, not Android user ID
+            uint64_t authenticator_id;    // secure authenticator ID
+            uint32_t authenticator_type;  // hw_authenticator_type_t, in network order
+            uint64_t timestamp;           // in network order
+            uint8_t hmac[TOKEN_MAC_LENGTH];
+        } hw_auth_token_t;
+        hw_auth_token_t auth_token;
+        if (res.data.size() != sizeof(auth_token)) {
+            std::cerr << "Received invalid AuthToken from Gatekeeper" << std::endl;
+            return EXIT_FAILURE;
+        }
+        memcpy(&auth_token, res.data.data(), sizeof(auth_token));
+        if (auth_token.version != 0) {
+            std::cerr << "WARNING: auth_token version "
+                "(" << auth_token.version << ") is not 0" << std::endl;
+        }
+
+        out.challenge = auth_token.challenge;
+        out.userId = auth_token.user_id;
+        out.authenticatorId = auth_token.authenticator_id;
+        out.authenticatorType = static_cast<HardwareAuthenticatorType>
+            (be32toh(auth_token.authenticator_type));
+        out.timestamp = be64toh(auth_token.timestamp);
+        out.mac = std::vector<u8>(TOKEN_MAC_LENGTH);
+        memcpy(out.mac.data(), auth_token.hmac, TOKEN_MAC_LENGTH);
+    }
 
     return res.code == GatekeeperStatusCode::STATUS_OK ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
-int read_pwd_data(hidl_vec<u8> const& pwd_data, sp_pwd_data& out, bool log)
+int read_pwd_data(std::vector<u8> const& pwd_data, sp_pwd_data& out, bool log)
 {
     u32 salt_len = 0, handle_len = 0;
 
@@ -363,15 +394,15 @@ int read_pwd_data(hidl_vec<u8> const& pwd_data, sp_pwd_data& out, bool log)
     return 0;
 }
 
-int stretch_lskf(hidl_vec<u8> const& credential, sp_pwd_data const& pwd,
-                 hidl_vec<u8>& out, bool warn_if_default_password)
+int stretch_lskf(std::vector<u8> const& credential, sp_pwd_data const& pwd,
+                 std::vector<u8>& out, bool warn_if_default_password)
 {
     if (pwd.salt.size() == 0) {
         std::cerr << "Invalid pwd data salt" << std::endl;
         return -1;
     }
 
-    hidl_vec<u8> password;
+    std::vector<u8> password;
     if (credential.size() == 0) {
         password.resize(sizeof(DEFAULT_PASSWORD));
         memcpy(password.data(), DEFAULT_PASSWORD, sizeof(DEFAULT_PASSWORD));
@@ -393,10 +424,10 @@ int stretch_lskf(hidl_vec<u8> const& credential, sp_pwd_data const& pwd,
     return 0;
 }
 
-int unwrap_sp_blob(SusKMHal& kmhal, u32 uid, hidl_vec<u8> const& keystore_key_blob,
-                   hidl_vec<u8> const& stretched_cred, hidl_vec<u8> const& secdiscardable,
-                   hidl_vec<u8> const& sp_blob, hidl_vec<u8>& out, u8& out_blob_version,
-                   hidl_vec<u8> const& gk_pwd_handle)
+int unwrap_sp_blob(SusKMHal& kmhal, u32 uid, std::vector<u8> const& keystore_key_blob,
+                   std::vector<u8> const& stretched_cred, std::vector<u8> const& secdiscardable,
+                   std::vector<u8> const& sp_blob, std::vector<u8>& out, u8& out_blob_version,
+                   std::vector<u8> const& gk_pwd_handle)
 {
     if (sp_blob.size() < 2) {
         std::cerr << "Invalid SP blob" << std::endl;
@@ -404,7 +435,7 @@ int unwrap_sp_blob(SusKMHal& kmhal, u32 uid, hidl_vec<u8> const& keystore_key_bl
     }
 
     u8 spblob_ver = sp_blob[0], protector_type = sp_blob[1];
-    hidl_vec<u8> spblob_content(sp_blob.begin() + 2, sp_blob.end());
+    std::vector<u8> spblob_content(sp_blob.begin() + 2, sp_blob.end());
 
     std::cout << "SP blob version: " << static_cast<int>(spblob_ver) << std::endl;
     if (spblob_ver != SYNTHETIC_PASSWORD_VERSION_V1 &&
@@ -423,7 +454,7 @@ int unwrap_sp_blob(SusKMHal& kmhal, u32 uid, hidl_vec<u8> const& keystore_key_bl
     out_blob_version = spblob_ver;
 
     static constexpr const char PERSONALIZATION_SECDISCARDABLE[] = "secdiscardable-transform";
-    hidl_vec<u8> secdiscardable_hash;
+    std::vector<u8> secdiscardable_hash;
     if (util::personalized_hash(secdiscardable, PERSONALIZATION_SECDISCARDABLE,
                 secdiscardable_hash))
     {
@@ -432,12 +463,12 @@ int unwrap_sp_blob(SusKMHal& kmhal, u32 uid, hidl_vec<u8> const& keystore_key_bl
     }
 
     /* Protector secret = Secdiscardable hash || LSKF data */
-    hidl_vec<u8> protector_secret(stretched_cred.size() + secdiscardable_hash.size());
+    std::vector<u8> protector_secret(stretched_cred.size() + secdiscardable_hash.size());
     memcpy(protector_secret.data(), stretched_cred.data(), stretched_cred.size());
     memcpy(protector_secret.data() + stretched_cred.size(), secdiscardable_hash.data(),
             secdiscardable_hash.size());
 
-    hidl_vec<u8> auth_token{};
+    HardwareAuthToken auth_token{};
     if (gk_pwd_handle.size() > 0) {
         if (gk_pwd_handle.size() < sizeof(password_handle_t)) {
             std::cerr << "Invalid password handle" << std::endl;
@@ -452,7 +483,7 @@ int unwrap_sp_blob(SusKMHal& kmhal, u32 uid, hidl_vec<u8> const& keystore_key_bl
         std::cout << "userSecureId: " << pwd_handle.user_id << std::endl;
 
         static constexpr const char PERSONALIZATION_USER_GK_AUTH[] = "user-gk-authentication";
-        hidl_vec<u8> gk_password;
+        std::vector<u8> gk_password;
         if (util::personalized_hash(stretched_cred, PERSONALIZATION_USER_GK_AUTH, gk_password)) {
             std::cerr << "Failed to derive Gatekeeper password from stretched LSKF" << std::endl;
             return 1;
@@ -473,7 +504,7 @@ int unwrap_sp_blob(SusKMHal& kmhal, u32 uid, hidl_vec<u8> const& keystore_key_bl
         }
     }
 
-    hidl_vec<u8> km_blob = util::keystore_blob_to_km_blob(keystore_key_blob);
+    std::vector<u8> km_blob = util::keystore_blob_to_km_blob(keystore_key_blob);
     if (spblob_ver == SYNTHETIC_PASSWORD_VERSION_V1)
         return decrypt_v1_blob(kmhal, auth_token,
                 km_blob, protector_secret, spblob_content, out);
@@ -485,8 +516,8 @@ int unwrap_sp_blob(SusKMHal& kmhal, u32 uid, hidl_vec<u8> const& keystore_key_bl
 }
 
 int validate_synthetic_password(SusKMHal& kmhal, u32 uid,
-                                hidl_vec<u8> const& synthetic_password, u8 sp_blob_ver,
-                                hidl_vec<u8> const& null_pwd_handle)
+                                std::vector<u8> const& synthetic_password, u8 sp_blob_ver,
+                                std::vector<u8> const& null_pwd_handle)
 {
     if (sp_blob_ver != SYNTHETIC_PASSWORD_VERSION_V1 &&
         sp_blob_ver != SYNTHETIC_PASSWORD_VERSION_V2 &&
@@ -496,7 +527,7 @@ int validate_synthetic_password(SusKMHal& kmhal, u32 uid,
         return EXIT_FAILURE;
     }
 
-    hidl_vec<u8> gk_password;
+    std::vector<u8> gk_password;
     static constexpr const char PERSONALIZATION_SP_GK_AUTH[] = "sp-gk-authentication";
     if (derive_synthetic_password_subkey(synthetic_password, sp_blob_ver,
                 PERSONALIZATION_SP_GK_AUTH, gk_password))
@@ -505,7 +536,7 @@ int validate_synthetic_password(SusKMHal& kmhal, u32 uid,
         return EXIT_FAILURE;
     }
 
-    hidl_vec<u8> auth_token;
+    HardwareAuthToken auth_token;
     if (verify(kmhal, uid, UINT64_C(0), gk_password, null_pwd_handle, auth_token)) {
         std::cerr << "Gatekeeper authentication w/ synthetic password failed!" << std::endl;
         std::cerr << "Invalid synthetic password for given user and password handle!"
@@ -516,8 +547,8 @@ int validate_synthetic_password(SusKMHal& kmhal, u32 uid,
     return EXIT_SUCCESS;
 }
 
-int derive_synthetic_password_subkey(hidl_vec<u8> const& synthetic_password, u8 sp_blob_ver,
-                                     const char *personalization, hidl_vec<u8>& out)
+int derive_synthetic_password_subkey(std::vector<u8> const& synthetic_password, u8 sp_blob_ver,
+                                     const char *personalization, std::vector<u8>& out)
 {
     if (sp_blob_ver == SYNTHETIC_PASSWORD_VERSION_V3) {
         static constexpr const char PERSONALIZATION_CONTEXT[] =
@@ -547,28 +578,32 @@ int derive_synthetic_password_subkey(hidl_vec<u8> const& synthetic_password, u8 
     return EXIT_SUCCESS;
 }
 
-static int decrypt_keymaster(SusKMHal& hal, hidl_vec<u8> const& auth_token,
-                             hidl_vec<u8> const& keyblob, hidl_vec<u8> const& blob,
-                             hidl_vec<u8>& out)
+static int decrypt_keymaster(SusKMHal& hal, HardwareAuthToken const& auth_token,
+                             std::vector<u8> const& keyblob, std::vector<u8> const& blob,
+                             std::vector<u8>& out)
 {
-    hidl_vec<u8> iv, ciphertext_with_tag;
+
+    std::vector<u8> iv, ciphertext_with_tag;
     if (util::extract_gcm_data(blob, iv, ciphertext_with_tag))
         return 1;
 
-    hidl_vec<KeyParameter> params(3);
-    params[0].tag = Tag::NONCE;
-    params[0].blob = iv;
-    params[1].tag = Tag::AUTH_TOKEN;
-    params[1].blob = auth_token;
-    params[2].tag = Tag::MAC_LENGTH;
-    params[2].f.integer = 8 * util::AES_GCM_TAG_SIZE;
-    return hal_ops::crypto::decrypt(hal, ciphertext_with_tag, keyblob, params, out);
+    std::vector<KeyParameter> params(4);
+    params[0].tag = Tag::BLOCK_MODE;
+    params[0].f.blockMode = BlockMode::GCM;
+    params[1].tag = Tag::PADDING;
+    params[1].f.paddingMode = PaddingMode::NONE;
+    params[2].tag = Tag::NONCE;
+    params[2].blob = iv;
+    params[3].tag = Tag::MAC_LENGTH;
+    params[3].f.integer = 8 * util::AES_GCM_TAG_SIZE;
+
+    return hal_ops::crypto::decrypt(hal, ciphertext_with_tag, keyblob, params, auth_token, out);
 }
 
-static int decrypt_software(hidl_vec<u8> const& secret, hidl_vec<u8> const& blob,
-                            hidl_vec<u8>& out)
+static int decrypt_software(std::vector<u8> const& secret, std::vector<u8> const& blob,
+                            std::vector<u8>& out)
 {
-    hidl_vec<u8> derived_key;
+    std::vector<u8> derived_key;
     if (util::personalized_hash(secret, PROTECTOR_SECRET_PERSONALIZATION, derived_key)) {
         std::cerr << "Failed to hash the protector secret" << std::endl;
         return 1;
@@ -578,11 +613,11 @@ static int decrypt_software(hidl_vec<u8> const& secret, hidl_vec<u8> const& blob
     return util::aes256gcm_software_decrypt(derived_key, blob, out);
 }
 
-static int decrypt_v1_blob(SusKMHal& hal, hidl_vec<u8> const& auth_token,
-                           hidl_vec<u8> const& keyblob, hidl_vec<u8> const& protector_secret,
-                           hidl_vec<u8> const& blob, hidl_vec<u8>& out)
+static int decrypt_v1_blob(SusKMHal& hal, HardwareAuthToken const& auth_token,
+                           std::vector<u8> const& keyblob, std::vector<u8> const& protector_secret,
+                           std::vector<u8> const& blob, std::vector<u8>& out)
 {
-    hidl_vec<u8> intermediate;
+    std::vector<u8> intermediate;
     std::cout << std::endl << "Performing intermediate decryption (with software)..."
         << std::endl;
     if (decrypt_software(protector_secret, blob, intermediate)) {
@@ -602,11 +637,11 @@ static int decrypt_v1_blob(SusKMHal& hal, hidl_vec<u8> const& auth_token,
     return 0;
 }
 
-static int decrypt_v2_v3_blob(SusKMHal& hal, hidl_vec<u8> const& auth_token,
-                              hidl_vec<u8> const& keyblob, hidl_vec<u8> const& protector_secret,
-                              hidl_vec<u8> const& blob, hidl_vec<u8>& out)
+static int decrypt_v2_v3_blob(SusKMHal& hal, HardwareAuthToken const& auth_token,
+                              std::vector<u8> const& keyblob, std::vector<u8> const& protector_secret,
+                              std::vector<u8> const& blob, std::vector<u8>& out)
 {
-    hidl_vec<u8> intermediate;
+    std::vector<u8> intermediate;
     std::cout << std::endl << "Performing intermediate decryption (with keymaster)..."
         << std::endl;
     if (decrypt_keymaster(hal, auth_token, keyblob, blob, intermediate)) {
@@ -643,14 +678,14 @@ static int read_gatekeeper_response(const struct kmhal_parcel *p,
                                     size_t *off_p,
                                     const void **out, size_t out_size)
 {
-    if (out == nullptr || out_size != sizeof(GatekeeperResponse)) {
+    if (out == nullptr || out_size != sizeof(hidl_GatekeeperResponse)) {
         std::cerr << __func__ << ": Invalid parameters" << std::endl;
         return -1;
     }
 
     u32 exp_flags = 0;
     kmhal_parcel_obj_t ref;
-    if (kmhal_parcel_read_buffer_obj(p, off_p, sizeof(GatekeeperResponse),
+    if (kmhal_parcel_read_buffer_obj(p, off_p, sizeof(hidl_GatekeeperResponse),
                 &exp_flags, nullptr, nullptr, out, &ref))
     {
         std::cerr << __func__ << ": Failed to read the GatekeeperResponse buffer object"
@@ -658,10 +693,11 @@ static int read_gatekeeper_response(const struct kmhal_parcel *p,
         return 1;
     }
 
-    const GatekeeperResponse *const gkr_p = reinterpret_cast<const GatekeeperResponse *>(*out);
+    const hidl_GatekeeperResponse *const gkr_p =
+        reinterpret_cast<const hidl_GatekeeperResponse *>(*out);
     if (kmhal_hidl_vec_read_embedded(nullptr, nullptr, p, off_p,
                 reinterpret_cast<const struct kmhal_hidl_vec *>(&gkr_p->data), sizeof(u8),
-                ref, offsetof(GatekeeperResponse, data)))
+                ref, offsetof(hidl_GatekeeperResponse, data)))
     {
         std::cerr << __func__ << ": Failed to read the GatekeeperResponse's embedded "
             "data HIDL vec buffer object" << std::endl;

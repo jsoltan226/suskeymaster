@@ -11,10 +11,11 @@
 #include <cstdint>
 #include <cstring>
 
-using namespace ::android::hardware;
-using namespace ::android::hardware::keymaster::generic;
 
 namespace suskeymaster {
+
+using namespace ::android::hardware;
+using namespace kmhal::generic;
 
 extern "C" void call_attest_cb(void *_this, void *err, void *certChain) {
     void *callable;

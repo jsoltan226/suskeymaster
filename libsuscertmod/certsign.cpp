@@ -5,7 +5,6 @@
 #include <libsuskmhal/suskmhal.hpp>
 #include <libsuskmhal/keymaster-types-c.h>
 #include <libsuskmhal/keymaster-types-cpp.hpp>
-#include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <core/int.h>
 #include <core/log.h>
 #include <core/util.h>
@@ -16,12 +15,12 @@
 #define MODULE_NAME "certsign"
 
 using namespace ::android::hardware;
-using namespace ::android::hardware::keymaster::generic;
+using namespace ::suskeymaster::kmhal::generic;
 
 static std::unique_ptr<suskeymaster::kmhal::SusKMHal> get_hal(void);
 static int get_keyblob_from_current_keybox(enum sus_key_variant variant,
-        hidl_vec<uint8_t>& out);
-static hidl_vec<KeyParameter> init_params(enum sus_key_variant variant);
+        std::vector<uint8_t>& out);
+static std::vector<KeyParameter> init_params(enum sus_key_variant variant);
 
 extern "C" {
 
@@ -36,8 +35,8 @@ i32 sus_cert_sign(VECTOR(u8 const) tbs_der, VECTOR(u8) *out_sig,
     }
 
     ErrorCode e = ErrorCode::UNKNOWN_ERROR;
-    hidl_vec<uint8_t> keyblob;
-    hidl_vec<KeyParameter> params;
+    std::vector<uint8_t> keyblob;
+    std::vector<KeyParameter> params;
     std::unique_ptr<suskeymaster::kmhal::SusKMHal> hal = nullptr;
 
     /* Prepare what's needed */
@@ -57,16 +56,15 @@ i32 sus_cert_sign(VECTOR(u8 const) tbs_der, VECTOR(u8) *out_sig,
         if (hal == NULL)
             goto_error("Couldn't obtain a handle to the keymaster HAL");
 
-        hidl_vec<KeyParameter> dummy;
+        std::vector<KeyParameter> dummy;
         e = hal->begin(KeyPurpose::SIGN, keyblob, params, {}, dummy, op_handle);
         if (e != ErrorCode::OK)
             goto_error("BEGIN operation failed: %u (%s)",
                     (uint32_t)e, KM_ErrorCode_toString((uint32_t)e));
 
-        hidl_vec<uint8_t> tbs_der_vec(vector_size(tbs_der));
-        memcpy(tbs_der_vec.data(), tbs_der, vector_size(tbs_der));
+        const std::vector<u8> tbs_der_vec(tbs_der, tbs_der + vector_size(tbs_der));
 
-        hidl_vec<uint8_t> sig_vec;
+        std::vector<uint8_t> sig_vec;
         e = hal->finish(op_handle, {}, tbs_der_vec, {}, {}, {}, dummy, sig_vec);
         if (e != ErrorCode::OK)
             goto_error("FINISH operation failed: %u (%s)",
@@ -115,7 +113,7 @@ static std::unique_ptr<suskeymaster::kmhal::SusKMHal> get_hal(void)
 }
 
 static int get_keyblob_from_current_keybox(enum sus_key_variant variant,
-        hidl_vec<uint8_t>& out)
+        std::vector<uint8_t>& out)
 {
     const struct keybox *keybox = NULL;
     int ret = 0;
@@ -144,9 +142,9 @@ out:
     return ret;
 }
 
-static hidl_vec<KeyParameter> init_params(enum sus_key_variant variant)
+static std::vector<KeyParameter> init_params(enum sus_key_variant variant)
 {
-    hidl_vec<KeyParameter> ret(variant == SUS_KEY_RSA ? 2 : 1);
+    std::vector<KeyParameter> ret(variant == SUS_KEY_RSA ? 2 : 1);
     ret[0].tag = Tag::DIGEST;
     ret[0].f.digest = Digest::SHA_2_256;
 

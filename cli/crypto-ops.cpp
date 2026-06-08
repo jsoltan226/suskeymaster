@@ -1,8 +1,10 @@
 #include "cli.hpp"
+#include <core/int.h>
 #include <libsuskmhal/suskmhal.hpp>
 #include <libsuskmhal/keymaster-types-cpp.hpp>
 #include <libsuskmhal/util/km-params.hpp>
 #include <libsuskmhal/transport/aosp-hidl-support.hpp>
+#include <vector>
 #include <cstring>
 
 namespace suskeymaster {
@@ -10,39 +12,39 @@ namespace cli {
 namespace hal_ops {
 namespace crypto {
 
-using namespace ::android::hardware::keymaster::generic;
-using ::android::hardware::hidl_vec;
+using namespace kmhal::generic;
 using kmhal::SusKMHal;
 
 static ErrorCode do_generic_operation_cycle(SusKMHal& hal,
-        KeyPurpose op, hidl_vec<uint8_t> const& keyblob,
-        hidl_vec<uint8_t> const& input_, hidl_vec<KeyParameter> const& params,
-        hidl_vec<uint8_t> const* finish_signature,
-        hidl_vec<uint8_t>* output, hidl_vec<uint8_t>* out_gcm_begin_iv);
+        KeyPurpose op, std::vector<u8> const& keyblob, std::vector<u8> const& input_,
+        std::vector<KeyParameter> const& params, HardwareAuthToken const& authToken,
+        std::vector<u8> const* finish_signature,
+        std::vector<u8>* output, std::vector<u8>* out_gcm_begin_iv);
 
-static void append_vec(hidl_vec<uint8_t>& dst, const hidl_vec<uint8_t>& src);
+static void append_vec(std::vector<u8>& dst, const std::vector<u8>& src);
 
 static void init_encrypt_params_from_user_and_characteristics(
-        hidl_vec<KeyParameter>& params, const KeyCharacteristics& kc,
-        bool* is_aes_gcm
+        std::vector<KeyParameter>& params, const KeyCharacteristics& kc,
+        bool* is_aes_with_iv
 );
 static void init_sign_params_from_user_and_characteristics(
-        hidl_vec<KeyParameter>& params, const KeyCharacteristics& kc,
-        hidl_vec<KeyParameter>& out_verify_params
+        std::vector<KeyParameter>& params, const KeyCharacteristics& kc,
+        std::vector<KeyParameter>& out_verify_params
 );
 
-int encrypt(SusKMHal& hal, hidl_vec<uint8_t> const& plaintext,
-            hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& encrypt_params,
-            hidl_vec<uint8_t>& out_ciphertext, hidl_vec<uint8_t>& out_aes_gcm_iv)
+int encrypt(SusKMHal& hal, std::vector<u8> const& plaintext,
+            std::vector<u8> const& key, std::vector<KeyParameter> const& encrypt_params,
+            HardwareAuthToken const& auth_token,
+            std::vector<u8>& out_ciphertext, std::vector<u8>& out_nonce)
 {
-    hidl_vec<KeyParameter> params(encrypt_params);
+    std::vector<KeyParameter> params(encrypt_params);
 
-    hidl_vec<uint8_t> app_id, app_data;
+    std::vector<u8> app_id, app_data;
     util::extract_application_id_and_data(params, app_id, app_data);
     KeyCharacteristics kc;
     ErrorCode e = ErrorCode::UNKNOWN_ERROR;
 
-    out_aes_gcm_iv.resize(0);
+    out_nonce.resize(0);
 
     if ((e = hal.getKeyCharacteristics(key, app_id, app_data, kc)) != ErrorCode::OK) {
         std::cerr << "Couldn't get the key's characteristics: "
@@ -50,12 +52,12 @@ int encrypt(SusKMHal& hal, hidl_vec<uint8_t> const& plaintext,
         return 1;
     }
 
-    bool is_aes_gcm = false;
-    init_encrypt_params_from_user_and_characteristics(params, kc, &is_aes_gcm);
+    bool is_aes_with_iv = false;
+    init_encrypt_params_from_user_and_characteristics(params, kc, &is_aes_with_iv);
 
     if (do_generic_operation_cycle(hal, KeyPurpose::ENCRYPT, key,
-                plaintext, params, nullptr, &out_ciphertext,
-                (is_aes_gcm ? &out_aes_gcm_iv : nullptr)
+                plaintext, params, auth_token, nullptr, &out_ciphertext,
+                (is_aes_with_iv ? &out_nonce : nullptr)
         ) != ErrorCode::OK)
     {
         std::cerr << "Encryption operation failed!" << std::endl;
@@ -66,13 +68,14 @@ int encrypt(SusKMHal& hal, hidl_vec<uint8_t> const& plaintext,
     return 0;
 }
 
-int decrypt(SusKMHal& hal, hidl_vec<uint8_t> const& ciphertext,
-            hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& decrypt_params,
-            hidl_vec<uint8_t>& out_plaintext)
+int decrypt(SusKMHal& hal, std::vector<u8> const& ciphertext,
+            std::vector<u8> const& key, std::vector<KeyParameter> const& decrypt_params,
+            HardwareAuthToken const& auth_token,
+            std::vector<u8>& out_plaintext)
 {
-    hidl_vec<KeyParameter> params(decrypt_params);
+    std::vector<KeyParameter> params(decrypt_params);
 
-    hidl_vec<uint8_t> app_id, app_data;
+    std::vector<u8> app_id, app_data;
     util::extract_application_id_and_data(params, app_id, app_data);
     KeyCharacteristics kc;
     ErrorCode e = ErrorCode::UNKNOWN_ERROR;
@@ -84,8 +87,8 @@ int decrypt(SusKMHal& hal, hidl_vec<uint8_t> const& ciphertext,
 
     init_encrypt_params_from_user_and_characteristics(params, kc, nullptr);
 
-    if (do_generic_operation_cycle(hal, KeyPurpose::DECRYPT, key,
-                ciphertext, params, nullptr, &out_plaintext, nullptr) != ErrorCode::OK)
+    if (do_generic_operation_cycle(hal, KeyPurpose::DECRYPT, key, ciphertext,
+                params, auth_token, nullptr, &out_plaintext, nullptr) != ErrorCode::OK)
     {
         std::cerr << "Decryption operation failed!" << std::endl;
         return 1;
@@ -95,13 +98,14 @@ int decrypt(SusKMHal& hal, hidl_vec<uint8_t> const& ciphertext,
     return 0;
 }
 
-int sign(SusKMHal& hal, hidl_vec<uint8_t> const& message,
-         hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_sign_params,
-         hidl_vec<uint8_t>& out_signature)
+int sign(SusKMHal& hal, std::vector<u8> const& message,
+         std::vector<u8> const& key, std::vector<KeyParameter> const& in_sign_params,
+         HardwareAuthToken const& auth_token,
+         std::vector<u8>& out_signature)
 {
-    hidl_vec<KeyParameter> params(in_sign_params), verify_params;
+    std::vector<KeyParameter> params(in_sign_params), verify_params;
 
-    hidl_vec<uint8_t> app_id, app_data;
+    std::vector<u8> app_id, app_data;
     util::extract_application_id_and_data(params, app_id, app_data);
     KeyCharacteristics kc;
     ErrorCode e = ErrorCode::UNKNOWN_ERROR;
@@ -113,8 +117,8 @@ int sign(SusKMHal& hal, hidl_vec<uint8_t> const& message,
 
     init_sign_params_from_user_and_characteristics(params, kc, verify_params);
 
-    if (do_generic_operation_cycle(hal, KeyPurpose::SIGN, key,
-            message, params, nullptr, &out_signature, nullptr) != ErrorCode::OK)
+    if (do_generic_operation_cycle(hal, KeyPurpose::SIGN, key, message,
+                params, auth_token, nullptr, &out_signature, nullptr) != ErrorCode::OK)
     {
         std::cerr << "Signing operation failed!" << std::endl;
         return 1;
@@ -122,8 +126,8 @@ int sign(SusKMHal& hal, hidl_vec<uint8_t> const& message,
 
     std::cout << "Signing operation OK" << std::endl;
 
-    if (do_generic_operation_cycle(hal, KeyPurpose::VERIFY, key,
-            message, verify_params, &out_signature, nullptr, nullptr) != ErrorCode::OK)
+    if (do_generic_operation_cycle(hal, KeyPurpose::VERIFY, key, message,
+                verify_params, auth_token, &out_signature, nullptr, nullptr) != ErrorCode::OK)
     {
         std::cerr << "Sanity signature verification failed!" << std::endl;
         return 1;
@@ -133,10 +137,11 @@ int sign(SusKMHal& hal, hidl_vec<uint8_t> const& message,
 }
 
 int verify(SusKMHal& hal,
-           hidl_vec<uint8_t> const& message, hidl_vec<uint8_t> const& signature,
-           hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_verify_params)
+           std::vector<u8> const& message, std::vector<u8> const& signature,
+           std::vector<u8> const& key, std::vector<KeyParameter> const& in_verify_params,
+           HardwareAuthToken const& auth_token)
 {
-    hidl_vec<uint8_t> app_id, app_data;
+    std::vector<u8> app_id, app_data;
     util::extract_application_id_and_data(in_verify_params, app_id, app_data);
     KeyCharacteristics kc;
     ErrorCode e = ErrorCode::UNKNOWN_ERROR;
@@ -146,12 +151,12 @@ int verify(SusKMHal& hal,
         return 1;
     }
 
-    hidl_vec<KeyParameter> dummy(in_verify_params);
-    hidl_vec<KeyParameter> verify_params;
+    std::vector<KeyParameter> dummy(in_verify_params);
+    std::vector<KeyParameter> verify_params;
     init_sign_params_from_user_and_characteristics(dummy, kc, verify_params);
 
-    if (do_generic_operation_cycle(hal, KeyPurpose::VERIFY, key,
-                message, verify_params, &signature, nullptr, nullptr) != ErrorCode::OK)
+    if (do_generic_operation_cycle(hal, KeyPurpose::VERIFY, key, message,
+                verify_params, auth_token, &signature, nullptr, nullptr) != ErrorCode::OK)
     {
         std::cerr << "Signature verification failed!" << std::endl;
         return 1;
@@ -162,18 +167,18 @@ int verify(SusKMHal& hal,
 }
 
 static ErrorCode do_generic_operation_cycle(SusKMHal& hal,
-        KeyPurpose op, hidl_vec<uint8_t> const& keyblob,
-        hidl_vec<uint8_t> const& input_, hidl_vec<KeyParameter> const& params,
-        hidl_vec<uint8_t> const* finish_signature,
-        hidl_vec<uint8_t>* output, hidl_vec<uint8_t>* out_gcm_begin_iv)
+        KeyPurpose op, std::vector<u8> const& keyblob, std::vector<u8> const& input_,
+        std::vector<KeyParameter> const& params, HardwareAuthToken const& auth_token,
+        std::vector<u8> const* finish_signature,
+        std::vector<u8>* output, std::vector<u8>* out_gcm_begin_iv)
 {
-    uint64_t operation_handle = 0;
-    hidl_vec<KeyParameter> kp_tmp;
+    OperationHandle operation_handle = 0;
+    std::vector<KeyParameter> kp_tmp;
     ErrorCode e = ErrorCode::UNKNOWN_ERROR;
 
     if (output) output->resize(0);
 
-    e = hal.begin(op, keyblob, params, {}, kp_tmp, operation_handle);
+    e = hal.begin(op, keyblob, params, auth_token, kp_tmp, operation_handle);
     if (e != ErrorCode::OK) {
         std::cerr << toString(op) << ": BEGIN operation failed: "
             << static_cast<int>(e) << " (" << toString(e) << ")" << std::endl;
@@ -190,21 +195,15 @@ static ErrorCode do_generic_operation_cycle(SusKMHal& hal,
         }
     }
 
-    hidl_vec<uint8_t> input(input_);
+    std::vector<u8> input(input_);
     size_t progress = 0;
-    uint32_t consumed = 0;
+    u32 consumed = 0;
 
     while (progress < input.size()) {
-        hidl_vec<uint8_t> chunk;
-        chunk.setToExternal(
-                input.data() + progress,
-                input.size() - progress,
-                false
-        );
+        std::vector<u8> chunk(input.begin() + progress, input.end());
+        std::vector<u8> tmp_output;
 
-        hidl_vec<uint8_t> tmp_output;
-
-        e = hal.update(operation_handle, {}, chunk, {}, {},
+        e = hal.update(operation_handle, {}, chunk, auth_token, {},
                 consumed, kp_tmp, tmp_output);
         if (e != ErrorCode::OK) {
             std::cerr << toString(op) << ": UPDATE operation failed: "
@@ -226,11 +225,11 @@ static ErrorCode do_generic_operation_cycle(SusKMHal& hal,
             append_vec(*output, tmp_output);
     }
 
-    hidl_vec<uint8_t> last_tmp_output;
-    const hidl_vec<uint8_t> dummy_;
+    std::vector<u8> last_tmp_output;
+    const std::vector<u8> dummy_;
 
-    const hidl_vec<uint8_t>& finish_sig_ = finish_signature ? *finish_signature : dummy_;
-    e = hal.finish(operation_handle, {}, {}, finish_sig_, {}, {}, kp_tmp, last_tmp_output);
+    const std::vector<u8>& finish_sig_ = finish_signature ? *finish_signature : dummy_;
+    e = hal.finish(operation_handle, {}, {}, finish_sig_, auth_token, {}, kp_tmp, last_tmp_output);
     if (e != ErrorCode::OK) {
         std::cerr << toString(op) << ": FINISH operation failed: "
             << static_cast<int>(e) << " (" << toString(e) << ")" << std::endl;
@@ -242,7 +241,7 @@ static ErrorCode do_generic_operation_cycle(SusKMHal& hal,
     return ErrorCode::OK;
 }
 
-static void append_vec(hidl_vec<uint8_t>& dst, const hidl_vec<uint8_t>& src)
+static void append_vec(std::vector<u8>& dst, const std::vector<u8>& src)
 {
     size_t prev_size = dst.size();
     dst.resize(prev_size + src.size());
@@ -250,8 +249,8 @@ static void append_vec(hidl_vec<uint8_t>& dst, const hidl_vec<uint8_t>& src)
 }
 
 static void init_encrypt_params_from_user_and_characteristics(
-        hidl_vec<KeyParameter>& params, const KeyCharacteristics& kc,
-        bool* is_aes_gcm
+        std::vector<KeyParameter>& params, const KeyCharacteristics& kc,
+        bool* is_aes_with_iv
 )
 {
     Algorithm alg = util::find_algorithm(kc.hardwareEnforced,
@@ -264,7 +263,7 @@ static void init_encrypt_params_from_user_and_characteristics(
     Digest digest;
     PaddingMode padding;
     BlockMode block_mode;
-    uint32_t mac_length = 0;
+    u32 mac_length = 0;
 
     for (const auto& kp : params) {
         if (kp.tag == Tag::DIGEST && !digest_found) {
@@ -396,8 +395,8 @@ static void init_encrypt_params_from_user_and_characteristics(
         }
 
         if (padding_found) {
-            if (block_mode_found && block_mode == BlockMode::GCM && is_aes_gcm)
-                *is_aes_gcm = true;
+            if (block_mode_found && is_aes_with_iv)
+                *is_aes_with_iv = block_mode == BlockMode::GCM || block_mode == BlockMode::CTR;
 
             if (block_mode_found &&
                     (block_mode == BlockMode::GCM || block_mode == BlockMode::CTR))
@@ -447,8 +446,8 @@ static void init_encrypt_params_from_user_and_characteristics(
 }
 
 static void init_sign_params_from_user_and_characteristics(
-        hidl_vec<KeyParameter>& params, const KeyCharacteristics& kc,
-        hidl_vec<KeyParameter>& out_verify_params
+        std::vector<KeyParameter>& params, const KeyCharacteristics& kc,
+        std::vector<KeyParameter>& out_verify_params
 )
 {
     Algorithm alg = util::find_algorithm(kc.hardwareEnforced,
@@ -458,7 +457,7 @@ static void init_sign_params_from_user_and_characteristics(
 
     Digest digest;
     PaddingMode padding;
-    uint32_t mac_length = 0;
+    u32 mac_length = 0;
     bool digest_found = false, padding_found = false, mac_length_found = false;
     for (const auto& kp : params) {
         if (kp.tag == Tag::DIGEST && !digest_found) {
@@ -562,7 +561,7 @@ static void init_sign_params_from_user_and_characteristics(
     }
 
     for (const Tag t : { Tag::APPLICATION_ID, Tag::APPLICATION_DATA }) {
-        const hidl_vec<uint8_t> *blob = util::find_blob_tag(t, params);
+        const std::vector<u8> *blob = util::find_blob_tag(t, params);
         if (blob == nullptr)
             continue;
 

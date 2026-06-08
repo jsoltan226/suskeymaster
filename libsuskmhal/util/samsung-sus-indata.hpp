@@ -1,15 +1,12 @@
 #ifndef SUSKEYMASTER_UTIL_SAMSUNG_SUS_INDATA_H_
 #define SUSKEYMASTER_UTIL_SAMSUNG_SUS_INDATA_H_
 
-#define HIDL_DISABLE_INSTRUMENTATION
 #include <openssl/asn1t.h>
-#include "../transport/aosp-hidl-support.hpp"
+#include <vector>
 
 namespace suskeymaster {
 namespace kmhal {
 namespace util {
-
-using ::android::hardware::hidl_vec;
 
 enum send_indata_err {
     OK,
@@ -25,8 +22,8 @@ typedef struct send_indata_err_st {
 } SUSKEYMASTER_SEND_INDATA_ERR;
 DECLARE_ASN1_FUNCTIONS(SUSKEYMASTER_SEND_INDATA_ERR);
 
-int serialize_send_indata_err(hidl_vec<uint8_t>& out, send_indata_err e);
-int deserialize_send_indata_err(send_indata_err& out, hidl_vec<uint8_t> const& der);
+int serialize_send_indata_err(std::vector<uint8_t>& out, send_indata_err e);
+int deserialize_send_indata_err(send_indata_err& out, std::vector<uint8_t> const& der);
 
 } /* namespace util */
 } /* namespace kmhal */

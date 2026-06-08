@@ -26,9 +26,8 @@
 #include <system_error>
 #include <unordered_map>
 
-using namespace ::android::hardware::keymaster::generic;
-using namespace ::android::hardware;
 using namespace suskeymaster;
+using namespace suskeymaster::kmhal::generic;
 
 static const char *g_argv0 = NULL;
 
@@ -75,8 +74,8 @@ struct cli_arg {
 
 struct cli_arg_value {
 private:
-    hidl_vec<uint8_t> bytes;
-    hidl_vec<KeyParameter> key_params;
+    std::vector<uint8_t> bytes;
+    std::vector<KeyParameter> key_params;
 
     /* also used with cli_arg_type::OUTPUT_FILE as the output file path */
     std::string str;
@@ -87,7 +86,7 @@ public:
     cli_arg_value() { }
 
     /* For cli_arg_type::INPUT_FILE */
-    cli_arg_value(hidl_vec<uint8_t>&& b) {
+    cli_arg_value(std::vector<uint8_t>&& b) {
         bytes = std::move(b);
     }
 
@@ -98,21 +97,21 @@ public:
     }
 
     /* For cli_arg_type::KEY_PARAMETERS */
-    cli_arg_value(hidl_vec<KeyParameter>&& kp) {
+    cli_arg_value(std::vector<KeyParameter>&& kp) {
         key_params = std::move(kp);
     }
 
-    const hidl_vec<uint8_t>& in_bytes(void) const {
+    const std::vector<uint8_t>& in_bytes(void) const {
         return bytes;
     }
-    const hidl_vec<KeyParameter>& in_key_params(void) const {
+    const std::vector<KeyParameter>& in_key_params(void) const {
         return key_params;
     }
     const std::string& in_string(void) const {
         return str;
     }
 
-    hidl_vec<uint8_t>& out_bytes(void) {
+    std::vector<uint8_t>& out_bytes(void) {
         return bytes;
     }
     const std::string& out_string(void) const {
@@ -147,15 +146,15 @@ static void check_print_help(int argc, const char **argv,
 static int init_g_hal(hal_version min_ver);
 
 static int read_file(const std::string& path, const std::string& param_name,
-        hidl_vec<uint8_t>& out);
+        std::vector<uint8_t>& out);
 static int write_file(const std::string& path, const std::string& param_name,
-        const hidl_vec<uint8_t>& in);
+        const std::vector<uint8_t>& in);
 
 static int read_and_deserialize_cert_chain(const std::string& path,
-        hidl_vec<hidl_vec<uint8_t>>& cert_chain);
+        std::vector<std::vector<uint8_t>>& cert_chain);
 #ifndef SUSKEYMASTER_BUILD_HOST
 static int serialize_and_write_cert_chain(const std::string& path,
-        const hidl_vec<hidl_vec<uint8_t>>& cert_chain);
+        const std::vector<std::vector<uint8_t>>& cert_chain);
 #endif /* SUSKEYMASTER_BUILD_HOST */
 
 static int scan_keybox_arg(const char *cmdline,
@@ -169,9 +168,9 @@ static int str_to_int(const std::string &str_, T& out);
 static int scan_indata_arg(const char *cmdline, uint32_t *& out_cmd,
         uint32_t *& out_ver, uint32_t *& out_km_ver, uint32_t *& out_pid,
         uint32_t *& out_int0, uint64_t *& out_long0, uint64_t *& out_long1,
-        hidl_vec<uint8_t> *& out_bin0, hidl_vec<uint8_t> *& out_bin1,
-        hidl_vec<uint8_t> *& out_bin2, hidl_vec<uint8_t> *& out_key,
-        hidl_vec<KeyParameter> *& out_par);
+        std::vector<uint8_t> *& out_bin0, std::vector<uint8_t> *& out_bin1,
+        std::vector<uint8_t> *& out_bin2, std::vector<uint8_t> *& out_key,
+        std::vector<KeyParameter> *& out_par);
 #endif /* SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA */
 
 static void print_generic_usage(void);
@@ -269,8 +268,8 @@ static const std::vector<cli_command> cmds = {
         },
     },
     [](arg_map_t& a) {
-        hidl_vec<uint8_t> keyblob;
-        hidl_vec<KeyParameter> params = a["generate_params"].in_key_params();
+        std::vector<uint8_t> keyblob;
+        std::vector<KeyParameter> params = a["generate_params"].in_key_params();
         /* Make temporary keys generated for attestation have a purpose by default,
          * because many vendors implement their keymaster in such a way that
          * attesting a key with no purpose generates a certificate
@@ -283,7 +282,7 @@ static const std::vector<cli_command> cmds = {
             return 1;
         }
 
-        hidl_vec<hidl_vec<uint8_t>> cert_chain;
+        std::vector<std::vector<uint8_t>> cert_chain;
         if (cli::hal_ops::attest_key(*g_hal, keyblob, a["attest_params"].in_key_params(),
                 cert_chain))
             return EXIT_FAILURE;
@@ -315,10 +314,10 @@ static const std::vector<cli_command> cmds = {
         },
     },
     [](arg_map_t& a) {
-        const hidl_vec<uint8_t>& keyblob = a["keyblob"].in_bytes();
-        const hidl_vec<KeyParameter>& params = a["attest_params"].in_key_params();
+        const std::vector<uint8_t>& keyblob = a["keyblob"].in_bytes();
+        const std::vector<KeyParameter>& params = a["attest_params"].in_key_params();
 
-        hidl_vec<hidl_vec<uint8_t>> cert_chain;
+        std::vector<std::vector<uint8_t>> cert_chain;
         if (cli::hal_ops::attest_key(*g_hal, keyblob, params, cert_chain))
             return EXIT_FAILURE;
 
@@ -429,23 +428,23 @@ static const std::vector<cli_command> cmds = {
         { "params", KEY_PARAMETERS, ARG_OPTIONAL,
             "A space-separated list of key parameters used in the call to `begin`"
         },
-        { "out_aes_gcm_iv", OUTPUT_FILE, ARG_OPTIONAL,
-            "If performing AES encryption in GCM mode without a custom IV, "
+        { "out_aes_nonce", OUTPUT_FILE, ARG_OPTIONAL,
+            "If performing AES encryption in GCM or CTR mode without a custom IV, "
                 "the file to which the keymaster-generated IV will be written"
         },
     },
     [](arg_map_t& a) {
-        hidl_vec<uint8_t> aes_gcm_iv;
+        std::vector<uint8_t> aes_iv;
 
         if (cli::hal_ops::crypto::encrypt(*g_hal,
                 a["in_plaintext"].in_bytes(), a["in_key_blob"].in_bytes(),
-                a["params"].in_key_params(), a["out_ciphertext"].out_bytes(), aes_gcm_iv))
+                a["params"].in_key_params(), {}, a["out_ciphertext"].out_bytes(), aes_iv))
             return EXIT_FAILURE;
 
-        if (aes_gcm_iv.size() == 0)
-            a["out_aes_gcm_iv"].disable_out_file();
+        if (aes_iv.size() == 0)
+            a["out_aes_nonce"].disable_out_file();
         else
-            a["out_aes_gcm_iv"].out_bytes() = aes_gcm_iv;
+            a["out_aes_nonce"].out_bytes() = aes_iv;
 
         return EXIT_SUCCESS;
     }
@@ -474,7 +473,7 @@ static const std::vector<cli_command> cmds = {
     [](arg_map_t& a) {
         return cli::hal_ops::crypto::decrypt(*g_hal,
                 a["in_ciphertext"].in_bytes(), a["in_key_blob"].in_bytes(),
-                a["params"].in_key_params(), a["out_plaintext"].out_bytes());
+                a["params"].in_key_params(), {}, a["out_plaintext"].out_bytes());
     }
 },
 {
@@ -500,7 +499,7 @@ static const std::vector<cli_command> cmds = {
     },
     [](arg_map_t& a) {
         return cli::hal_ops::crypto::sign(*g_hal, a["in_message"].in_bytes(),
-                a["in_key_blob"].in_bytes(), a["params"].in_key_params(),
+                a["in_key_blob"].in_bytes(), a["params"].in_key_params(), {},
                 a["out_signature"].out_bytes());
     }
 },
@@ -528,7 +527,7 @@ static const std::vector<cli_command> cmds = {
     [](arg_map_t& a) {
         return cli::hal_ops::crypto::verify(*g_hal,
                 a["in_message"].in_bytes(), a["in_signature"].in_bytes(),
-                a["in_key_blob"].in_bytes(), a["params"].in_key_params());
+                a["in_key_blob"].in_bytes(), a["params"].in_key_params(), {});
     }
 },
 {
@@ -657,10 +656,10 @@ static const std::vector<cli_command> cmds = {
     {
         [](arg_map_t& a) {
             const std::string& out_attestation_path = a["out_attestation"].in_string();
-            hidl_vec<hidl_vec<uint8_t>> cert_chain;
+            std::vector<std::vector<uint8_t>> cert_chain;
 
             const bool gen_att = !out_attestation_path.empty();
-            hidl_vec<hidl_vec<uint8_t>> *const cert_chain_p =
+            std::vector<std::vector<uint8_t>> *const cert_chain_p =
                 gen_att ? &cert_chain : nullptr;
 
             int r = cli::transact::client::generate_and_attest_wrapping_key(*g_hal,
@@ -695,7 +694,7 @@ static const std::vector<cli_command> cmds = {
         }
     },
     [](arg_map_t& a) {
-        hidl_vec<hidl_vec<uint8_t>> cert_chain;
+        std::vector<std::vector<uint8_t>> cert_chain;
         if (read_and_deserialize_cert_chain(a["attestation"].in_string(), cert_chain)) {
             std::cerr << "Couldn't read and deserialize the attestation cert chain" << std::endl;
             return EXIT_FAILURE;
@@ -813,7 +812,7 @@ static const std::vector<cli_command> cmds = {
         }
     },
     [](arg_map_t& a) {
-        hidl_vec<uint8_t> app_id;
+        std::vector<uint8_t> app_id;
         if (cli::vold::generate_app_id(a["in_secdiscardable"].in_bytes(),
                                        a["in_auth_secret"].in_bytes(),
                                        app_id))
@@ -909,7 +908,7 @@ static const std::vector<cli_command> cmds = {
             return EXIT_FAILURE;
         }
 
-        hidl_vec<uint8_t> credential(0);
+        std::vector<uint8_t> credential(0);
         if (a["credential"].in_string().size() > 0) {
             std::vector<uint8_t> tmp;
             if (kmhal::util::b64decode(a["credential"].in_string(), tmp)) {
@@ -920,20 +919,20 @@ static const std::vector<cli_command> cmds = {
             credential = tmp;
         }
 
-        hidl_vec<uint8_t> stretched;
+        std::vector<uint8_t> stretched;
         if (cli::gatekeeper::stretch_lskf(credential, pwd, stretched)) {
             std::cerr << "Failed to stretch the lock screen knowledge factor" << std::endl;
             return EXIT_FAILURE;
         }
 
         static constexpr char PERSONALIZATION[] = "user-gk-authentication";
-        hidl_vec<uint8_t> gk_password;
+        std::vector<uint8_t> gk_password;
         if (cli::util::personalized_hash(stretched, PERSONALIZATION, gk_password)) {
             std::cerr << "Failed to derive Gatekeeper password from stretched LSKF" << std::endl;
             return EXIT_FAILURE;
         }
 
-        hidl_vec<uint8_t> dummy;
+        HardwareAuthToken dummy;
         const u32 uid_ = user_id + 100000; /* `fakeUserId` */
         const u64 challenge = UINT64_C(0);
 
@@ -1001,7 +1000,7 @@ static const std::vector<cli_command> cmds = {
             return EXIT_FAILURE;
         }
 
-        hidl_vec<uint8_t> credential(0);
+        std::vector<uint8_t> credential(0);
         if (a["credential"].in_string().size() > 0) {
             std::vector<uint8_t> tmp;
             if (kmhal::util::b64decode(a["credential"].in_string(), tmp)) {
@@ -1012,13 +1011,13 @@ static const std::vector<cli_command> cmds = {
             credential = tmp;
         }
 
-        hidl_vec<uint8_t> stretched;
+        std::vector<uint8_t> stretched;
         if (cli::gatekeeper::stretch_lskf(credential, pwd, stretched)) {
             std::cerr << "Failed to stretch the lock screen knowledge factor" << std::endl;
             return EXIT_FAILURE;
         }
 
-        hidl_vec<u8> decrypted_spblob; u8 spblob_ver;
+        std::vector<u8> decrypted_spblob; u8 spblob_ver;
         if (cli::gatekeeper::unwrap_sp_blob(*g_hal, user_id,
                 a["in_keystore_key_blob"].in_bytes(), stretched,
                 a["in_secdiscardable"].in_bytes(), a["in_spblob"].in_bytes(),
@@ -1061,7 +1060,7 @@ static const std::vector<cli_command> cmds = {
     },
     [](arg_map_t& a) {
         u8 dummy;
-        hidl_vec<u8> default_password(std::begin(cli::gatekeeper::DEFAULT_PASSWORD),
+        std::vector<u8> default_password(std::begin(cli::gatekeeper::DEFAULT_PASSWORD),
                                       std::end(cli::gatekeeper::DEFAULT_PASSWORD) - 1);
         default_password.resize(cli::gatekeeper::STRETCHED_LSKF_LENGTH);
 
@@ -1071,13 +1070,19 @@ static const std::vector<cli_command> cmds = {
                 a["out_decrypted_blob"].out_bytes(), dummy);
     }
 },
+#endif /* SUSKEYMASTER_BUILD_HOST */
 {
     { "vold", "decrypt-ce-key" },
     {
         "Decrypts a CE key using a secret derived from a user's synthetic password.",
         "See `gatekeeper validate-derive-vold-secret`.",
         "Note: The secdiscardable parameter is optional because on some systems",
-        "the encrypted CE key in /data/misc/vold/user_keys/ce/* doesn't use a secdiscardable."
+        "the encrypted CE key in /data/misc/vold/user_keys/ce/* doesn't use a secdiscardable.",
+        "",
+        "If you don't know the `sp_blob_ver` value, try '3' on relatively new devices,",
+        "'2' on older ones and '1' on extremely old ones.",
+        "Maybe you're reading this in the future and they've already made a 4th version, "
+            "who knows?"
     },
     HAL_NOT_NEEDED,
     {
@@ -1098,7 +1103,7 @@ static const std::vector<cli_command> cmds = {
             return EXIT_FAILURE;
         }
 
-        hidl_vec<u8> vold_secret;
+        std::vector<u8> vold_secret;
         static constexpr char PERSONALIZATION_FBE_KEY[] = "fbe-key";
         if (cli::gatekeeper::derive_synthetic_password_subkey(
                     a["in_synthetic_password"].in_bytes(),
@@ -1114,7 +1119,6 @@ static const std::vector<cli_command> cmds = {
                 a["in_encrypted_key"].in_bytes(), a["out_decrypted_key"].out_bytes());
     }
 },
-#endif /* SUSKEYMASTER_BUILD_HOST */
 #ifndef SUSKEYMASTER_BUILD_WINDOWS
 {
     { "vold", "fscrypt-legacy", "install-key" },
@@ -1259,11 +1263,11 @@ static const std::vector<cli_command> cmds = {
         uint32_t int0, *int0_p = &int0;
         uint64_t long0, *long0_p = &long0;
         uint64_t long1, *long1_p = &long1;
-        hidl_vec<uint8_t> bin0, *bin0_p = &bin0;
-        hidl_vec<uint8_t> bin1, *bin1_p = &bin1;
-        hidl_vec<uint8_t> bin2, *bin2_p = &bin2;
-        hidl_vec<uint8_t> key, *key_p = &key;
-        hidl_vec<KeyParameter> par, *par_p = &par;
+        std::vector<uint8_t> bin0, *bin0_p = &bin0;
+        std::vector<uint8_t> bin1, *bin1_p = &bin1;
+        std::vector<uint8_t> bin2, *bin2_p = &bin2;
+        std::vector<uint8_t> key, *key_p = &key;
+        std::vector<KeyParameter> par, *par_p = &par;
 
         if (scan_indata_arg(a["cmdline"].in_string().c_str(), cmd_p, ver_p, km_ver_p, pid_p,
                 int0_p, long0_p, long1_p, bin0_p, bin1_p, bin2_p, key_p, par_p))
@@ -1285,94 +1289,26 @@ static const std::vector<cli_command> cmds = {
     HAL_NOT_NEEDED,
     {},
     [] (arg_map_t&) {
-        struct kmhal_sp *aidl_hal = nullptr;
-
-        aidl_hal = kmhal_aidl_sp_new_get(
-                "android.hardware.security.keymint.IKeyMintDevice",
-                "default", nullptr, false
-        );
-        if (aidl_hal == nullptr) {
-            std::cerr << "FAIL" << std::endl;
+        kmhal::SusAidlKeyMint hal;
+        if (!hal.isHALOk()) {
+            std::cerr << "KeyMint HAL init failed" << std::endl;
             return EXIT_FAILURE;
         }
 
-        std::cout << "keymint handle: " << kmhal_get_handle(aidl_hal, nullptr) << std::endl;
-
-        auto s = kmhal_ping(aidl_hal);
+        auto s = kmhal_ping(hal.getHalSp());
         std::cout << "ping result: " << static_cast<int>(s)
             << " (" << kmhal_android_status_toString(s) << ")" << std::endl;
 
-        struct KeyMintHardwareInfo {
-            i32 versionNumber;
-            SecurityLevel securityLevel = SecurityLevel::SOFTWARE;
-            char *keyMintName = nullptr;
-            char *keyMintAuthorName = nullptr;
-            i32 timestampTokenRequired;
-        } hwinfo;
-        struct kmhal_arg_parse_desc desc;
-        desc.name = "KeyMintHardwareInfo";
-        desc.type = KMHAL_ARG_INLINE_DATA;
-        desc.arg.i.out = &hwinfo;
-        desc.arg.i.size = sizeof(hwinfo);
-        desc.arg.i.proc =
-        [](const struct kmhal_parcel *p, size_t *off_p, void *out, size_t size)
-        {
-            if (out == nullptr || size != sizeof(KeyMintHardwareInfo)) {
-                std::cerr << "invalid parameters" << std::endl;
-                return -1;
-            }
+        printf("KeyMint version: 0x%" PRIx16 "\n", hal.getVersion());
 
-            KeyMintHardwareInfo *o = reinterpret_cast<KeyMintHardwareInfo *>(out);
-
-            if (kmhal_arg_parse_u32(p, off_p,
-                        (const void **)&o->versionNumber, sizeof(i32)))
-                    return 1;
-
-            if (kmhal_arg_parse_u32(p, off_p,
-                        (const void **)&o->securityLevel, sizeof(u32)))
-                    return 1;
-
-            if (kmhal_aidl_arg_parse_convert_aidl_string16(p, off_p,
-                        (const void **)&o->keyMintName, 0))
-                    return 1;
-
-            if (kmhal_aidl_arg_parse_convert_aidl_string16(p, off_p,
-                        (const void **)&o->keyMintAuthorName, 0))
-                    return 1;
-
-            if (kmhal_arg_parse_u32(p, off_p,
-                        (const void **)&o->timestampTokenRequired, sizeof(u32)))
-                    return 1;
-
-            return 0;
-        };
-
-        i32 ver = 0;
-        s = kmhal_get_aidl_interface_version(aidl_hal, &ver);
-        std::cout << "getInterfaceVersion result: " << static_cast<int>(s)
-            << " (" << kmhal_android_status_toString(s) << ")" << std::endl;
-        if (s != OK)
-            return EXIT_FAILURE;
-
-        std::cout << "KeyMint interface version: " << ver << std::endl;
-
-        s = kmhal_call(aidl_hal, 1, nullptr, 0, &desc, 1);
-        std::cout << "call result: " << static_cast<int>(s)
-            << " (" << kmhal_android_status_toString(s) << ")" << std::endl;
-        if (s != OK)
-            return EXIT_FAILURE;
-
-        std::cout << "versionNumber: " << hwinfo.versionNumber << std::endl;
-        std::cout << "securityLevel: " << static_cast<u32>(hwinfo.securityLevel)
-            << " (" << toString(hwinfo.securityLevel) << ")" << std::endl;
-        std::cout << "keyMintName: " << hwinfo.keyMintName << std::endl;
-        free(hwinfo.keyMintName);
-        std::cout << "keyMintAuthorName: " << hwinfo.keyMintAuthorName << std::endl;
-        free(hwinfo.keyMintAuthorName);
-        std::cout << "timestampTokenRequired: " << hwinfo.timestampTokenRequired << std::endl;
+        SecurityLevel slvl;
+        std::string name, authorName;
+        hal.getHardwareInfo(slvl, name, authorName);
+        std::cout << "SecurityLevel: " << toString(slvl) << std::endl;
+        std::cout << "keymasterName: " << name.c_str() << std::endl;
+        std::cout << "keymasterAuthorName: " << authorName.c_str() << std::endl;
 
         std::cout << "OK" << std::endl;
-        kmhal_sp_destroy(&aidl_hal);
         return EXIT_SUCCESS;
     }
 }
@@ -1527,8 +1463,8 @@ static void check_print_help(int argc, const char **argv,
 static __attribute__((unused)) void print_inithal_ok_msg(hal_version hal_ver)
 {
     SecurityLevel slvl;
-    hidl_string km_name;
-    hidl_string km_author_name;
+    std::string km_name;
+    std::string km_author_name;
     g_hal->getHardwareInfo(slvl, km_name, km_author_name);
     std::cout << "Using " << toString(slvl) << " Keymaster " <<
         hal_version_major(hal_ver) << "." << hal_version_minor(hal_ver) <<
@@ -1595,7 +1531,7 @@ static int init_g_hal(hal_version min_ver)
 }
 
 static int read_file(const std::string& path, const std::string& param_name,
-        hidl_vec<uint8_t>& out)
+        std::vector<uint8_t>& out)
 {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
@@ -1634,7 +1570,7 @@ static int read_file(const std::string& path, const std::string& param_name,
 }
 
 static int write_file(const std::string& path, const std::string& param_name,
-        const hidl_vec<uint8_t>& in)
+        const std::vector<uint8_t>& in)
 {
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
     if (!file.is_open()) {
@@ -1656,7 +1592,7 @@ static int write_file(const std::string& path, const std::string& param_name,
 }
 
 static int read_and_deserialize_cert_chain(const std::string& path,
-        hidl_vec<hidl_vec<uint8_t>>& cert_chain)
+        std::vector<std::vector<uint8_t>>& cert_chain)
 {
     std::ifstream file(path, std::ios::binary);
     if (!file.is_open()) {
@@ -1713,7 +1649,7 @@ static int read_and_deserialize_cert_chain(const std::string& path,
 
 #ifndef SUSKEYMASTER_BUILD_HOST
 static int serialize_and_write_cert_chain(const std::string& path,
-        const hidl_vec<hidl_vec<uint8_t>>& cert_chain)
+        const std::vector<std::vector<uint8_t>>& cert_chain)
 {
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
     if (!file.is_open()) {
@@ -1835,9 +1771,9 @@ static int str_to_int(const std::string &str_, T& out)
 static int scan_indata_arg(const char *cmdline, uint32_t *& out_cmd,
         uint32_t *& out_ver, uint32_t *& out_km_ver, uint32_t *& out_pid,
         uint32_t *& out_int0, uint64_t *& out_long0, uint64_t *& out_long1,
-        hidl_vec<uint8_t> *& out_bin0, hidl_vec<uint8_t> *& out_bin1,
-        hidl_vec<uint8_t> *& out_bin2, hidl_vec<uint8_t> *& out_key,
-        hidl_vec<KeyParameter> *& out_par)
+        std::vector<uint8_t> *& out_bin0, std::vector<uint8_t> *& out_bin1,
+        std::vector<uint8_t> *& out_bin2, std::vector<uint8_t> *& out_key,
+        std::vector<KeyParameter> *& out_par)
 {
     std::istringstream iss(cmdline);
 
@@ -1845,8 +1781,8 @@ static int scan_indata_arg(const char *cmdline, uint32_t *& out_cmd,
         union {
             uint32_t **intp;
             uint64_t **longp;
-            hidl_vec<uint8_t> **binp;
-            hidl_vec<KeyParameter> **parp;
+            std::vector<uint8_t> **binp;
+            std::vector<KeyParameter> **parp;
 
             void **vp;
         } out;
@@ -1857,8 +1793,8 @@ static int scan_indata_arg(const char *cmdline, uint32_t *& out_cmd,
 
         out_param(uint32_t **intp) { this->out.intp = intp; this->type = INT; }
         out_param(uint64_t **longp) { this->out.longp = longp; this->type = LONG; }
-        out_param(hidl_vec<uint8_t> **binp) { this->out.binp = binp; this->type = BIN; }
-        out_param(hidl_vec<KeyParameter> **parp) { this->out.parp = parp; this->type = PAR; }
+        out_param(std::vector<uint8_t> **binp) { this->out.binp = binp; this->type = BIN; }
+        out_param(std::vector<KeyParameter> **parp) { this->out.parp = parp; this->type = PAR; }
 
         /* for `cmd` */
         out_param(uint32_t **intp, bool mandatory) {
@@ -1961,7 +1897,7 @@ static int scan_indata_arg(const char *cmdline, uint32_t *& out_cmd,
             break;
         case out_param::PAR:
             {
-                hidl_vec<KeyParameter> out;
+                std::vector<KeyParameter> out;
                 if (kmhal::util::parse_km_tag_params(value.c_str(), out)) {
                     std::cerr << "Invalid key parameters for field \""
                         << field << "\"" << std::endl;
@@ -2177,8 +2113,8 @@ static int match_and_run_handler(int argc, const char **argv)
             (void) 0;
         } else {
 
-            hidl_vec<uint8_t> bytes;
-            hidl_vec<KeyParameter> key_params;
+            std::vector<uint8_t> bytes;
+            std::vector<KeyParameter> key_params;
 
             switch (a.type) {
             case INPUT_FILE:
@@ -2235,7 +2171,7 @@ static int match_and_run_handler(int argc, const char **argv)
 
         const std::string& path = a.second.out_string();
         const std::string& param_name = a.first;
-        const hidl_vec<uint8_t>& bytes = a.second.out_bytes();
+        const std::vector<uint8_t>& bytes = a.second.out_bytes();
 
         if (write_file(path, param_name, bytes)) {
             std::cerr << "Failed to write \"" << path << "\"" << std::endl;

@@ -1,8 +1,8 @@
 #define OPENSSL_API_COMPAT 0x10002000L
 #include "cli.hpp"
 #include "endian.h"
-#include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <cstdio>
+#include <vector>
 #include <cstring>
 #ifdef SUSKEYMASTER_BUILD_ANDROID
 #include <sys/system_properties.h>
@@ -18,10 +18,10 @@ namespace util {
 
 static constexpr u8 SUPPORTED_LEGACY_KEYSTORE_BLOB_VER = 0x3;
 
-static hidl_vec<u8> remove_keystore2_prefix_if_exists(const hidl_vec<u8>& blob);
-static hidl_vec<u8> extract_keystore1_blob(const hidl_vec<u8>& blob);
+static std::vector<u8> remove_keystore2_prefix_if_exists(const std::vector<u8>& blob);
+static std::vector<u8> extract_keystore1_blob(const std::vector<u8>& blob);
 static bool is_samsung(void);
-static void append_sha256_sum(hidl_vec<u8>& blob);
+static void append_sha256_sum(std::vector<u8>& blob);
 
 static int openssl_err_print_cb(const char *msg, size_t size, void *userdata);
 static void print_openssl_errors(void);
@@ -31,9 +31,9 @@ static int update_u32(HMAC_CTX *ctx, size_t v, const char *name);
 static int update_str(HMAC_CTX *ctx, const char *str, const size_t size, const char *name);
 static int update_byte(HMAC_CTX *ctx, u8 b, const char *name);
 
-void extract_application_id_and_data(hidl_vec<KeyParameter> const& params,
-                                     hidl_vec<u8>& out_application_id,
-                                     hidl_vec<u8>& out_application_data)
+void extract_application_id_and_data(std::vector<KeyParameter> const& params,
+                                     std::vector<u8>& out_application_id,
+                                     std::vector<u8>& out_application_data)
 {
     for (const auto& kp : params) {
         if (kp.tag == Tag::APPLICATION_ID)
@@ -43,7 +43,7 @@ void extract_application_id_and_data(hidl_vec<KeyParameter> const& params,
     }
 }
 
-Algorithm find_algorithm(hidl_vec<KeyParameter> const& params,
+Algorithm find_algorithm(std::vector<KeyParameter> const& params,
                          const std::vector<Algorithm>& allowed_algs)
 {
     for (const auto& kp : params) {
@@ -62,7 +62,7 @@ Algorithm find_algorithm(hidl_vec<KeyParameter> const& params,
     return static_cast<Algorithm>(-1);
 }
 
-const hidl_vec<u8> * find_blob_tag(Tag t, hidl_vec<KeyParameter> const& params)
+const std::vector<u8> * find_blob_tag(Tag t, std::vector<KeyParameter> const& params)
 {
     for (const auto& kp : params) {
         if (kp.tag == t)
@@ -71,9 +71,9 @@ const hidl_vec<u8> * find_blob_tag(Tag t, hidl_vec<KeyParameter> const& params)
     return nullptr;
 }
 
-std::vector<hidl_vec<u8>> find_rep_blob_tag(Tag t, hidl_vec<KeyParameter> const& params)
+std::vector<std::vector<u8>> find_rep_blob_tag(Tag t, std::vector<KeyParameter> const& params)
 {
-    std::vector<hidl_vec<u8>> ret;
+    std::vector<std::vector<u8>> ret;
 
     for (const auto& kp : params) {
         if (kp.tag == t)
@@ -83,7 +83,7 @@ std::vector<hidl_vec<u8>> find_rep_blob_tag(Tag t, hidl_vec<KeyParameter> const&
     return ret;
 }
 
-Algorithm determine_pkey_algorithm(hidl_vec<u8> const& priv_pkcs8)
+Algorithm determine_pkey_algorithm(std::vector<u8> const& priv_pkcs8)
 {
     EVP_PKEY *pkey = NULL;
     const unsigned char *p = NULL;
@@ -105,8 +105,8 @@ Algorithm determine_pkey_algorithm(hidl_vec<u8> const& priv_pkcs8)
     return static_cast<Algorithm>(-1);
 }
 
-Algorithm determine_algorithm_from_params_and_pkey(hidl_vec<KeyParameter> const& params,
-                                                   hidl_vec<u8> const& pkey)
+Algorithm determine_algorithm_from_params_and_pkey(std::vector<KeyParameter> const& params,
+                                                   std::vector<u8> const& pkey)
 {
     Algorithm ret = find_tag<Algorithm>(Tag::ALGORITHM, params);
     if (ret == static_cast<Algorithm>(-1)) {
@@ -125,7 +125,7 @@ Algorithm determine_algorithm_from_params_and_pkey(hidl_vec<KeyParameter> const&
     return ret;
 }
 
-void init_default_params_for_alg_and_purposes(hidl_vec<KeyParameter>& params,
+void init_default_params_for_alg_and_purposes(std::vector<KeyParameter>& params,
                                               Algorithm alg,
                                               const std::vector<KeyPurpose>& purposes,
                                               bool is_generate_key)
@@ -283,9 +283,9 @@ void init_default_params_for_alg_and_purposes(hidl_vec<KeyParameter>& params,
     kmhal::util::init_default_params(params, defaults);
 }
 
-hidl_vec<u8> keystore_blob_to_km_blob(hidl_vec<u8> const& keystore_blob)
+std::vector<u8> keystore_blob_to_km_blob(std::vector<u8> const& keystore_blob)
 {
-    hidl_vec<u8> ret;
+    std::vector<u8> ret;
 
     if (keystore_blob.size() < 1)
         return {};
@@ -301,12 +301,12 @@ hidl_vec<u8> keystore_blob_to_km_blob(hidl_vec<u8> const& keystore_blob)
 }
 
 /* See "framewords/base/core/java/com/android/internal/util/HexDump.java" */
-hidl_vec<uint8_t> to_uppercase_hex_string(hidl_vec<uint8_t> const& data)
+std::vector<uint8_t> to_uppercase_hex_string(std::vector<uint8_t> const& data)
 {
     static constexpr const char HEX_DIGITS[16] =
         { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
 
-    hidl_vec<uint8_t> ret;
+    std::vector<uint8_t> ret;
     ret.resize(data.size() * 2);
 
     int bufIndex = 0;
@@ -319,7 +319,7 @@ hidl_vec<uint8_t> to_uppercase_hex_string(hidl_vec<uint8_t> const& data)
 }
 
 /* See "system/vold/Utils.cpp" */
-int parse_hex_string(const hidl_vec<uint8_t>& hex, hidl_vec<uint8_t>& out) {
+int parse_hex_string(const std::vector<uint8_t>& hex, std::vector<uint8_t>& out) {
     if (hex.size() % 2 != 0) {
         std::cerr << "Hex string uneven" << std::endl;
         return -1;
@@ -368,8 +368,8 @@ int parse_hex_string(const hidl_vec<uint8_t>& hex, hidl_vec<uint8_t>& out) {
     return 0;
 }
 
-int extract_gcm_data(hidl_vec<u8> const& blob,
-                     hidl_vec<u8>& out_iv, hidl_vec<u8>& out_ciphertext_with_tag)
+int extract_gcm_data(std::vector<u8> const& blob,
+                     std::vector<u8>& out_iv, std::vector<u8>& out_ciphertext_with_tag)
 {
     if (blob.size() < AES_GCM_IV_SIZE + AES_GCM_TAG_SIZE) {
         std::cerr << "AES-GCM encrypted blob too small" << std::endl;
@@ -389,8 +389,10 @@ int extract_gcm_data(hidl_vec<u8> const& blob,
     return 0;
 }
 
-int extract_gcm_data(hidl_vec<u8> const& blob,
-                     hidl_vec<u8>& out_iv, hidl_vec<u8>& out_ciphertext, hidl_vec<u8>& out_tag)
+int extract_gcm_data(std::vector<u8> const& blob,
+                     std::vector<u8>& out_iv,
+                     std::vector<u8>& out_ciphertext,
+                     std::vector<u8>& out_tag)
 {
     if (blob.size() < AES_GCM_IV_SIZE + AES_GCM_TAG_SIZE) {
         std::cerr << "AES-GCM encrypted blob too small" << std::endl;
@@ -411,10 +413,10 @@ int extract_gcm_data(hidl_vec<u8> const& blob,
     return 0;
 }
 
-int aes256gcm_software_decrypt(hidl_vec<u8> const& key, hidl_vec<u8> const& blob,
-                               hidl_vec<u8>& out_plaintext)
+int aes256gcm_software_decrypt(std::vector<u8> const& key, std::vector<u8> const& blob,
+                               std::vector<u8>& out_plaintext)
 {
-    hidl_vec<u8> iv, ciphertext, tag;
+    std::vector<u8> iv, ciphertext, tag;
     if (extract_gcm_data(blob, iv, ciphertext, tag)) {
         std::cerr << "Failed to extract AES-GCM data from encrypted blob" << std::endl;
         return 1;
@@ -423,11 +425,11 @@ int aes256gcm_software_decrypt(hidl_vec<u8> const& key, hidl_vec<u8> const& blob
     return aes256gcm_software_decrypt(key, iv, ciphertext, tag, out_plaintext);
 }
 
-int aes256gcm_software_decrypt(hidl_vec<u8> const& key, hidl_vec<u8> const& iv,
-                               hidl_vec<u8> const& ciphertext, hidl_vec<u8> const& tag_,
-                               hidl_vec<u8>& out_plaintext)
+int aes256gcm_software_decrypt(std::vector<u8> const& key, std::vector<u8> const& iv,
+                               std::vector<u8> const& ciphertext, std::vector<u8> const& tag_,
+                               std::vector<u8>& out_plaintext)
 {
-    hidl_vec<u8> tag(tag_);
+    std::vector<u8> tag(tag_);
     if (key.size() != AES_GCM_KEY_SIZE) {
         std::cerr << "Invalid AES-256 key" << std::endl;
         return -1;
@@ -505,8 +507,8 @@ err:
     return ok ? 0 : 1;
 }
 
-int personalized_hash(hidl_vec<uint8_t> const& in_data, const char *personalization,
-                      hidl_vec<uint8_t>& out_hash)
+int personalized_hash(std::vector<uint8_t> const& in_data, const char *personalization,
+                      std::vector<uint8_t>& out_hash)
 {
     /* AOSP constants */
     static constexpr size_t SHA512_BLOCK_SIZE = 128;
@@ -549,10 +551,10 @@ int personalized_hash(hidl_vec<uint8_t> const& in_data, const char *personalizat
     return 0;
 }
 
-int sp800_derive_with_context(hidl_vec<uint8_t> const& in_key,
+int sp800_derive_with_context(std::vector<uint8_t> const& in_key,
                               const char *label, size_t label_size,
                               const char *context, size_t context_size,
-                              hidl_vec<uint8_t>& out)
+                              std::vector<uint8_t>& out)
 {
     int ret = 1;
     HMAC_CTX *ctx = nullptr;
@@ -603,7 +605,7 @@ err:
     return ret;
 }
 
-static hidl_vec<u8> remove_keystore2_prefix_if_exists(const hidl_vec<u8>& blob) {
+static std::vector<u8> remove_keystore2_prefix_if_exists(const std::vector<u8>& blob) {
     constexpr size_t PREFIX_SIZE = 8;
     constexpr u8 PREFIX_MAGIC[7] = { 'p', 'K', 'M', 'b', 'l', 'o', 'b' };
 
@@ -614,15 +616,15 @@ static hidl_vec<u8> remove_keystore2_prefix_if_exists(const hidl_vec<u8>& blob) 
         std::memcmp(blob.data(), PREFIX_MAGIC, sizeof(PREFIX_MAGIC)) ||
         blob[PREFIX_SIZE - 1] != 0 /* isSoftKeyMint byte */
     ) {
-        return hidl_vec<u8>(blob);
+        return std::vector<u8>(blob);
     }
 
-    return hidl_vec<u8>(blob.begin() + PREFIX_SIZE, blob.end());
+    return std::vector<u8>(blob.begin() + PREFIX_SIZE, blob.end());
 }
 
 /* See "system/security/keystore2/src/legacy_blob.rs" */
 
-static hidl_vec<u8> extract_keystore1_blob(const hidl_vec<u8>& blob)
+static std::vector<u8> extract_keystore1_blob(const std::vector<u8>& blob)
 {
     struct legacy_blob_header {
         u8 version;
@@ -700,7 +702,7 @@ static hidl_vec<u8> extract_keystore1_blob(const hidl_vec<u8>& blob)
         return {};
     }
 
-    return hidl_vec<u8>(blob.begin() + sizeof(hdr), blob.end());
+    return std::vector<u8>(blob.begin() + sizeof(hdr), blob.end());
 }
 
 static bool is_samsung(void)
@@ -730,7 +732,7 @@ static bool is_samsung(void)
 #endif /* SUSKEYMASTER_BUILD_HOST */
 }
 
-static void append_sha256_sum(hidl_vec<u8>& blob)
+static void append_sha256_sum(std::vector<u8>& blob)
 {
     u8 digest[SHA256_DIGEST_LENGTH] = { 0 };
     (void) SHA256(blob.data(), blob.size(), digest);

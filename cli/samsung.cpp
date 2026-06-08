@@ -34,22 +34,22 @@ static void pr_info(const char *fmt, ...)
 
 using namespace kmhal::util;
 
-static int dump_and_serialize_indata(hidl_vec<uint8_t>& out,
-        uint32_t *ver, uint32_t *km_ver, uint32_t cmd, uint32_t *pid,
-        uint32_t *int0, uint64_t *long0, uint64_t *long1, const hidl_vec<uint8_t> *bin0,
-        const hidl_vec<uint8_t> *bin1, const hidl_vec<uint8_t> *bin2,
-        const hidl_vec<uint8_t> *key, const hidl_vec<KeyParameter> *par
+static int dump_and_serialize_indata(std::vector<u8>& out,
+        u32 *ver, u32 *km_ver, u32 cmd, u32 *pid,
+        u32 *int0, u64 *long0, u64 *long1, const std::vector<u8> *bin0,
+        const std::vector<u8> *bin1, const std::vector<u8> *bin2,
+        const std::vector<u8> *key, const std::vector<KeyParameter> *par
 );
-static int deserialize_and_dump_outdata(hidl_vec<hidl_vec<uint8_t>> const& cert_chain);
+static int deserialize_and_dump_outdata(std::vector<std::vector<u8>> const& cert_chain);
 
 namespace ekey {
 
 static int km_tag_cmp(KeyParameter const& kp, KM_SAMSUNG_PARAM *p);
 
-static int deserialize_ekey_blob(const hidl_vec<uint8_t>& ekey, KM_SAMSUNG_EKEY_BLOB *& out);
-static int serialize_ekey_blob(KM_SAMSUNG_EKEY_BLOB *& ekey, hidl_vec<uint8_t>& out_ekey_der);
+static int deserialize_ekey_blob(const std::vector<u8>& ekey, KM_SAMSUNG_EKEY_BLOB *& out);
+static int serialize_ekey_blob(KM_SAMSUNG_EKEY_BLOB *& ekey, std::vector<u8>& out_ekey_der);
 
-int list_tags(const hidl_vec<uint8_t> &in_keyblob)
+int list_tags(const std::vector<u8> &in_keyblob)
 {
     int ret = -1;
 
@@ -82,8 +82,8 @@ err:
     return ret;
 }
 
-int add_tags(hidl_vec<u8> const& in_keyblob,
-             hidl_vec<KeyParameter> const& in_tags_to_add, hidl_vec<u8>& out_keyblob)
+int add_tags(std::vector<u8> const& in_keyblob,
+             std::vector<KeyParameter> const& in_tags_to_add, std::vector<u8>& out_keyblob)
 {
     int ret = 1;
     KM_SAMSUNG_PARAM * curr = NULL;
@@ -139,11 +139,11 @@ int add_tags(hidl_vec<u8> const& in_keyblob,
                 if (!skip_adding) {
                     KM_SAMSUNG_PARAM *new_par = NULL;
                     s_log_info("Repeatable tag 0x%08lx (%s): adding value: 0x%016llx",
-                            (long unsigned)kp.tag, KM_Tag_toString((uint32_t)kp.tag),
+                            (long unsigned)kp.tag, KM_Tag_toString((u32)kp.tag),
                             (long long unsigned)kp.f.longInteger);
 
                     if (KM_samsung_make_integer_param(&new_par,
-                                static_cast<uint32_t>(kp.tag), kp.f.longInteger))
+                                static_cast<u32>(kp.tag), kp.f.longInteger))
                         goto err;
 
                     if (KM_samsung_push_param_or_free(ekey->enc_par, new_par))
@@ -151,21 +151,21 @@ int add_tags(hidl_vec<u8> const& in_keyblob,
                 } else {
                     s_log_warn("Repeatable tag 0x%08lx (%s) with value 0x%016llx "
                             "already exists; not adding",
-                            (long unsigned)kp.tag, KM_Tag_toString((uint32_t)kp.tag),
+                            (long unsigned)kp.tag, KM_Tag_toString((u32)kp.tag),
                             (long long unsigned)kp.f.longInteger);
                 }
             } else {
                 KM_SAMSUNG_PARAM *p = found->second[0];
                 if (KM_samsung_is_integer_param(t)) {
                     s_log_info("Tag 0x%08lx (%s): changing integer value: 0x%016llx",
-                            (long unsigned)kp.tag, KM_Tag_toString((uint32_t)kp.tag),
+                            (long unsigned)kp.tag, KM_Tag_toString((u32)kp.tag),
                             (long long unsigned)kp.f.longInteger);
 
                     if (!ASN1_INTEGER_set_int64(p->i, kp.f.longInteger))
                         goto_error("Failed to set the value of an ASN.1 INTEGER");
                 } else {
                     s_log_info("Tag 0x%08lx (%s): changing octet string value...",
-                            (long unsigned)kp.tag, KM_Tag_toString((uint32_t)kp.tag));
+                            (long unsigned)kp.tag, KM_Tag_toString((u32)kp.tag));
 
                     if (!ASN1_OCTET_STRING_set(p->b, kp.blob.data(), kp.blob.size()))
                         goto_error("Failed to set the value of an ASN.1 OCTET_STRING");
@@ -176,17 +176,17 @@ int add_tags(hidl_vec<u8> const& in_keyblob,
 
             if (KM_samsung_is_integer_param(t)) {
                 s_log_info("Adding tag 0x%08lx (%s) with integer value: 0x%016llx",
-                        (long unsigned)kp.tag, KM_Tag_toString((uint32_t)kp.tag),
+                        (long unsigned)kp.tag, KM_Tag_toString((u32)kp.tag),
                         (long long unsigned)kp.f.longInteger);
 
                 if (KM_samsung_make_integer_param(&new_par,
-                            static_cast<uint32_t>(kp.tag), kp.f.longInteger))
+                            static_cast<u32>(kp.tag), kp.f.longInteger))
                     goto err;
             } else {
                 s_log_info("Adding tag 0x%08lx (%s) with octet string value...",
-                        (long unsigned)kp.tag, KM_Tag_toString((uint32_t)kp.tag));
+                        (long unsigned)kp.tag, KM_Tag_toString((u32)kp.tag));
 
-                if (KM_samsung_make_octet_string_param(&new_par, static_cast<uint32_t>(kp.tag),
+                if (KM_samsung_make_octet_string_param(&new_par, static_cast<u32>(kp.tag),
                             kp.blob.data(), kp.blob.size()))
                     goto err;
             }
@@ -217,8 +217,8 @@ err:
     return ret;
 }
 
-int del_tags(const hidl_vec<uint8_t> &in_keyblob,
-             const hidl_vec<KeyParameter> &in_tags_to_del, hidl_vec<uint8_t> &out_keyblob)
+int del_tags(const std::vector<u8> &in_keyblob,
+             const std::vector<KeyParameter> &in_tags_to_del, std::vector<u8> &out_keyblob)
 {
     KM_SAMSUNG_EKEY_BLOB *ekey = NULL;
     int ret = 1;
@@ -237,20 +237,20 @@ int del_tags(const hidl_vec<uint8_t> &in_keyblob,
             const int64_t t = static_cast<int64_t>(kp.tag);
             if (!km_tag_cmp(kp, p)) {
                 if (KM_samsung_is_integer_param(t)) {
-                    uint64_t v;
+                    u64 v;
                     if (!ASN1_INTEGER_get_uint64(&v, p->i))
                         goto_error("Couldn't get the value "
                                 "of an ASN.1 INTEGER");
 
                     s_log_info("Deleting tag 0x%08lx (%s) "
                             "(with INTEGER value 0x%llx)...",
-                            (long unsigned)t, KM_Tag_toString((uint32_t)t),
+                            (long unsigned)t, KM_Tag_toString((u32)t),
                             (long long unsigned)v
                     );
                 } else {
                     s_log_info("Deleting tag 0x%08lx (%s) "
                             "(with OCTET_STRING value)...",
-                            (long unsigned)t, KM_Tag_toString((uint32_t)t)
+                            (long unsigned)t, KM_Tag_toString((u32)t)
                     );
                 }
 
@@ -269,11 +269,11 @@ int del_tags(const hidl_vec<uint8_t> &in_keyblob,
             if (KM_Tag_is_repeatable(t)) {
                 s_log_warn("No repeatable tag 0x%08lx (%s) "
                         "with the value 0x%08lx was found!",
-                        (long unsigned)t, KM_Tag_toString((uint32_t)kp.tag),
+                        (long unsigned)t, KM_Tag_toString((u32)kp.tag),
                        (long unsigned)kp.f.longInteger);
             } else {
                 s_log_warn("No tag 0x%08lx (%s) was found!",
-                        (long unsigned)t, KM_Tag_toString((uint32_t)t));
+                        (long unsigned)t, KM_Tag_toString((u32)t));
             }
         }
     }
@@ -297,13 +297,13 @@ err:
 
 int send_indata(SusKMHal& hal,
                 u32 *ver, u32 *km_ver, u32 cmd, u32 *pid,
-                u32 *int0, u64 *long0, u64 *long1, const hidl_vec<u8> *bin0,
-                const hidl_vec<u8> *bin1, const hidl_vec<u8> *bin2,
-                const hidl_vec<u8> *key, const hidl_vec<KeyParameter> *par)
+                u32 *int0, u64 *long0, u64 *long1, const std::vector<u8> *bin0,
+                const std::vector<u8> *bin1, const std::vector<u8> *bin2,
+                const std::vector<u8> *key, const std::vector<KeyParameter> *par)
 {
-    hidl_vec<uint8_t> tmp_keyblob;
+    std::vector<u8> tmp_keyblob;
     {
-        hidl_vec<KeyParameter> partmp(1);
+        std::vector<KeyParameter> partmp(1);
         partmp[0].tag = Tag::ALGORITHM;
         partmp[0].f.algorithm = Algorithm::EC;
 
@@ -315,9 +315,9 @@ int send_indata(SusKMHal& hal,
         }
     }
 
-    hidl_vec<hidl_vec<uint8_t>> cert_chain;
+    std::vector<std::vector<u8>> cert_chain;
     {
-        hidl_vec<uint8_t> indata_der;
+        std::vector<u8> indata_der;
         if (dump_and_serialize_indata(indata_der, ver, km_ver, cmd, pid,
                     int0, long0, long1, bin0, bin1, bin2, key, par))
         {
@@ -325,9 +325,9 @@ int send_indata(SusKMHal& hal,
             return 1;
         }
 
-        hidl_vec<KeyParameter> partmp(2);
+        std::vector<KeyParameter> partmp(2);
         partmp[0].tag = Tag::ATTESTATION_CHALLENGE;
-        partmp[0].blob = hidl_vec<uint8_t>(
+        partmp[0].blob = std::vector<u8>(
             g_send_indata_att_challenge,
             g_send_indata_att_challenge + g_send_indata_att_challenge_len
         );
@@ -357,11 +357,11 @@ int send_indata(SusKMHal& hal,
     return 0;
 }
 
-static int dump_and_serialize_indata(hidl_vec<uint8_t>& out,
-        uint32_t *ver, uint32_t *km_ver, uint32_t cmd, uint32_t *pid,
-        uint32_t *int0, uint64_t *long0, uint64_t *long1, const hidl_vec<uint8_t> *bin0,
-        const hidl_vec<uint8_t> *bin1, const hidl_vec<uint8_t> *bin2,
-        const hidl_vec<uint8_t> *key, const hidl_vec<KeyParameter> *par
+static int dump_and_serialize_indata(std::vector<u8>& out,
+        u32 *ver, u32 *km_ver, u32 cmd, u32 *pid,
+        u32 *int0, u64 *long0, u64 *long1, const std::vector<u8> *bin0,
+        const std::vector<u8> *bin1, const std::vector<u8> *bin2,
+        const std::vector<u8> *key, const std::vector<KeyParameter> *par
 )
 {
     KM_SAMSUNG_INDATA *indata = NULL;
@@ -459,10 +459,10 @@ static int dump_and_serialize_indata(hidl_vec<uint8_t>& out,
             if (KM_samsung_is_integer_param(static_cast<int64_t>(kp.tag))) {
 
                 if (KM_samsung_make_integer_param(&new_par,
-                            (uint32_t)kp.tag, (int64_t)kp.f.longInteger))
+                            (u32)kp.tag, (int64_t)kp.f.longInteger))
                     goto_error("Failed to make a new samsung INTEGER KM_PARAM");
             } else {
-                if (KM_samsung_make_octet_string_param(&new_par, (uint32_t)kp.tag,
+                if (KM_samsung_make_octet_string_param(&new_par, (u32)kp.tag,
                             kp.blob.data(), kp.blob.size()))
                     goto_error("Failed to make a new samsung OCTET_STRING KM_PARAM");
             }
@@ -502,7 +502,7 @@ err:
     return -1;
 }
 
-static int deserialize_and_dump_outdata(hidl_vec<hidl_vec<uint8_t>> const& cert_chain)
+static int deserialize_and_dump_outdata(std::vector<std::vector<u8>> const& cert_chain)
 {
     using namespace kmhal::util;
 
@@ -602,7 +602,7 @@ static int km_tag_cmp(KeyParameter const& kp, KM_SAMSUNG_PARAM *p)
     return static_cast<int>(kp.tag) - pt;
 }
 
-static int deserialize_ekey_blob(const hidl_vec<uint8_t>& ekey, KM_SAMSUNG_EKEY_BLOB *& out)
+static int deserialize_ekey_blob(const std::vector<u8>& ekey, KM_SAMSUNG_EKEY_BLOB *& out)
 {
     const unsigned char *p = ekey.data();
     long len = (long)ekey.size();
@@ -634,7 +634,7 @@ err:
 }
 
 static int serialize_ekey_blob(KM_SAMSUNG_EKEY_BLOB *& ekey,
-        hidl_vec<uint8_t>& out_ekey_der)
+        std::vector<u8>& out_ekey_der)
 {
     int length = 0;
     unsigned char *der = NULL;

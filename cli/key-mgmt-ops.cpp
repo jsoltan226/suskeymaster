@@ -1,13 +1,13 @@
 #include "cli.hpp"
-#include <core/vector.h>
+#include <core/int.h>
 #include <libsuscertmod/key-desc.h>
 #include <libsuscertmod/leaf-cert.h>
 #include <libsuskmhal/suskmhal.hpp>
 #include <libsuskmhal/keymaster-types-c.h>
 #include <libsuskmhal/util/km-params.hpp>
-#include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <ctime>
 #include <cstdio>
+#include <vector>
 #include <cstdlib>
 #include <cstring>
 #include <ostream>
@@ -18,8 +18,7 @@ namespace suskeymaster {
 namespace cli {
 namespace hal_ops {
 
-using namespace ::android::hardware::keymaster::generic;
-using ::android::hardware::hidl_vec;
+using namespace kmhal::generic;
 using kmhal::SusKMHal;
 
 static void pr_info(const char *fmt, ...) {
@@ -31,11 +30,11 @@ static void pr_info(const char *fmt, ...) {
 }
 
 int get_print_key_characteristics(SusKMHal& hal,
-                                  hidl_vec<u8> const& key,
-                                  hidl_vec<KeyParameter> const& in_application_id_data)
+                                  std::vector<u8> const& key,
+                                  std::vector<KeyParameter> const& in_application_id_data)
 {
-    hidl_vec<uint8_t> app_id;
-    hidl_vec<uint8_t> app_data;
+    std::vector<u8> app_id;
+    std::vector<u8> app_data;
     util::extract_application_id_and_data(in_application_id_data, app_id, app_data);
 
     KeyCharacteristics kc;
@@ -75,8 +74,8 @@ int get_print_key_characteristics(SusKMHal& hal,
 }
 
 int generate_key(SusKMHal& hal,
-                 hidl_vec<KeyParameter> const& in_gen_params,
-                 hidl_vec<uint8_t>& out_key_blob)
+                 std::vector<KeyParameter> const& in_gen_params,
+                 std::vector<u8>& out_key_blob)
 {
     Algorithm alg = util::find_algorithm(in_gen_params,
         { Algorithm::EC, Algorithm::RSA, Algorithm::AES, Algorithm::TRIPLE_DES, Algorithm::HMAC }
@@ -84,7 +83,7 @@ int generate_key(SusKMHal& hal,
     if (alg == static_cast<Algorithm>(-1))
         return EXIT_FAILURE;
 
-    hidl_vec<KeyParameter> params(in_gen_params);
+    std::vector<KeyParameter> params(in_gen_params);
     util::init_default_params_for_alg_and_purposes(params, alg,
             util::find_rep_tag<KeyPurpose>(Tag::PURPOSE, params), true);
 
@@ -92,7 +91,7 @@ int generate_key(SusKMHal& hal,
     ErrorCode e = hal.generateKey(params, out_key_blob, dummy);
     if (e != ErrorCode::OK) {
         std::cerr << "generateKey operation failed: "
-            << static_cast<int32_t>(e) << " (" << toString(e) << ")" << std::endl;
+            << static_cast<i32>(e) << " (" << toString(e) << ")" << std::endl;
         return 1;
     }
     std::cout << "Successfully generated " << toString(alg) << " key" << std::endl;
@@ -101,26 +100,26 @@ int generate_key(SusKMHal& hal,
 }
 
 int attest_key(SusKMHal& hal,
-               hidl_vec<uint8_t> const& key, hidl_vec<KeyParameter> const& in_attest_params,
-               hidl_vec<hidl_vec<uint8_t>>& out_cert_chain)
+               std::vector<u8> const& key, std::vector<KeyParameter> const& in_attest_params,
+               std::vector<std::vector<u8>>& out_cert_chain)
 {
-    hidl_vec<KeyParameter> params = in_attest_params;
+    std::vector<KeyParameter> params = in_attest_params;
 
-    static const uint8_t ch[] = "suskeymaster TEST ATTESTATION CHALLENGE";
+    static const u8 ch[] = "suskeymaster TEST ATTESTATION CHALLENGE";
     static const size_t ch_len = sizeof(ch) - 1;
-    static const uint8_t app_id[] = "suskeymaster TEST ATTESTATION APPLICATION ID";
+    static const u8 app_id[] = "suskeymaster TEST ATTESTATION APPLICATION ID";
     static const size_t app_id_len = sizeof(app_id) - 1;
     kmhal::util::init_default_params(params, {
-        { Tag::ATTESTATION_CHALLENGE, hidl_vec<uint8_t>(ch, ch + ch_len) },
-        { Tag::ATTESTATION_APPLICATION_ID, hidl_vec<uint8_t>(app_id, app_id + app_id_len) }
+        { Tag::ATTESTATION_CHALLENGE, std::vector<u8>(ch, ch + ch_len) },
+        { Tag::ATTESTATION_APPLICATION_ID, std::vector<u8>(app_id, app_id + app_id_len) }
     });
 
-    hidl_vec<hidl_vec<uint8_t>> cert_chain = {};
+    std::vector<std::vector<u8>> cert_chain = {};
 
     ErrorCode e = hal.attestKey(key, params, cert_chain);
     if (e != ErrorCode::OK) {
         std::cerr << "attestKey operation failed: "
-            << static_cast<int32_t>(e) << " (" << toString(e) << ")" << std::endl;
+            << static_cast<i32>(e) << " (" << toString(e) << ")" << std::endl;
         return 1;
     }
 
@@ -131,10 +130,12 @@ int attest_key(SusKMHal& hal,
 }
 
 int import_key(SusKMHal& hal,
-               hidl_vec<uint8_t> const& in_private_key, hidl_vec<KeyParameter> const& in_import_params,
-               hidl_vec<uint8_t>& out_key_blob)
+               std::vector<u8> const& in_private_key,
+               std::vector<KeyParameter> const& in_import_params,
+               std::vector<u8>& out_key_blob)
 {
-    Algorithm alg = util::determine_algorithm_from_params_and_pkey(in_import_params, in_private_key);
+    Algorithm alg = util::determine_algorithm_from_params_and_pkey(in_import_params,
+                                                                   in_private_key);
     if (alg == static_cast<Algorithm>(-1)) {
         std::cerr << "Failed to determine the algorithm of the key to be imported" << std::endl;
         return 1;
@@ -159,7 +160,7 @@ int import_key(SusKMHal& hal,
     std::cout << "Private key algorithm is " << toString(alg) <<
         " (inferred format: " << toString(format) << ")" << std::endl;
 
-    hidl_vec<KeyParameter> params(in_import_params);
+    std::vector<KeyParameter> params(in_import_params);
     util::init_default_params_for_alg_and_purposes(params, alg,
             util::find_rep_tag<KeyPurpose>(Tag::PURPOSE, params), false);
 
@@ -167,7 +168,7 @@ int import_key(SusKMHal& hal,
     ErrorCode e = hal.importKey(params, format, in_private_key, out_key_blob, c);
     if (e != ErrorCode::OK) {
         std::cerr << "importKey operation failed: "
-            << static_cast<int32_t>(e) << " (" << toString(e) << ")" << std::endl;
+            << static_cast<i32>(e) << " (" << toString(e) << ")" << std::endl;
         return 1;
     }
 
@@ -177,11 +178,12 @@ int import_key(SusKMHal& hal,
 }
 
 int export_key(SusKMHal& hal,
-               hidl_vec<u8> const& key, hidl_vec<KeyParameter> const& in_application_id_data,
-               hidl_vec<u8>& out_public_key_x509)
+               std::vector<u8> const& key,
+               std::vector<KeyParameter> const& in_application_id_data,
+               std::vector<u8>& out_public_key_x509)
 {
-    hidl_vec<uint8_t> app_id;
-    hidl_vec<uint8_t> app_data;
+    std::vector<u8> app_id;
+    std::vector<u8> app_data;
     util::extract_application_id_and_data(in_application_id_data, app_id, app_data);
 
     /* Normally, `exportKey` always expects the format to be KeyFormat::X509,
@@ -194,7 +196,7 @@ int export_key(SusKMHal& hal,
         ErrorCode e = hal.getKeyCharacteristics(key, app_id, app_data, kc);
         if (e != ErrorCode::OK) {
             std::cerr << "Failed to get the key's characteristics: "
-                << static_cast<int32_t>(e) << " (" << toString(e) << ")" << std::endl;
+                << static_cast<i32>(e) << " (" << toString(e) << ")" << std::endl;
             return 1;
         }
         Algorithm alg = util::find_algorithm(kc.hardwareEnforced, {
@@ -227,7 +229,7 @@ int export_key(SusKMHal& hal,
     ErrorCode e = hal.exportKey(out_key_format, key, app_id, app_data, out_public_key_x509);
     if (e != ErrorCode::OK) {
         std::cerr << "exportKey operation failed: "
-            << static_cast<int32_t>(e) << " (" << toString(e) << ")" << std::endl;
+            << static_cast<i32>(e) << " (" << toString(e) << ")" << std::endl;
         return 1;
     }
 
@@ -236,14 +238,14 @@ int export_key(SusKMHal& hal,
 }
 
 int upgrade_key(SusKMHal& hal,
-                hidl_vec<uint8_t> const& in_keyblob_to_upgrade,
-                hidl_vec<KeyParameter> const& in_upgrade_params,
-                hidl_vec<uint8_t>& out_upgraded_keyblob)
+                std::vector<u8> const& in_keyblob_to_upgrade,
+                std::vector<KeyParameter> const& in_upgrade_params,
+                std::vector<u8>& out_upgraded_keyblob)
 {
     ErrorCode e = hal.upgradeKey(in_keyblob_to_upgrade, in_upgrade_params, out_upgraded_keyblob);
     if (e != ErrorCode::OK) {
         std::cerr << "upgradeKey operation failed: "
-            << static_cast<int32_t>(e) << " (" << toString(e) << ")" << std::endl;
+            << static_cast<i32>(e) << " (" << toString(e) << ")" << std::endl;
         return 1;
     }
     std::cout << "Successfully upgraded key blob" << std::endl;

@@ -5,6 +5,7 @@
 #include <core/util.h>
 #include <core/vector.h>
 #include <libsuskmhal/keymaster-types-c.h>
+#include <libsuskmhal/keymaster-types-cpp.hpp>
 #include <libsuskmhal/util/samsung-utils.h>
 #include <libsuskmhal/util/samsung-sus-indata.hpp>
 #include <libsuskmhal/transport/aosp-hidl-support.hpp>
@@ -19,6 +20,7 @@
 namespace suskeymaster {
 
 using namespace kmhal::util;
+using namespace kmhal::generic;
 
 #define SHARED_MEM_BUF_MAX_SIZE 0x19000
 
@@ -55,20 +57,20 @@ static struct km_helper_fns {
 static int try_init_g_km_helper_lib(void);
 
 static int fill_indata_defaults(const VECTOR(u8) in_old_indata,
-        hidl_vec<uint8_t>& out_new_indata);
+        std::vector<uint8_t>& out_new_indata);
 
-static int send_command(const hidl_vec<uint8_t>& indata);
-static int recv_command(hidl_vec<uint8_t>& outdata);
+static int send_command(const std::vector<uint8_t>& indata);
+static int recv_command(std::vector<uint8_t>& outdata);
 
 int run_sus_samsung_indata(const VECTOR(u8) indata,
-            hidl_vec<hidl_vec<uint8_t>>& out_cert_chain)
+            std::vector<std::vector<uint8_t>>& out_cert_chain)
 {
     out_cert_chain.resize(2);
     out_cert_chain[0].resize(0);
     out_cert_chain[1].resize(0);
 
     send_indata_err err = UNKNOWN_ERROR;
-    hidl_vec<uint8_t> final_indata;
+    std::vector<uint8_t> final_indata;
 
     if (indata == NULL || vector_size(indata) == 0) {
         err = INVALID_ARGUMENT;
@@ -156,7 +158,7 @@ err:
 }
 
 static int fill_indata_defaults(const VECTOR(u8) in_old_indata,
-        hidl_vec<uint8_t>& out_new_indata)
+        std::vector<uint8_t>& out_new_indata)
 {
     int ret = -1;
     KM_SAMSUNG_INDATA *indata = NULL;
@@ -216,7 +218,7 @@ err:
     return ret;
 }
 
-static int send_command(const hidl_vec<uint8_t>& indata)
+static int send_command(const std::vector<uint8_t>& indata)
 {
     struct qsee_shared_mem *in_shmem = NULL;
     uint8_t *in_shmem_ptr = NULL;
@@ -248,7 +250,7 @@ err:
     return 1;
 }
 
-static int recv_command(hidl_vec<uint8_t>& outdata)
+static int recv_command(std::vector<uint8_t>& outdata)
 {
     struct qsee_shared_mem *out_shmem = NULL;
     uint8_t *out_shmem_ptr = NULL;

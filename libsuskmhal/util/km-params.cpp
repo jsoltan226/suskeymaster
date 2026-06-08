@@ -3,7 +3,6 @@
 #include "../km-def.h"
 #include "../keymaster-types-c.h"
 #include "../keymaster-types-cpp.hpp"
-#include "../transport/aosp-hidl-support.hpp"
 #include <string>
 #include <strings.h>
 #include <vector>
@@ -18,8 +17,7 @@ namespace suskeymaster {
 namespace kmhal {
 namespace util {
 
-using ::android::hardware::hidl_vec;
-using namespace ::android::hardware::keymaster::generic;
+using namespace generic;
 
 static void parse_key_values(const char *arg_,
         std::vector<std::pair<std::string, std::string>>& out);
@@ -36,7 +34,7 @@ static TagType get_tag_type(Tag t);
 
 static bool is_valid_intval_for_enum(Tag t, uint32_t val);
 
-int parse_km_tag_params(const char *arg, hidl_vec<KeyParameter>& out)
+int parse_km_tag_params(const char *arg, std::vector<KeyParameter>& out)
 {
     std::vector<std::pair<std::string, std::string>> key_value_pairs;
 
@@ -191,11 +189,11 @@ km_default::km_default(Tag t, std::vector<uint8_t> b) {
     KeyParameter kp;
     kp.tag = t;
     kp.f.longInteger = UINT64_C(0);
-    kp.blob = hidl_vec<uint8_t>(b);
+    kp.blob = std::vector<uint8_t>(b);
     this->val = { kp };
 }
 
-void init_default_params(hidl_vec<KeyParameter>& params,
+void init_default_params(std::vector<KeyParameter>& params,
     std::vector<struct km_default> const& defaults)
 {
     std::unordered_map<Tag, km_default> map;
@@ -375,7 +373,7 @@ static int parse_tag_value(Tag t, std::string const& value,
         case TagType::BYTES:
             /* Allow 0-length blobs */
             if (value.length() == 0) {
-                out.blob = hidl_vec<uint8_t>(0);
+                out.blob = std::vector<uint8_t>(0);
                 return 0;
             }
 
@@ -384,7 +382,7 @@ static int parse_tag_value(Tag t, std::string const& value,
                     << "for tag type " << toString(type) << std::endl;
                 return 1;
             }
-            out.blob = hidl_vec<uint8_t>(tmp.data(), tmp.data() + tmp.size());
+            out.blob = std::vector<uint8_t>(tmp.data(), tmp.data() + tmp.size());
             return 0;
 
         case TagType::INVALID:
@@ -538,7 +536,7 @@ static int assign_int(ASN1_INTEGER **i, uint64_t val)
     return 0;
 }
 
-static int assign_octet_string(ASN1_OCTET_STRING **s, hidl_vec<uint8_t> const& bytes)
+static int assign_octet_string(ASN1_OCTET_STRING **s, std::vector<uint8_t> const& bytes)
 {
     if (*s != NULL) {
         std::cerr << "OCTET_STRING value already exists!" << std::endl;
@@ -575,7 +573,7 @@ static int assign_bool(ASN1_NULL **b)
     return 0;
 }
 
-KM_PARAM_LIST * key_params_2_param_list(hidl_vec<KeyParameter> const& params)
+KM_PARAM_LIST * key_params_2_param_list(std::vector<KeyParameter> const& params)
 {
     KM_PARAM_LIST *ret = KM_PARAM_LIST_new();
     if (ret == NULL) {
@@ -645,7 +643,7 @@ KM_PARAM_LIST * key_params_2_param_list(hidl_vec<KeyParameter> const& params)
         KM_TAG_LIST__
 #undef KM_DECL_TAG
             default:
-                std::cerr << "Invalid KeyMaster tag: " << static_cast<uint32_t>(kp.tag) << std::endl;
+                std::cerr << "Invalid KeyMaster tag: " << static_cast<u32>(kp.tag) << std::endl;
                 goto err;
         }
 

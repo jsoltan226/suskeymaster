@@ -1,4 +1,3 @@
-#include "transport/hidl-types.h"
 #ifndef SUSKEYMASTER_HAL_DISABLE_3_0
 
 #include "suskmhal.hpp"
@@ -6,20 +5,31 @@
 #ifndef SUSKEYMASTER_BUILD_HOST
 #include "keymaster-types-cpp.hpp"
 #include "transport/hal.h"
+#include "transport/hidl-types.h"
 #include "transport/aosp-hidl-support.hpp"
 #include "transport/keymaster-types-hidl.h"
 #include <iostream>
-using ::android::hardware::hidl_vec;
+#include <vector>
+#include <string>
+#include <cstring>
+#include <optional>
+#include <endian.h>
 #endif /* SUSKEYMASTER_BUILD_HOST */
 
 #define MODULE_NAME "keymaster-hidl-hal-3.0"
 
-using namespace ::android::hardware::keymaster::generic;
-
 namespace suskeymaster {
 namespace kmhal {
 
+using namespace generic;
+using hidl::fromHidl;
+
 #ifndef SUSKEYMASTER_BUILD_HOST
+
+static void handle_auth_token_compat(hidl_vec<hidl::KeyParameter>& par,
+                                     hidl::HardwareAuthToken const& at,
+                                     std::optional<hidl::VerificationToken> const& vt,
+                                     const char *func);
 
 SusHidlKeymaster3_0::SusHidlKeymaster3_0(void) :
     SusHidlKeymasterHALCommon(
@@ -32,6 +42,8 @@ SusHidlKeymaster3_0::SusHidlKeymaster3_0(void) :
         return;
     }
 }
+
+u32 SusHidlKeymaster3_0::getVersion(void) const { return 0x30; };
 
 enum KM_3_0_cmd : u32 {
     KM_3_0_GET_HARDWARE_FEATURES = 1,
@@ -84,7 +96,7 @@ u32 SusHidlKeymaster3_0::getVersionSpecificCmdID(enum KM_common_cmd common_cmd)
 }
 
 void SusHidlKeymaster3_0::getHardwareInfo(SecurityLevel& out_securityLevel,
-        hidl_string& out_keymasterName, hidl_string& out_keymasterAuthorName)
+        std::string& out_keymasterName, std::string& out_keymasterAuthorName)
 {
     if (!this->isHALOk()) {
 fail:
@@ -130,72 +142,76 @@ fail:
     std::cout << "Keymaster 3.0: supportsAllDigests: "
             << supportsAllDigests << std::endl;
 
-    out_keymasterName = hidl_string(*reinterpret_cast<const hidl_string *>(keymasterName));
+    out_keymasterName = std::string(keymasterName->buffer, keymasterName->length);
     out_keymasterAuthorName =
-        hidl_string(*reinterpret_cast<const hidl_string *>(keymasterAuthorName));
+        std::string(keymasterAuthorName->buffer, keymasterAuthorName->length);
 }
 
 ErrorCode SusHidlKeymaster3_0::begin(KeyPurpose purpose,
-        hidl_vec<u8> const& keyBlob,
-        hidl_vec<KeyParameter> const& inParams,
+        std::vector<u8> const& keyBlob,
+        std::vector<generic::KeyParameter> const& inParams,
         HardwareAuthToken const& authToken,
-        hidl_vec<KeyParameter>& out_outParams,
+        std::vector<generic::KeyParameter>& out_outParams,
         u64& out_operationHandle)
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
-    const hidl_vec<KeyParameter> *outParams = nullptr;
+    const hidl_vec<hidl::KeyParameter> *outParams = nullptr;
 
-    (void) authToken;
+    const hidl_vec<u8> hidl_keyBlob = toHidlView(keyBlob);
+    const hidl::HardwareAuthToken hidl_authToken = toHidlView(authToken);
+    hidl_vec<hidl::KeyParameter> hidl_inParams = toHidlView(inParams);
+
+    handle_auth_token_compat(hidl_inParams, hidl_authToken, std::nullopt, "begin");
 
     struct kmhal_arg_write_desc in_args[] = {
         init_write("purpose", purpose, kmhal_arg_write_u32),
-        init_write("keyBlob", &keyBlob, kmhal_hidl_arg_write_vec_of_u8),
-        init_write("inParams", &inParams, write_vec_of_key_parameter),
+        init_write("keyBlob", &hidl_keyBlob, kmhal_hidl_arg_write_vec_of_u8),
+        init_write("inParams", &hidl_inParams, write_vec_of_key_parameter),
     };
     const size_t n_in_args = u_arr_size(in_args);
-
     struct kmhal_arg_parse_desc out_args[] = {
         init_parse("error", &ret, kmhal_arg_parse_u32),
         init_parse("outParams", &outParams, parse_vec_of_key_parameter),
         init_parse("operationHandle", &out_operationHandle, kmhal_arg_parse_u64),
     };
     const size_t n_out_args = u_arr_size(out_args);
-
     if (kmhal_call(this->getHal(), KM_3_0_BEGIN, in_args, n_in_args, out_args, n_out_args)) {
         std::cerr << __func__ << ": HIDL call failed" << std::endl;
         return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
     }
     if (ret == ErrorCode::OK)
-        out_outParams = hidl_vec<KeyParameter>(*outParams);
+        out_outParams = fromHidl(*outParams);
 
     return ret;
 }
 
 ErrorCode SusHidlKeymaster3_0::update(u64 operationHandle,
-        hidl_vec<KeyParameter> const& inParams,
-        hidl_vec<u8> const& input,
+        std::vector<KeyParameter> const& inParams,
+        std::vector<u8> const& input,
         HardwareAuthToken const& authToken,
         VerificationToken const& verificationToken,
         u32& out_inputConsumed,
-        hidl_vec<KeyParameter>& out_outParams,
-        hidl_vec<u8>& out_output)
+        std::vector<KeyParameter>& out_outParams,
+        std::vector<u8>& out_output)
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
-    const hidl_vec<KeyParameter> *outParams = nullptr;
+    const hidl_vec<hidl::KeyParameter> *outParams = nullptr;
     const hidl_vec<u8> *output = nullptr;
 
-    (void) authToken;
-    (void) verificationToken;
+    hidl_vec<hidl::KeyParameter> hidl_inParams = toHidlView(inParams);
+    const hidl_vec<u8> hidl_input = toHidlView(input);
+
+    handle_auth_token_compat(hidl_inParams,
+            toHidlView(authToken), toHidlView(verificationToken), "update");
 
     struct kmhal_arg_write_desc in_args[] = {
         init_write("operationHandle", operationHandle, kmhal_arg_write_u64),
-        init_write("inParams", &inParams, write_vec_of_key_parameter),
-        init_write("input", &input, kmhal_hidl_arg_write_vec_of_u8),
+        init_write("inParams", &hidl_inParams, write_vec_of_key_parameter),
+        init_write("input", &hidl_input, kmhal_hidl_arg_write_vec_of_u8),
     };
     const size_t n_in_args = u_arr_size(in_args);
-
     struct kmhal_arg_parse_desc out_args[] = {
         init_parse("error", &ret, kmhal_arg_parse_u32),
         init_parse("inputConsumed", &out_inputConsumed, kmhal_arg_parse_u32),
@@ -209,38 +225,41 @@ ErrorCode SusHidlKeymaster3_0::update(u64 operationHandle,
         return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
     }
     if (ret == ErrorCode::OK) {
-        out_outParams = hidl_vec<KeyParameter>(*outParams);
-        out_output = hidl_vec<u8>(*output);
+        out_outParams = fromHidl(*outParams);
+        out_output = fromHidl(*output);
     }
 
     return ret;
 }
 
 ErrorCode SusHidlKeymaster3_0::finish(u64 operationHandle,
-        hidl_vec<KeyParameter> const& inParams,
-        hidl_vec<u8> const& input,
-        hidl_vec<u8> const& signature,
+        std::vector<KeyParameter> const& inParams,
+        std::vector<u8> const& input,
+        std::vector<u8> const& signature,
         HardwareAuthToken const& authToken,
         VerificationToken const& verificationToken,
-        hidl_vec<KeyParameter>& out_outParams,
-        hidl_vec<u8>& out_output)
+        std::vector<KeyParameter>& out_outParams,
+        std::vector<u8>& out_output)
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
-    const hidl_vec<KeyParameter> *outParams = nullptr;
+    const hidl_vec<hidl::KeyParameter> *outParams = nullptr;
     const hidl_vec<u8> *output = nullptr;
 
-    (void) authToken;
-    (void) verificationToken;
+    hidl_vec<hidl::KeyParameter> hidl_inParams = toHidlView(inParams);
+    const hidl_vec<u8> hidl_input = toHidlView(input);
+    const hidl_vec<u8> hidl_signature = toHidlView(signature);
+
+    handle_auth_token_compat(hidl_inParams,
+            toHidlView(authToken), toHidlView(verificationToken), "finish");
 
     struct kmhal_arg_write_desc in_args[] = {
         init_write("operationHandle", operationHandle, kmhal_arg_write_u64),
-        init_write("inParams", &inParams, write_vec_of_key_parameter),
-        init_write("input", &input, kmhal_hidl_arg_write_vec_of_u8),
-        init_write("signature", &signature, kmhal_hidl_arg_write_vec_of_u8),
+        init_write("inParams", &hidl_inParams, write_vec_of_key_parameter),
+        init_write("input", &hidl_input, kmhal_hidl_arg_write_vec_of_u8),
+        init_write("signature", &hidl_signature, kmhal_hidl_arg_write_vec_of_u8),
     };
     const size_t n_in_args = u_arr_size(in_args);
-
     struct kmhal_arg_parse_desc out_args[] = {
         init_parse("error", &ret, kmhal_arg_parse_u32),
         init_parse("outParams", &outParams, parse_vec_of_key_parameter),
@@ -253,14 +272,69 @@ ErrorCode SusHidlKeymaster3_0::finish(u64 operationHandle,
         return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
     }
     if (ret == ErrorCode::OK) {
-        out_outParams = hidl_vec<KeyParameter>(*outParams);
-        out_output = hidl_vec<u8>(*output);
+        out_outParams = fromHidl(*outParams);
+        out_output = fromHidl(*output);
     }
 
     return ret;
 }
 
-#undef check_hal_ok
+static void handle_auth_token_compat(hidl_vec<hidl::KeyParameter>& par,
+                                     hidl::HardwareAuthToken const& at,
+                                     std::optional<hidl::VerificationToken> const& vt,
+                                     const char *func)
+{
+    if (vt.has_value()) {
+        hidl::VerificationToken empty{};
+        hidl::VerificationToken val = vt.value();
+
+        if (val.securityLevel != empty.securityLevel ||
+            val.parametersVerified.size() != empty.parametersVerified.size() ||
+            val.timestamp != empty.timestamp ||
+            val.challenge != empty.challenge ||
+            val.mac.size() != empty.mac.size())
+        {
+            std::cerr << "WARNING: ignored provided verificationToken; "
+                "Keymaster 3.0 doesn't support them in any way" << std::endl;
+        }
+    }
+
+    /* non-empty MAC means non-empty auth token */
+    if (at.mac.size() > 0) {
+        if (at.mac.size() != static_cast<size_t>(Constants::AUTH_TOKEN_MAC_LENGTH)) {
+            std::cerr << "Invalid auth token MAC size: " << at.mac.size() << std::endl;
+            return;
+        }
+
+        /* "hardware/libhardware/include_all/hardware/hw_auth_token.h" */
+        typedef struct __attribute__((__packed__)) {
+            uint8_t version;  // Current version is 0
+            uint64_t challenge;
+            uint64_t user_id;             // secure user ID, not Android user ID
+            uint64_t authenticator_id;    // secure authenticator ID
+            uint32_t authenticator_type;  // hw_authenticator_type_t, in network order
+            uint64_t timestamp;           // in network order
+            uint8_t hmac[static_cast<size_t>(Constants::AUTH_TOKEN_MAC_LENGTH)];
+        } hw_auth_token_t;
+        hw_auth_token_t auth_token = {
+            /* .version = */ 0,
+            /* .challenge = */ at.challenge,
+            /* .user_id = */ at.userId,
+            /* .authenticator_id = */ at.authenticatorId,
+            /* .authenticator_type = */ htobe32(static_cast<u32>(at.authenticatorType)),
+            /* .timestamp = */ htobe64(at.timestamp)
+        };
+        memcpy(auth_token.hmac, at.mac.data(),
+                static_cast<size_t>(Constants::AUTH_TOKEN_MAC_LENGTH));
+
+        par.resize(par.size() + 1);
+        par[par.size() - 1].tag = Tag::AUTH_TOKEN;
+        par[par.size() - 1].blob = hidl_vec<u8>(reinterpret_cast<const u8 *>(&auth_token),
+                                reinterpret_cast<const u8 *>(&auth_token) + sizeof(auth_token));
+        std::cout << "Keymaster 3.0: " << func <<
+            ": Converted authToken argument to Tag::AUTH_TOKEN key parameter" << std::endl;
+    }
+}
 
 #else /* SUSKEYMASTER_BUILD_HOST */
 

@@ -16,7 +16,7 @@
 #include <stdatomic.h>
 #include <linux/android/binder.h>
 
-#define MODULE_NAME "hidl-hal"
+#define MODULE_NAME "hal"
 
 struct kmhal_sp {
     _Atomic bool initialized_;
@@ -355,7 +355,7 @@ int kmhal_arg_parse_u32(const struct kmhal_parcel *p, size_t *off_p,
 int kmhal_arg_parse_u64(const struct kmhal_parcel *p, size_t *off_p,
                         void *out, size_t size)
 {
-    if (size != sizeof(u32) || out == NULL) {
+    if (size != sizeof(u64) || out == NULL) {
         s_log_error("%s: Invalid parameters", __func__);
         return -1;
     }
@@ -513,7 +513,7 @@ static int do_aidl_hal_get_handle(struct kmhal_sp *hal)
     if (kmhal_aidl_manager_get(hal->binder, &hal->txn, hal->aidl_tx_hdr_type,
                 hal->fqname, hal->instname, &hal->handle) != OK)
     {
-        s_log_error("Failed to getService() a handle to the HAL");
+        s_log_error("Failed to getService() a handle to the AIDL HAL");
         return 1;
     } else if (hal->handle == 0) {
         /* In AIDL we only really try to get the service once,

@@ -123,7 +123,8 @@ enum KM_HardwareAuthenticatorType {
 };
 const char * KM_HardwareAuthenticatorType_toString(uint32_t hwautht);
 
-#define KM_DECL_ENUM_VAL(c_prefix, name, value) c_prefix##name = value, \
+#define KM_DECL_ENUM_VAL(c_prefix, name, value) \
+    c_prefix##name = value,
 
 #define KM_DECL_ENUM(enum_name, list_name)  \
 enum KM_##enum_name {                                 \
