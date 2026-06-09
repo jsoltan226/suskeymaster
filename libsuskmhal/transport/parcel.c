@@ -493,6 +493,7 @@ static int cmp_objs_offsets(const void *obj1_, const void *obj2_)
 
 kmhal_parcel_obj_t
 kmhal_parcel_obj_find_by_offset(const struct kmhal_parcel *parcel,
+                                int type,
                                 size_t offset)
 {
     u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
@@ -501,11 +502,32 @@ kmhal_parcel_obj_find_by_offset(const struct kmhal_parcel *parcel,
         return KMHAL_PARCEL_OBJ_INVALID;
     }
 
-    if (parcel->read_buffer_size < sizeof(struct binder_buffer_object) ||
-        align4(offset) > parcel->read_buffer_size -
-            sizeof(struct binder_buffer_object))
+    size_t struct_size = 0;
+    switch (type) {
+        case BINDER_TYPE_PTR:
+            struct_size = sizeof(struct binder_buffer_object);
+            break;
+        case BINDER_TYPE_HANDLE:
+        case BINDER_TYPE_BINDER:
+        case BINDER_TYPE_WEAK_HANDLE:
+        case BINDER_TYPE_WEAK_BINDER:
+            struct_size = sizeof(struct flat_binder_object);
+            break;
+        case BINDER_TYPE_FD:
+            struct_size = sizeof(struct binder_fd_object);
+            break;
+        case BINDER_TYPE_FDA:
+            struct_size = sizeof(struct binder_fd_array_object);
+            break;
+        default:
+            s_log_error("Invalid binder object type: %d", type);
+            return KMHAL_PARCEL_OBJ_INVALID;
+    }
+
+    if (parcel->read_buffer_size < struct_size ||
+        align4(offset) > parcel->read_buffer_size - struct_size)
     {
-        s_log_error("Binder buffer object offset out of bounds");
+        s_log_error("Binder object offset out of bounds");
         return KMHAL_PARCEL_OBJ_INVALID;
     } else if (offset != align4(offset)) {
         s_log_error("Offset not aligned");
@@ -750,6 +772,14 @@ int kmhal_parcel_read_handle(const struct kmhal_parcel *parcel,
         return -1;
     }
 
+    kmhal_parcel_obj_t ref =
+        kmhal_parcel_obj_find_by_offset(parcel, BINDER_TYPE_HANDLE, off);
+    if (!KMHAL_PARCEL_OBJ_IS_VALID(ref)) {
+        /* s_log_error("Flat binder object at offset %zu not found in parcel",
+                off); */
+        return 1;
+    }
+
     if (out != NULL)
         memcpy(out, &tmp, sizeof(struct flat_binder_object));
     *offset_p += sizeof(struct flat_binder_object);
@@ -799,7 +829,7 @@ int kmhal_parcel_read_buffer_obj(const struct kmhal_parcel *parcel,
     }
 
     if (tmp.buffer) {
-        ref = kmhal_parcel_obj_find_by_offset(parcel, off);
+        ref = kmhal_parcel_obj_find_by_offset(parcel, BINDER_TYPE_PTR, off);
         if (!KMHAL_PARCEL_OBJ_IS_VALID(ref)) {
             s_log_error("Object at offset %zu not found in parcel", off);
             return 1;
@@ -869,7 +899,7 @@ int kmhal_parcel_read_embedded_buffer(const struct kmhal_parcel *p,
     kmhal_parcel_obj_t child_ref = KMHAL_PARCEL_OBJ_INVALID;
 
     if (child_buffer_ptr) {
-        child_ref = kmhal_parcel_obj_find_by_offset(p, *off_p);
+        child_ref = kmhal_parcel_obj_find_by_offset(p, BINDER_TYPE_PTR, *off_p);
         if (!KMHAL_PARCEL_OBJ_IS_VALID(child_ref)) {
             s_log_error("Couldn't find embedded buffer object");
             return 1;

@@ -315,13 +315,23 @@ kmhal_parcel_obj_get(const struct kmhal_parcel *parcel, size_t idx);
  *
  * @param parcel The parcel to search in.
  *
+ * @param type The type of the object,
+ *  e.g. `BINDER_TYPE_PTR` for buffer objects.
+ *
  * @param off The offset of the object.
  *
  * @return A reference to the found object or
  *  `KMHAL_PARCEL_OBJ_INVALID` if it doesn't exist.
+ *
+ * Note: This function doesn't perform ANY validation of the object itself;
+ * it only searches for it in the offsets array.
+ * Even the object's type is not validated. The only reasong the @type parameter
+ * is there is to determine the size of the object struct,
+ * to be able to validate the given offset.
  */
 kmhal_parcel_obj_t
 kmhal_parcel_obj_find_by_offset(const struct kmhal_parcel *parcel,
+                                int type,
                                 size_t offset);
 
 /* Read arbitrary data at an arbitrary offset from the parcel's buffer.

@@ -535,17 +535,16 @@ static int do_hidl_hal_get_handle(struct kmhal_sp *hal)
     hal->manager_acquired = true;
 
     u32 handle = 0;
-    if (kmhal_hidl_manager_get(hal->binder, &hal->txn,
-                hal->fqname, hal->instname, &handle) != OK)
-    {
-        s_log_error("Failed to get() a handle to the HIDL HAL");
-        return 1;
-    } else if (handle == 0) {
+    enum kmhal_android_status s = kmhal_hidl_manager_get(hal->binder,
+                            &hal->txn, hal->fqname, hal->instname, &handle);
+    if (handle == 0 || s == PERMISSION_DENIED) {
         /* This error is expected when getting the wrong version,
          * so we might need to call this function multiple times
-         * before we get the correct one, therefore we might
-         * not want this error spammed */
+         * before we get the correct one, therefore don't spam this error */
         s_log_verbose("No handle received");
+        return 1;
+    } else if (s != OK) {
+        s_log_error("Failed to get() a handle to the HIDL HAL");
         return 1;
     }
 

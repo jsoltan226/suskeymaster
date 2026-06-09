@@ -110,7 +110,9 @@ kmhal_hidl_manager_get(struct kmhal_binder_ctx *binder,
     /* Read the returned handle... */
     size_t off = KMHAL_PARCEL_DATA_START_OFFSET;
     if (read_handle(parcel, &off, &handle)) {
-        ret = BAD_VALUE;
+        /* This is expected when getting the wrong HAL version,
+         * so don't spam error messages */
+        ret = PERMISSION_DENIED;
         goto err;
     }
 
@@ -127,7 +129,7 @@ kmhal_hidl_manager_get(struct kmhal_binder_ctx *binder,
     ret = OK;
 
 err:
-    if (ret != OK) {
+    if (ret != OK && ret != PERMISSION_DENIED) {
         s_log_error(MGR_1_0_FQNAME"::get(\"%s\", \"%s\"): ret: %d (%s)",
                 in_interface_name, in_instance_name,
                 ret, kmhal_android_status_toString(ret)
@@ -278,8 +280,8 @@ static int read_handle(const struct kmhal_parcel *parcel,
     struct flat_binder_object flat_binder_obj;
 
     if (kmhal_parcel_read_handle(parcel, offset_p, &flat_binder_obj)) {
-        s_log_error("Failed to read the flat_binder_object (handle) "
-                "from the reply");
+        /* s_log_error("Failed to read the flat_binder_object (handle) "
+                "from the reply"); */
         return 1;
     }
 
