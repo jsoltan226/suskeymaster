@@ -203,7 +203,7 @@ static ErrorCode do_generic_operation_cycle(SusKMHal& hal,
         std::vector<u8> chunk(input.begin() + progress, input.end());
         std::vector<u8> tmp_output;
 
-        e = hal.update(operation_handle, {}, chunk, auth_token, {},
+        e = hal.update(operation_handle, {}, chunk, auth_token,
                 consumed, kp_tmp, tmp_output);
         if (e != ErrorCode::OK) {
             std::cerr << toString(op) << ": UPDATE operation failed: "
@@ -229,7 +229,7 @@ static ErrorCode do_generic_operation_cycle(SusKMHal& hal,
     const std::vector<u8> dummy_;
 
     const std::vector<u8>& finish_sig_ = finish_signature ? *finish_signature : dummy_;
-    e = hal.finish(operation_handle, {}, {}, finish_sig_, auth_token, {}, kp_tmp, last_tmp_output);
+    e = hal.finish(operation_handle, {}, {}, finish_sig_, auth_token, kp_tmp, last_tmp_output);
     if (e != ErrorCode::OK) {
         std::cerr << toString(op) << ": FINISH operation failed: "
             << static_cast<int>(e) << " (" << toString(e) << ")" << std::endl;

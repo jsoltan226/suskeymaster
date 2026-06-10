@@ -140,100 +140,6 @@ fail:
         std::string(keymasterAuthorName->buffer, keymasterAuthorName->length);
 }
 
-ErrorCode SusHidlKeymaster4_0::getHmacSharingParameters(HmacSharingParameters &out_params)
-{
-    check_hal_ok();
-    ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
-    const hidl::HmacSharingParameters *params = nullptr;
-
-    struct kmhal_arg_write_desc *const in_args = nullptr;
-    const size_t n_in_args = 0;
-    struct kmhal_arg_parse_desc out_args[] = {
-        init_parse("error", &ret, kmhal_arg_parse_u32),
-        init_parse("params", &params, parse_hmac_sharing_parameters),
-    };
-    const size_t n_out_args = u_arr_size(out_args);
-
-    if (kmhal_call(this->getHal(), KM_4_0_GET_HMAC_SHARING_PARAMETERS,
-                in_args, n_in_args, out_args, n_out_args))
-    {
-        std::cerr << __func__ << ": HIDL call failed" << std::endl;
-        return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
-    }
-    if (ret == ErrorCode::OK)
-        out_params = fromHidl(*params);
-
-    return ret;
-}
-
-ErrorCode SusHidlKeymaster4_0::computeSharedHmac(
-        std::vector<HmacSharingParameters> const& params,
-        std::vector<u8>& out_sharingCheck)
-{
-    check_hal_ok();
-    ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
-    const hidl_vec<u8> *sharingCheck = nullptr;
-
-    const hidl_vec<hidl::HmacSharingParameters> hidl_params = toHidlView(params);
-
-    struct kmhal_arg_write_desc in_args[] = {
-        init_write("params", &hidl_params, write_vec_of_hmac_sharing_parameters),
-    };
-    const size_t n_in_args = u_arr_size(in_args);
-    struct kmhal_arg_parse_desc out_args[] = {
-        init_parse("error", &ret, kmhal_arg_parse_u32),
-        init_parse("sharingCheck", &sharingCheck, kmhal_hidl_arg_parse_vec_of_u8),
-    };
-    const size_t n_out_args = u_arr_size(out_args);
-
-    if (kmhal_call(this->getHal(), KM_4_0_GET_HMAC_SHARING_PARAMETERS,
-                in_args, n_in_args, out_args, n_out_args))
-    {
-        std::cerr << __func__ << ": HIDL call failed" << std::endl;
-        return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
-    }
-    if (ret == ErrorCode::OK)
-        out_sharingCheck = fromHidl(*sharingCheck);
-
-    return ret;
-}
-
-ErrorCode SusHidlKeymaster4_0::verifyAuthorization(u64 operationHandle,
-        std::vector<KeyParameter> const& parametersToVerify,
-        HardwareAuthToken const& authToken,
-        VerificationToken& out_token)
-{
-    check_hal_ok();
-    ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
-    const hidl::VerificationToken *token = nullptr;
-
-    const hidl_vec<hidl::KeyParameter> hidl_parametersToVerify = toHidlView(parametersToVerify);
-
-    struct kmhal_arg_write_desc in_args[] = {
-        init_write("operationHandle", operationHandle, kmhal_arg_write_u64),
-        init_write("parametersToVerify", &hidl_parametersToVerify,
-                write_vec_of_key_parameter),
-        init_write("authToken", &authToken, write_hardware_auth_token),
-    };
-    const size_t n_in_args = u_arr_size(in_args);
-    struct kmhal_arg_parse_desc out_args[] = {
-        init_parse("error", &ret, kmhal_arg_parse_u32),
-        init_parse("token", &token, parse_verification_token),
-    };
-    const size_t n_out_args = u_arr_size(out_args);
-
-    if (kmhal_call(this->getHal(), KM_4_0_GET_HMAC_SHARING_PARAMETERS,
-                in_args, n_in_args, out_args, n_out_args))
-    {
-        std::cerr << __func__ << ": HIDL call failed" << std::endl;
-        return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
-    }
-    if (ret == ErrorCode::OK)
-        out_token = fromHidl(*token);
-
-    return ret;
-}
-
 ErrorCode SusHidlKeymaster4_0::importWrappedKey(
         std::vector<u8> const& wrappedKeyData,
         std::vector<u8> const& wrappingKeyBlob,
@@ -329,7 +235,6 @@ ErrorCode SusHidlKeymaster4_0::update(u64 operationHandle,
         std::vector<KeyParameter> const& inParams,
         std::vector<u8> const& input,
         HardwareAuthToken const& authToken,
-        VerificationToken const& verificationToken,
         u32& out_inputConsumed,
         std::vector<KeyParameter>& out_outParams,
         std::vector<u8>& out_output)
@@ -342,7 +247,7 @@ ErrorCode SusHidlKeymaster4_0::update(u64 operationHandle,
     const hidl_vec<hidl::KeyParameter> hidl_inParams = toHidlView(inParams);
     const hidl_vec<u8> hidl_input = toHidlView(input);
     const hidl::HardwareAuthToken hidl_authToken = toHidlView(authToken);
-    const hidl::VerificationToken hidl_verificationToken = toHidlView(verificationToken);
+    const hidl::VerificationToken hidl_verificationToken = {};
 
     struct kmhal_arg_write_desc in_args[] = {
         init_write("operationHandle", operationHandle, kmhal_arg_write_u64),
@@ -377,7 +282,6 @@ ErrorCode SusHidlKeymaster4_0::finish(u64 operationHandle,
         std::vector<u8> const& input,
         std::vector<u8> const& signature,
         HardwareAuthToken const& authToken,
-        VerificationToken const& verificationToken,
         std::vector<KeyParameter>& out_outParams,
         std::vector<u8>& out_output)
 {
@@ -390,7 +294,7 @@ ErrorCode SusHidlKeymaster4_0::finish(u64 operationHandle,
     const hidl_vec<u8> hidl_input = toHidlView(input);
     const hidl_vec<u8> hidl_signature = toHidlView(signature);
     const hidl::HardwareAuthToken hidl_authToken = toHidlView(authToken);
-    const hidl::VerificationToken hidl_verificationToken = toHidlView(verificationToken);
+    const hidl::VerificationToken hidl_verificationToken = {};
 
     struct kmhal_arg_write_desc in_args[] = {
         init_write("operationHandle", operationHandle, kmhal_arg_write_u64),

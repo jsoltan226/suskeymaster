@@ -65,7 +65,7 @@ i32 sus_cert_sign(VECTOR(u8 const) tbs_der, VECTOR(u8) *out_sig,
         const std::vector<u8> tbs_der_vec(tbs_der, tbs_der + vector_size(tbs_der));
 
         std::vector<uint8_t> sig_vec;
-        e = hal->finish(op_handle, {}, tbs_der_vec, {}, {}, {}, dummy, sig_vec);
+        e = hal->finish(op_handle, {}, tbs_der_vec, {}, {}, dummy, sig_vec);
         if (e != ErrorCode::OK)
             goto_error("FINISH operation failed: %u (%s)",
                     (uint32_t)e, KM_ErrorCode_toString((uint32_t)e));

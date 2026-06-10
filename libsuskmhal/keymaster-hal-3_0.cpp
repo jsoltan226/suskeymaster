@@ -12,7 +12,6 @@
 #include <vector>
 #include <string>
 #include <cstring>
-#include <optional>
 #include <endian.h>
 #endif /* SUSKEYMASTER_BUILD_HOST */
 
@@ -28,7 +27,6 @@ using hidl::fromHidl;
 
 static void handle_auth_token_compat(hidl_vec<hidl::KeyParameter>& par,
                                      hidl::HardwareAuthToken const& at,
-                                     std::optional<hidl::VerificationToken> const& vt,
                                      const char *func);
 
 SusHidlKeymaster3_0::SusHidlKeymaster3_0(void) :
@@ -162,7 +160,7 @@ ErrorCode SusHidlKeymaster3_0::begin(KeyPurpose purpose,
     const hidl::HardwareAuthToken hidl_authToken = toHidlView(authToken);
     hidl_vec<hidl::KeyParameter> hidl_inParams = toHidlView(inParams);
 
-    handle_auth_token_compat(hidl_inParams, hidl_authToken, std::nullopt, "begin");
+    handle_auth_token_compat(hidl_inParams, hidl_authToken, "begin");
 
     struct kmhal_arg_write_desc in_args[] = {
         init_write("purpose", purpose, kmhal_arg_write_u32),
@@ -190,7 +188,6 @@ ErrorCode SusHidlKeymaster3_0::update(u64 operationHandle,
         std::vector<KeyParameter> const& inParams,
         std::vector<u8> const& input,
         HardwareAuthToken const& authToken,
-        VerificationToken const& verificationToken,
         u32& out_inputConsumed,
         std::vector<KeyParameter>& out_outParams,
         std::vector<u8>& out_output)
@@ -203,8 +200,7 @@ ErrorCode SusHidlKeymaster3_0::update(u64 operationHandle,
     hidl_vec<hidl::KeyParameter> hidl_inParams = toHidlView(inParams);
     const hidl_vec<u8> hidl_input = toHidlView(input);
 
-    handle_auth_token_compat(hidl_inParams,
-            toHidlView(authToken), toHidlView(verificationToken), "update");
+    handle_auth_token_compat(hidl_inParams, toHidlView(authToken), "update");
 
     struct kmhal_arg_write_desc in_args[] = {
         init_write("operationHandle", operationHandle, kmhal_arg_write_u64),
@@ -237,7 +233,6 @@ ErrorCode SusHidlKeymaster3_0::finish(u64 operationHandle,
         std::vector<u8> const& input,
         std::vector<u8> const& signature,
         HardwareAuthToken const& authToken,
-        VerificationToken const& verificationToken,
         std::vector<KeyParameter>& out_outParams,
         std::vector<u8>& out_output)
 {
@@ -250,8 +245,7 @@ ErrorCode SusHidlKeymaster3_0::finish(u64 operationHandle,
     const hidl_vec<u8> hidl_input = toHidlView(input);
     const hidl_vec<u8> hidl_signature = toHidlView(signature);
 
-    handle_auth_token_compat(hidl_inParams,
-            toHidlView(authToken), toHidlView(verificationToken), "finish");
+    handle_auth_token_compat(hidl_inParams, toHidlView(authToken), "finish");
 
     struct kmhal_arg_write_desc in_args[] = {
         init_write("operationHandle", operationHandle, kmhal_arg_write_u64),
@@ -281,24 +275,8 @@ ErrorCode SusHidlKeymaster3_0::finish(u64 operationHandle,
 
 static void handle_auth_token_compat(hidl_vec<hidl::KeyParameter>& par,
                                      hidl::HardwareAuthToken const& at,
-                                     std::optional<hidl::VerificationToken> const& vt,
                                      const char *func)
 {
-    if (vt.has_value()) {
-        hidl::VerificationToken empty{};
-        hidl::VerificationToken val = vt.value();
-
-        if (val.securityLevel != empty.securityLevel ||
-            val.parametersVerified.size() != empty.parametersVerified.size() ||
-            val.timestamp != empty.timestamp ||
-            val.challenge != empty.challenge ||
-            val.mac.size() != empty.mac.size())
-        {
-            std::cerr << "WARNING: ignored provided verificationToken; "
-                "Keymaster 3.0 doesn't support them in any way" << std::endl;
-        }
-    }
-
     /* non-empty MAC means non-empty auth token */
     if (at.mac.size() > 0) {
         if (at.mac.size() != static_cast<size_t>(Constants::AUTH_TOKEN_MAC_LENGTH)) {

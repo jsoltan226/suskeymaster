@@ -134,26 +134,6 @@ fail:
     out_securityLevel = hwinfo.securityLevel;
 }
 
-ErrorCode SusAidlKeyMint::getHmacSharingParameters(HmacSharingParameters &out_params) {
-    (void) out_params;
-    return ErrorCode::UNIMPLEMENTED;
-}
-
-ErrorCode SusAidlKeyMint::computeSharedHmac(std::vector<HmacSharingParameters> const& params,
-        std::vector<u8>& out_sharingCheck)
-{
-    (void) params; (void) out_sharingCheck;
-    return ErrorCode::UNIMPLEMENTED;
-}
-
-ErrorCode SusAidlKeyMint::verifyAuthorization(uint64_t operationHandle,
-        std::vector<KeyParameter> const& parametersToVerify, HardwareAuthToken const& authToken,
-        VerificationToken& out_token)
-{
-    (void) operationHandle; (void) parametersToVerify; (void) authToken; (void) out_token;
-    return ErrorCode::UNIMPLEMENTED;
-}
-
 ErrorCode SusAidlKeyMint::addRngEntropy(std::vector<u8> const& data) {
     (void) data; return ErrorCode::UNIMPLEMENTED;
 }
@@ -237,23 +217,23 @@ ErrorCode SusAidlKeyMint::begin(KeyPurpose purpose, std::vector<u8> const& keyBl
 
 ErrorCode SusAidlKeyMint::update(uint64_t operationHandle,
         std::vector<KeyParameter> const& inParams, std::vector<u8> const& input,
-        HardwareAuthToken const& authToken, VerificationToken const& verificationToken,
+        HardwareAuthToken const& authToken,
         uint32_t& out_inputConsumed, std::vector<KeyParameter>& out_outParams,
         std::vector<u8>& out_output)
 {
     (void) operationHandle; (void) inParams; (void) input;
-    (void) authToken; (void) verificationToken;
+    (void) authToken;
     (void) out_inputConsumed; (void) out_outParams; (void) out_output;
     return ErrorCode::UNIMPLEMENTED;
 }
 
-ErrorCode SusAidlKeyMint::finish(uint64_t operationHandle, std::vector<KeyParameter> const& inParams,
-        std::vector<u8> const& input, std::vector<u8> const& signature,
-        HardwareAuthToken const& authToken, VerificationToken const& verificationToken,
+ErrorCode SusAidlKeyMint::finish(uint64_t operationHandle,
+        std::vector<KeyParameter> const& inParams, std::vector<u8> const& input,
+        std::vector<u8> const& signature, HardwareAuthToken const& authToken,
         std::vector<KeyParameter>& out_outParams, std::vector<u8>& out_output)
 {
     (void) operationHandle; (void) inParams; (void) input; (void) signature;
-    (void) authToken; (void) verificationToken;
+    (void) authToken;
     (void) out_outParams; (void) out_output;
     return ErrorCode::UNIMPLEMENTED;
 }

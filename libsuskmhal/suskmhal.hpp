@@ -36,27 +36,6 @@ public:
         out_keymasterAuthorName = "N/A";
     }
 
-    virtual ErrorCode getHmacSharingParameters(HmacSharingParameters &out_params) {
-        (void) out_params;
-        return ErrorCode::UNIMPLEMENTED;
-    }
-
-    virtual ErrorCode computeSharedHmac(std::vector<HmacSharingParameters> const& params,
-            std::vector<u8>& out_sharingCheck)
-    {
-        (void) params; (void) out_sharingCheck;
-        return ErrorCode::UNIMPLEMENTED;
-    }
-
-    virtual ErrorCode verifyAuthorization(u64 operationHandle,
-            std::vector<KeyParameter> const& parametersToVerify,
-            HardwareAuthToken const& authToken,
-            VerificationToken& out_token)
-    {
-        (void) operationHandle; (void) parametersToVerify; (void) authToken; (void) out_token;
-        return ErrorCode::UNIMPLEMENTED;
-    }
-
     virtual ErrorCode addRngEntropy(std::vector<u8> const& data) {
         (void) data; return ErrorCode::UNIMPLEMENTED;
     }
@@ -141,23 +120,23 @@ public:
 
     virtual ErrorCode update(u64 operationHandle,
             std::vector<KeyParameter> const& inParams, std::vector<u8> const& input,
-            HardwareAuthToken const& authToken, VerificationToken const& verificationToken,
+            HardwareAuthToken const& authToken,
             u32& out_inputConsumed, std::vector<KeyParameter>& out_outParams,
             std::vector<u8>& out_output)
     {
         (void) operationHandle; (void) inParams; (void) input;
-        (void) authToken; (void) verificationToken;
+        (void) authToken;
         (void) out_inputConsumed; (void) out_outParams; (void) out_output;
         return ErrorCode::UNIMPLEMENTED;
     }
 
-    virtual ErrorCode finish(u64 operationHandle, std::vector<KeyParameter> const& inParams,
-            std::vector<u8> const& input, std::vector<u8> const& signature,
-            HardwareAuthToken const& authToken, VerificationToken const& verificationToken,
+    virtual ErrorCode finish(u64 operationHandle,
+            std::vector<KeyParameter> const& inParams, std::vector<u8> const& input,
+            std::vector<u8> const& signature, HardwareAuthToken const& authToken,
             std::vector<KeyParameter>& out_outParams, std::vector<u8>& out_output)
     {
         (void) operationHandle; (void) inParams; (void) input; (void) signature;
-        (void) authToken; (void) verificationToken;
+        (void) authToken;
         (void) out_outParams; (void) out_output;
         return ErrorCode::UNIMPLEMENTED;
     }
@@ -286,13 +265,13 @@ public:
 
     ErrorCode update(u64 operationHandle,
             std::vector<KeyParameter> const& inParams, std::vector<u8> const& input,
-            HardwareAuthToken const& authToken, VerificationToken const& verificationToken,
+            HardwareAuthToken const& authToken,
             u32& out_inputConsumed, std::vector<KeyParameter>& out_outParams,
             std::vector<u8>& out_output) override;
 
-    ErrorCode finish(u64 operationHandle, std::vector<KeyParameter> const& inParams,
-            std::vector<u8> const& input, std::vector<u8> const& signature,
-            HardwareAuthToken const& authToken, VerificationToken const& verificationToken,
+    ErrorCode finish(u64 operationHandle,
+            std::vector<KeyParameter> const& inParams, std::vector<u8> const& input,
+            std::vector<u8> const& signature, HardwareAuthToken const& authToken,
             std::vector<KeyParameter>& out_outParams, std::vector<u8>& out_output) override;
 
 #endif /* SUSKEYMASTER_BUILD_HOST */
@@ -319,16 +298,6 @@ public:
     void getHardwareInfo(SecurityLevel& out_securityLevel,
             std::string& out_keymasterName, std::string& out_keymasterAuthorName) override;
 
-    ErrorCode getHmacSharingParameters(HmacSharingParameters &out_params) override;
-
-    ErrorCode computeSharedHmac(std::vector<HmacSharingParameters> const& params,
-            std::vector<u8>& out_sharingCheck) override;
-
-    ErrorCode verifyAuthorization(u64 operationHandle,
-            std::vector<KeyParameter> const& parametersToVerify,
-            HardwareAuthToken const& authToken,
-            VerificationToken& out_token) override;
-
     ErrorCode importWrappedKey(std::vector<u8> const& wrappedKeyData,
             std::vector<u8> const& wrappingKeyBlob, std::vector<u8> const& maskingKey,
             std::vector<KeyParameter> const& unwrappingParams,
@@ -340,15 +309,15 @@ public:
             std::vector<KeyParameter> const& inParams, HardwareAuthToken const& authToken,
             std::vector<KeyParameter>& out_outParams, u64& out_operationHandle) override;
 
-    ErrorCode update(u64 operationHandle,
-            std::vector<KeyParameter> const& inParams, std::vector<u8> const& input,
-            HardwareAuthToken const& authToken, VerificationToken const& verificationToken,
-            u32& out_inputConsumed, std::vector<KeyParameter>& out_outParams,
-            std::vector<u8>& out_output) override;
+    ErrorCode update(uint64_t operationHandle,
+        std::vector<KeyParameter> const& inParams, std::vector<u8> const& input,
+        HardwareAuthToken const& authToken,
+        uint32_t& out_inputConsumed, std::vector<KeyParameter>& out_outParams,
+        std::vector<u8>& out_output) override;
 
-    ErrorCode finish(u64 operationHandle, std::vector<KeyParameter> const& inParams,
-            std::vector<u8> const& input, std::vector<u8> const& signature,
-            HardwareAuthToken const& authToken, VerificationToken const& verificationToken,
+    ErrorCode finish(u64 operationHandle,
+            std::vector<KeyParameter> const& inParams, std::vector<u8> const& input,
+            std::vector<u8> const& signature, HardwareAuthToken const& authToken,
             std::vector<KeyParameter>& out_outParams, std::vector<u8>& out_output) override;
 #endif /* SUSKEYMASTER_BUILD_HOST */
 };
@@ -390,14 +359,6 @@ public:
 
     void getHardwareInfo(SecurityLevel& out_securityLevel,
             std::string& out_keymasterName, std::string& out_keymasterAuthorName) override;
-
-    ErrorCode computeSharedHmac(std::vector<HmacSharingParameters> const& params,
-            std::vector<u8>& out_sharingCheck) override;
-
-    ErrorCode verifyAuthorization(u64 operationHandle,
-            std::vector<KeyParameter> const& parametersToVerify,
-            HardwareAuthToken const& authToken,
-            VerificationToken& out_token) override;
 
     ErrorCode addRngEntropy(std::vector<u8> const& data) override;
 
@@ -445,18 +406,16 @@ public:
 
     ErrorCode update(u64 operationHandle,
             std::vector<KeyParameter> const& inParams, std::vector<u8> const& input,
-            HardwareAuthToken const& authToken, VerificationToken const& verificationToken,
+            HardwareAuthToken const& authToken,
             u32& out_inputConsumed, std::vector<KeyParameter>& out_outParams,
             std::vector<u8>& out_output) override;
 
-    ErrorCode finish(u64 operationHandle, std::vector<KeyParameter> const& inParams,
-            std::vector<u8> const& input, std::vector<u8> const& signature,
-            HardwareAuthToken const& authToken, VerificationToken const& verificationToken,
+    ErrorCode finish(u64 operationHandle,
+            std::vector<KeyParameter> const& inParams, std::vector<u8> const& input,
+            std::vector<u8> const& signature, HardwareAuthToken const& authToken,
             std::vector<KeyParameter>& out_outParams, std::vector<u8>& out_output) override;
 
     ErrorCode abort(u64 operationHandle) override;
-
-    ErrorCode getHmacSharingParameters(HmacSharingParameters &out_params) override;
 #endif /* SUSKEYMASTER_BUILD_HOST */
 };
 #endif /* SUSKEYMASTER_HAL_DISABLE_KEYMINT */
