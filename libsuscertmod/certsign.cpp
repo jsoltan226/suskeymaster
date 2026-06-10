@@ -45,7 +45,6 @@ i32 sus_cert_sign(VECTOR(u8 const) tbs_der, VECTOR(u8) *out_sig,
 
     params = init_params(variant);
     {
-        hal = get_hal();
         if ((hal = get_hal()) == nullptr)
             goto_error("Couldn't obtain a handle to the Keymaster HAL service");
 
