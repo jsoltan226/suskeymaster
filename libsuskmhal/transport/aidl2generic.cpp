@@ -142,6 +142,52 @@ std::vector<KeyParameter> fromAidlDestroy(aidl_vec_of_key_parameter& aidl)
     return ret;
 }
 
+template<> aidl_hardware_auth_token
+AidlHardwareAuthTokenView::toAidlView(const HardwareAuthToken &generic)
+{
+    aidl_hardware_auth_token ret{};
+
+    ret.challenge = generic.challenge;
+    ret.user_id = generic.userId;
+    ret.authenticator_id = generic.authenticatorId;
+    ret.authenticator_type = static_cast<u32>(generic.authenticatorType);
+    ret.timestamp = generic.timestamp;
+    ret.mac = AidlVecOfU8View::toAidlView(generic.mac);
+
+    return ret;
+}
+
+HardwareAuthToken fromAidlDestroy(aidl_hardware_auth_token& aidl)
+{
+    HardwareAuthToken ret{};
+
+    ret.challenge = aidl.challenge;
+    ret.userId = aidl.user_id;
+    ret.authenticatorId = aidl.authenticator_id;
+    ret.authenticatorType = static_cast<HardwareAuthenticatorType>(aidl.authenticator_type);
+    ret.timestamp = aidl.timestamp;
+    ret.mac = fromAidlDestroy(aidl.mac);
+
+    destroy_aidl_hardware_auth_token(&aidl);
+    return ret;
+}
+
+std::vector<std::vector<u8>> fromAidlDestroy(aidl_vec_of_certificate& aidl)
+{
+    std::vector<std::vector<u8>> ret{};
+
+    if (!aidl.ptr || aidl.size <= 0)
+        return ret;
+
+    ret.reserve(static_cast<size_t>(aidl.size));
+    for (i32 i = 0; i < aidl.size; i++) {
+        ret.emplace_back(fromAidlDestroy(aidl.ptr[i].encoded_certificate));
+    }
+
+    destroy_aidl_vec_of_certificate(&aidl);
+    return ret;
+}
+
 } /* namespace transport */
 } /* namespace kmhal */
 } /* namespace suskeymaster */

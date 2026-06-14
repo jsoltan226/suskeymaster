@@ -475,17 +475,21 @@ static void init_sign_params_from_user_and_characteristics(
     std::vector<kmhal::util::km_default> defaults, verify_defaults;
 
     for (const auto& kp : kc.hardwareEnforced) {
-        if (alg == Algorithm::EC && kp.tag == Tag::DIGEST && !digest_found) {
+        if ((alg == Algorithm::EC || alg == Algorithm::HMAC)
+                && kp.tag == Tag::DIGEST && !digest_found)
+        {
             digest = kp.f.digest;
             digest_found = true;
-        } else if (alg == Algorithm::RSA && kp.tag == Tag::PADDING && !padding_found &&
+        }
+        if (alg == Algorithm::RSA && kp.tag == Tag::PADDING && !padding_found &&
                 (kp.f.paddingMode == PaddingMode::RSA_PKCS1_1_5_SIGN ||
                  kp.f.paddingMode == PaddingMode::RSA_PSS ||
                  kp.f.paddingMode == PaddingMode::NONE)
         ) {
             padding = kp.f.paddingMode;
             padding_found = true;
-        } else if (alg == Algorithm::HMAC && kp.tag == Tag::MIN_MAC_LENGTH && !mac_length_found) {
+        }
+        if (alg == Algorithm::HMAC && kp.tag == Tag::MIN_MAC_LENGTH && !mac_length_found) {
             mac_length = kp.f.integer;
             mac_length_found = true;
         }
@@ -542,7 +546,7 @@ static void init_sign_params_from_user_and_characteristics(
         }
     }
 
-    if (alg == Algorithm::RSA || alg == Algorithm::EC) {
+    if (alg == Algorithm::RSA || alg == Algorithm::EC || alg == Algorithm::HMAC) {
         if (digest_found) {
             if (alg == Algorithm::RSA && padding_found && padding == PaddingMode::RSA_PSS &&
                     digest == Digest::NONE)

@@ -63,6 +63,14 @@ using AidlVecOfKeyParameterView = AidlView<aidl_vec_of_key_parameter, std::vecto
                                            destroy_aidl_vec_of_key_parameter>;
 std::vector<KeyParameter> fromAidlDestroy(aidl_vec_of_key_parameter&);
 
+/* HardwareAuthToken */
+using AidlHardwareAuthTokenView = AidlView<aidl_hardware_auth_token, HardwareAuthToken,
+                                           destroy_aidl_hardware_auth_token>;
+HardwareAuthToken fromAidlDestroy(aidl_hardware_auth_token&);
+
+/* vec<Certificate> AKA vec<vec<u8>> */
+std::vector<std::vector<u8>> fromAidlDestroy(aidl_vec_of_certificate&);
+
 } /* namespace transport */
 } /* namespace kmhal */
 } /* namespace suskeymaster */

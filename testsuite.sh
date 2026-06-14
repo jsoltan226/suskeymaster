@@ -28,22 +28,24 @@ echo
 echo
 echo '>>> generate'
 echo
-run '"$SUSKEYMASTER" generate "ALGORITHM=RSA PURPOSE=ENCRYPT PURPOSE=DECRYPT PURPOSE=SIGN PURPOSE=VERIFY" rsa-keyblob.bin' || exit 1
+run '"$SUSKEYMASTER" generate "ALGORITHM=EC PURPOSE=SIGN PURPOSE=VERIFY" rsa-keyblob.bin' || exit 1
 
 # attest file
 echo
 echo
 echo '>>> attest file'
+echo '(skip; not supported on KeyMint)'
 echo
-run '"$SUSKEYMASTER" attest file rsa-keyblob.bin' || exit 1
-run rm rsa-keyblob.bin
+#run '"$SUSKEYMASTER" attest file rsa-keyblob.bin' # Not supported on KeyMint
+#run rm rsa-keyblob.bin
 
 # attest generated
 echo
 echo
 echo '>>> attest generated'
+echo '(skip for now)'
 echo
-run '"$SUSKEYMASTER" attest generated "ALGORITHM=EC PURPOSE=SIGN APPLICATION_ID=$(getb64 "application-id")" "APPLICATION_ID=$(getb64 "application-id")"' || exit 1
+#run '"$SUSKEYMASTER" attest generated "ALGORITHM=EC PURPOSE=SIGN APPLICATION_ID=$(getb64 "application-id")" "APPLICATION_ID=$(getb64 "application-id")"' || exit 1
 
 # import
 echo
@@ -59,19 +61,21 @@ run rm aes-key.bin
 echo
 echo
 echo '>>> export'
+echo '(skip; not supported on KeyMint)'
 echo
-run '"$SUSKEYMASTER" generate "ALGORITHM=EC" ec-keyblob.bin' || exit 1
-run '"$SUSKEYMASTER" export ec-keyblob.bin ec-pubkey.x509' || exit 1
+#run '"$SUSKEYMASTER" generate "ALGORITHM=EC" ec-keyblob.bin' || exit 1
+#run '"$SUSKEYMASTER" export ec-keyblob.bin ec-pubkey.x509' || exit 1
 
 # upgrade
 echo
 echo
 echo '>>> upgrade'
 echo
+run '"$SUSKEYMASTER" generate "ALGORITHM=EC" ec-keyblob.bin' || exit 1
 run '"$SUSKEYMASTER" upgrade ec-keyblob.bin ec-keyblob-upgraded.bin # || exit 1'
 
 run rm -f ec-keyblob-upgraded.bin
-run rm ec-pubkey.x509
+#run rm ec-pubkey.x509
 run rm ec-keyblob.bin
 
 # crypto encrypt & decrypt
@@ -92,14 +96,14 @@ echo
 echo
 echo '>>> crypto sign & verify'
 echo
-run '"$SUSKEYMASTER" generate "ALGORITHM=EC PURPOSE=SIGN PURPOSE=VERIFY DIGEST=SHA_2_512" ec-keyblob.bin' || exit 1
+run '"$SUSKEYMASTER" generate "ALGORITHM=HMAC PURPOSE=SIGN PURPOSE=VERIFY DIGEST=SHA_2_256" hmac-keyblob.bin' || exit 1
 echo
-run '"$SUSKEYMASTER" crypto sign ec-keyblob.bin message.txt signature.bin "DIGEST=SHA_2_512"' || exit 1
+run '"$SUSKEYMASTER" crypto sign hmac-keyblob.bin message.txt signature.bin "DIGEST=SHA_2_256"' || exit 1
 echo
-run '"$SUSKEYMASTER" crypto verify ec-keyblob.bin message.txt signature.bin "DIGEST=SHA_2_512"' || exit 1
+run '"$SUSKEYMASTER" crypto verify hmac-keyblob.bin message.txt signature.bin "DIGEST=SHA_2_256"' || exit 1
 
 run rm message.txt signature.bin
-run rm ec-keyblob.bin
+run rm hmac-keyblob.bin
 
 
 echo

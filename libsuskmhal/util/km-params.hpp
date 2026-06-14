@@ -53,6 +53,20 @@ KM_PARAM_LIST * key_params_2_param_list(std::vector<KeyParameter> const& params)
 
 int b64decode(std::string const& in, std::vector<uint8_t> &out);
 
+static inline std::vector<u8> get_attestation_challenge(void) {
+    static const u8 challenge[] = "suskeymaster";
+    static const size_t challenge_len = sizeof(challenge) - 1;
+
+    return std::vector<u8>(challenge, challenge + challenge_len);
+}
+
+static inline std::vector<u8> get_attestation_application_id(void) {
+    static const u8 att_application_id[] = "suskeymaster TEST ATTESTATION APPLICATION ID";
+    static const size_t att_application_id_len = sizeof(att_application_id) - 1;
+
+    return std::vector<u8>(att_application_id, att_application_id + att_application_id_len);
+}
+
 } /* namespace util */
 } /* namespace kmhal */
 } /* namespace suskeymaster */

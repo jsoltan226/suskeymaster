@@ -53,7 +53,13 @@ int generate_and_attest_wrapping_key(SusKMHal& hal,
 
     /* Generate the wrapping RSA-2048 key */
     KeyCharacteristics kc;
-    ErrorCode e = hal.generateKey(params, out_wrapping_blob, kc);
+    std::vector<std::vector<u8>> cert_chain;
+    if (hal.getVersion() >= kmhal::HAL_KEYMINT_1_0) {
+        /* Not supported for now due to the lack of the easy exportKey method */
+        return 1;
+    }
+
+    ErrorCode e = hal.generateKey(params, out_wrapping_blob, kc, cert_chain);
     if (e != ErrorCode::OK) {
         std::cerr << "Failed to generate the wrapping key: "
             << static_cast<i32>(e) << " (" << toString(e) << ")" << std::endl;
@@ -113,27 +119,10 @@ int import_wrapped_key(SusKMHal& hal, std::vector<u8> const& in_wrapped_data,
 
 static void init_attest_key_params(std::vector<KeyParameter>& params)
 {
-    enum {
-        PARAM_ATTESTATION_CHALLENGE, PARAM_ATTESTATION_APPLICATION_ID,
-        PARAM_MAX_
-    };
-    params.resize(PARAM_MAX_);
-
-    static const u8 challenge[] = "suskeymaster TEST ATTESTATION CHALLENGE";
-    static const size_t challenge_len = sizeof(challenge) - 1;
-
-    params[PARAM_ATTESTATION_CHALLENGE].tag = Tag::ATTESTATION_CHALLENGE;
-    params[PARAM_ATTESTATION_CHALLENGE].blob = std::vector<u8>(
-            challenge, challenge + challenge_len
-    );
-
-    static const u8 att_application_id[] = "suskeymaster TEST APPLICATION ID";
-    static const size_t att_application_id_len = sizeof(att_application_id) - 1;
-
-    params[PARAM_ATTESTATION_APPLICATION_ID].tag = Tag::ATTESTATION_APPLICATION_ID;
-    params[PARAM_ATTESTATION_APPLICATION_ID].blob = std::vector<u8>(
-            att_application_id, att_application_id + att_application_id_len
-    );
+    kmhal::util::init_default_params(params, {
+        { Tag::ATTESTATION_CHALLENGE, kmhal::util::get_attestation_challenge() },
+        { Tag::ATTESTATION_APPLICATION_ID, kmhal::util::get_attestation_application_id() }
+    });
 }
 
 } /* namespace client */

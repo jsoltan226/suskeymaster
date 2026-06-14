@@ -132,6 +132,10 @@ void init_default_params_for_alg_and_purposes(std::vector<KeyParameter>& params,
 {
     bool sign_verify = false, enc_dec = false, wrap_key = false;
     bool private_ops = false;
+    if (purposes.size() && is_generate_key) {
+        std::cerr << "WARNING: Generating a key without a purpose" << std::endl;
+    }
+
     for (KeyPurpose p : purposes) {
         if (p == KeyPurpose::SIGN || p == KeyPurpose::VERIFY)
             sign_verify = true;
@@ -243,7 +247,7 @@ void init_default_params_for_alg_and_purposes(std::vector<KeyParameter>& params,
             break;
 
         block_modes = find_rep_tag<BlockMode>(Tag::BLOCK_MODE, params);
-        if (!block_modes.size()) {
+        if (block_modes.empty()) {
             defaults.push_back({ Tag::BLOCK_MODE, { BlockMode::GCM } });
             defaults.push_back({ Tag::PADDING, { PaddingMode::NONE } });
             defaults.push_back({ Tag::MIN_MAC_LENGTH, 128 });

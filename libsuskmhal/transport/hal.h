@@ -25,9 +25,12 @@ struct kmhal_sp;
  * The returned struct is empty and not ready for use.
  * You are probably looking for `kmhal_sp_new_get`.
  *
+ * @param Whether the new struct should be meant for an AIDL HAL.
+ *  Set this to false for HIDL.
+ *
  * @return A new HAL strong pointer struct, or NULL on allocation failure.
  */
-struct kmhal_sp * kmhal_sp_new_empty(void);
+struct kmhal_sp * kmhal_sp_new_empty(bool aidl);
 
 /**
  * Allocates a new HIDL HAL strong pointer struct, and tries to initialize
@@ -158,6 +161,12 @@ enum kmhal_arg_type {
     KMHAL_ARG_INLINE_DATA,
 
     /**
+     * Just like `KMHAL_ARG_INLINE_DATA`, but might contain
+     * a binder handle in the reply.
+     */
+    KMHAL_ARG_INLINE_DATA_WITH_HANDLE,
+
+    /**
      * Invalid value.
      */
     KMHAL_ARG_MAX_
@@ -243,6 +252,8 @@ struct kmhal_arg_write_desc {
             size_t size;
         } b;
 
+        /* In this case used for both `KMHAL_ARG_INLINE_DATA`
+         * and `KMHAL_ARG_INLINE_DATA_WITH_HANDLE` */
         struct kmhal_arg_write_inline_data {
             /* The function that serializes the given data inline.
              * The `User-provided` arguments passed to it should be set below.
@@ -323,6 +334,33 @@ typedef int (*kmhal_arg_parse_inline_data_proc_t)
     (const struct kmhal_parcel *p, size_t *off_p, void *out, size_t out_size);
 
 /**
+ * A function that reads and parses `KMHAL_ARG_INLINE_DATA` from a parcel.
+ * The format and size of the data should be validated by this function.
+ * Additionally, if a handle is parsed, it should be written to
+ * @out_handle_to_incref, which will make `kmhal_call` automatically incref it
+ * before the next transaction.
+ *
+ * @param p The parcel to read from.
+ *
+ * @param off_p A pointer to the offset into the parcel's read buffer,
+ *  which on successful read should be incremented to point past the read data.
+ *
+ * @param out_handle_to_incref An output pointer for the read handle.
+ *  If no handle was read, write `UINT32_MAX` here.
+ *  This should only be written to on success.
+ *
+ * @param out User-provided; Output pointer to data of size @out_size.
+ *  On successful read, the function should parse the data
+ *  and write the result in the implied expected format into @out.
+ *  Must be non-null if @size is > 0.
+ *
+ * @param out_size User-provided; Size of the output buffer @out.
+ */
+typedef int (*kmhal_arg_parse_inline_data_with_handle_proc_t)
+    (const struct kmhal_parcel *p, size_t *off_p, u32 *out_handle_to_incref,
+     void *out, size_t out_size);
+
+/**
  * Descriptor that enables deserialization of an output (returned)
  * argument from a HAL call.
  *
@@ -377,6 +415,19 @@ struct kmhal_arg_parse_desc {
             void *out;
             size_t size;
         } i;
+
+        struct kmhal_arg_parse_inline_data_with_handle {
+            /* The function that deserializes the given data inline.
+             * The `User-provided` arguments passed to it should be set below.
+             * Must not be NULL. */
+            kmhal_arg_parse_inline_data_with_handle_proc_t proc;
+
+            /* See the definition of
+             * `kmhal_arg_parse_inline_data_with_handle_proc_t`
+             * and `KMHAL_ARG_INLINE_DATA`. */
+            void *out;
+            size_t size;
+        } ih;
     } arg;
 };
 
@@ -624,6 +675,21 @@ init_parse_i(const char *name, T *out,
     ret.arg.i.proc = proc;
     ret.arg.i.out = out;
     ret.arg.i.size = sizeof(T);
+
+    return ret;
+}
+
+template<typename T> static inline struct kmhal_arg_parse_desc
+init_parse_i(const char *name, T *out,
+             kmhal_arg_parse_inline_data_with_handle_proc_t proc)
+{
+    struct kmhal_arg_parse_desc ret;
+
+    ret.name = name;
+    ret.type = KMHAL_ARG_INLINE_DATA_WITH_HANDLE;
+    ret.arg.ih.proc = proc;
+    ret.arg.ih.out = out;
+    ret.arg.ih.size = sizeof(T);
 
     return ret;
 }

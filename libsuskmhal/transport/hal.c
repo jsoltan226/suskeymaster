@@ -51,7 +51,7 @@ static enum kmhal_android_status
 validate_arg_descs(const struct kmhal_arg_write_desc *in_args, u32 n_in_args,
                    struct kmhal_arg_parse_desc *out_args, u32 n_out_args);
 
-struct kmhal_sp * kmhal_sp_new_empty(void)
+struct kmhal_sp * kmhal_sp_new_empty(bool aidl)
 {
     struct kmhal_sp *ret = NULL;
 
@@ -61,7 +61,7 @@ struct kmhal_sp * kmhal_sp_new_empty(void)
         return NULL;
     }
     atomic_store(&ret->initialized_, false);
-    ret->aidl = false;
+    ret->aidl = aidl;
     ret->binder = NULL;
     ret->owns_binder = false;
     ret->txn = NULL;
@@ -223,6 +223,10 @@ kmhal_call(struct kmhal_sp *hal, u32 cmd,
 {
     u_check_params(hal != NULL);
     enum kmhal_android_status ret = UNKNOWN_ERROR;
+    struct kmhal_binder_txn_args_out reply = { 0 };
+    struct kmhal_parcel *parcel = NULL;
+    bool got_handle = false;
+
     if (out_aidl_svc_specific_error_code != NULL)
         *out_aidl_svc_specific_error_code = 0;
 
@@ -230,7 +234,6 @@ kmhal_call(struct kmhal_sp *hal, u32 cmd,
             != OK)
         goto_error("Invalid argument descriptors");
 
-    struct kmhal_parcel *parcel = NULL;
     if ((ret = kmhal_util_check_allocate_txn_tmps(&hal->txn, &parcel)))
         goto_error("Failed to allocate temporary transaction resources");
 
@@ -260,6 +263,7 @@ kmhal_call(struct kmhal_sp *hal, u32 cmd,
             b->proc(parcel, b->data, b->size);
             break;
         }
+        case KMHAL_ARG_INLINE_DATA_WITH_HANDLE:
         case KMHAL_ARG_INLINE_DATA: {
             s_log_trace("writing inline data arg %"PRIu32" (\"%s\"); data: %p",
                     i, a->name, a->arg.i.data);
@@ -273,9 +277,9 @@ kmhal_call(struct kmhal_sp *hal, u32 cmd,
     kmhal_parcel_pack(hal->txn, parcel, hal->handle, cmd, hal->aidl ? 0 : 1);
 
     /* Transact */
-    if ((ret = kmhal_util_transact_and_unpack(hal->binder, &hal->txn, &parcel,
-                NULL, true, hal->aidl, out_aidl_svc_specific_error_code)) != OK)
-    {
+    ret = kmhal_util_transact_and_unpack(hal->binder, &hal->txn, &parcel,
+                &reply, false, hal->aidl, out_aidl_svc_specific_error_code);
+    if (ret != OK) {
         if (out_aidl_svc_specific_error_code &&
                 *out_aidl_svc_specific_error_code != 0)
         {
@@ -317,6 +321,24 @@ kmhal_call(struct kmhal_sp *hal, u32 cmd,
             r = i->proc(parcel, &off, i->out, i->size);
             break;
         }
+        case KMHAL_ARG_INLINE_DATA_WITH_HANDLE: {
+            s_log_trace("Reading inline data (with handle) arg "
+                    "%"PRIu32" (\"%s\"); off: %zu; "
+                    " out: %p, size: %zu", i, a->name, off,
+                    a->arg.i.out, a->arg.i.size);
+
+            const struct kmhal_arg_parse_inline_data_with_handle *const ih =
+                &a->arg.ih;
+            u32 handle = UINT32_MAX;
+            r = ih->proc(parcel, &off, &handle, ih->out, ih->size);
+            if (r == 0 && handle != UINT32_MAX) {
+                s_log_trace("Incref()ing handle %"PRIu32, handle);
+                kmhal_binder_write_increfs(hal->txn, handle);
+                kmhal_binder_write_acquire(hal->txn, handle);
+                got_handle = true;
+            }
+            break;
+        }
         default: s_log_fatal("Impossible outcome");
         }
         if (r != 0) {
@@ -329,10 +351,25 @@ kmhal_call(struct kmhal_sp *hal, u32 cmd,
     ret = OK;
 
 err:
-    if (ret != OK)
-        kmhal_util_destroy_txn_tmps(&hal->txn, &parcel);
-    else
-        kmhal_parcel_destroy(&parcel);
+    if (reply.status != KMHAL_BINDER_TXN_UNINITIALIZED) {
+        kmhal_binder_write_free_reply(hal->txn, reply.data_buf);
+        memset(&reply, 0, sizeof(reply));
+    }
+    if (got_handle) {
+        got_handle = false;
+        /* Since we have no guarantee that noone will start using the handle
+         * immediately after this call without acquiring it,
+         * we must do that right now */
+        if (kmhal_binder_do_write_read_ioctl(hal->binder, &hal->txn)) {
+            s_log_error("Failed to perform binder transaction");
+            ret = FAILED_TRANSACTION;
+        }
+        if ((ret = kmhal_util_check_allocate_txn_tmps(&hal->txn, NULL)) != OK) {
+            s_log_error("Failed to allocate new binder transaction context");
+        }
+    }
+
+    kmhal_parcel_destroy(&parcel);
 
     return ret;
 }
@@ -472,11 +509,9 @@ sp_new_get_common(const char *fqname, const char *instname,
 
     struct kmhal_sp *ret = NULL;
 
-    ret = kmhal_sp_new_empty();
+    ret = kmhal_sp_new_empty(aidl);
     if (ret == NULL)
         goto err;
-
-    ret->aidl = aidl;
 
     if (opt_existing_binder == NULL) {
         struct kmhal_binder_ctx *binder = kmhal_binder_open(aidl ?
@@ -604,6 +639,7 @@ validate_arg_descs(const struct kmhal_arg_write_desc *in_args,
                 ret = UNEXPECTED_NULL;
             }
             break;
+        case KMHAL_ARG_INLINE_DATA_WITH_HANDLE:
         case KMHAL_ARG_INLINE_DATA:
             if (arg->arg.i.proc == NULL) {
                 s_log_error("In inline_data arg %u (\"%s\"): proc is NULL",
@@ -665,6 +701,18 @@ validate_arg_descs(const struct kmhal_arg_write_desc *in_args,
             }
             if (arg->arg.i.out == NULL && arg->arg.i.size > 0) {
                 s_log_error("Out inline_data arg %u (\"%s\"): "
+                        "out pointer is NULL while size > 0", i, arg->name);
+                ret = UNEXPECTED_NULL;
+            }
+            break;
+        case KMHAL_ARG_INLINE_DATA_WITH_HANDLE:
+            if (arg->arg.i.proc == NULL) {
+                s_log_error("Out inline_data (with handle) arg %u (\"%s\"): "
+                        "proc is NULL", i, arg->name);
+                ret = UNEXPECTED_NULL;
+            }
+            if (arg->arg.i.out == NULL && arg->arg.i.size > 0) {
+                s_log_error("Out inline_data (with handle) arg %u (\"%s\"): "
                         "out pointer is NULL while size > 0", i, arg->name);
                 ret = UNEXPECTED_NULL;
             }

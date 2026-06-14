@@ -9,6 +9,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <inttypes.h>
+#include <linux/android/binder.h>
 
 #define MODULE_NAME "keymint-types-aidl"
 
@@ -20,12 +21,38 @@ static void write_vec_of_parcelable(struct kmhal_parcel *p,
                                     kmhal_arg_write_inline_data_proc_t proc);
 static int parse_vec_of_parcelable(const struct kmhal_parcel *p, size_t *off_p,
                                    size_t item_size,
-                                   void *out, size_t out_size, bool nullable,
+                                   void *out, size_t out_size,
                                    kmhal_arg_parse_inline_data_proc_t proc,
                                    void (*destroy_proc)(void *));
 
 static void destroy_vec_of_parcelable(void *vec, size_t item_size,
                                       void (*proc)(void *));
+
+#define try_read_primitive(typename, out, field_name) do {              \
+    if (kmhal_parcel_read_##typename(p, off_p, &out->field_name)) {     \
+        s_log_error("Failed to read the " #field_name " " #typename);   \
+        return 1;                                                       \
+    }                                                                   \
+} while (0)
+
+#define try_read_vec_of(typename, out, field_name) do {                 \
+    if (parse_aidl_vec_of_##typename(p, off_p, &out->field_name,        \
+                sizeof(struct aidl_vec_of_##typename)))                 \
+    {                                                                   \
+        s_log_error("Failed to read the "                               \
+                    #field_name " " #typename " vec");                  \
+        return 1;                                                       \
+    }                                                                   \
+} while (0)
+
+#define try_read_parcelable(typename, out, field_name) do {             \
+    if (parse_aidl_##typename(p, off_p,                                 \
+                &out->field_name, sizeof(struct aidl_##typename))) {    \
+        s_log_error("Failed to read the "                               \
+                    #field_name " " #typename " parcelable");           \
+        return 1;                                                       \
+    }                                                                   \
+} while (0)
 
 #define AIDL_VEC_OF_PARCELABLE_IMPL(T, name)                                   \
     void destroy_aidl_vec_of_##name(struct aidl_vec_of_##name *vec)            \
@@ -46,20 +73,11 @@ static void destroy_vec_of_parcelable(void *vec, size_t item_size,
         write_nullable_aidl_vec_of_##name(p, data);                            \
     }                                                                          \
                                                                                \
-    int parse_nullable_aidl_vec_of_##name(const struct kmhal_parcel *p,        \
-                                          size_t *off_p,                       \
-                                          void *out, size_t out_size)          \
-    {                                                                          \
-        return parse_vec_of_parcelable(p, off_p, sizeof(T), out, out_size,     \
-                true, parse_aidl_##name,                                       \
-                (void (*)(void *))destroy_aidl_##name);                        \
-    }                                                                          \
-                                                                               \
     int parse_aidl_vec_of_##name(const struct kmhal_parcel *p, size_t *off_p,  \
                                  void *out, size_t out_size)                   \
     {                                                                          \
         return parse_vec_of_parcelable(p, off_p, sizeof(T), out, out_size,     \
-                false, parse_aidl_##name,                                      \
+                parse_aidl_##name,                                             \
                 (void (*)(void *))destroy_aidl_##name);                        \
     }                                                                          \
 
@@ -203,8 +221,8 @@ void write_aidl_vec_of_u8(struct kmhal_parcel *p, const void *data)
     write_nullable_aidl_vec_of_u8(p, data);
 }
 
-int parse_nullable_aidl_vec_of_u8(const struct kmhal_parcel *p, size_t *off_p,
-                                  void *out, size_t out_size)
+int parse_aidl_vec_of_u8(const struct kmhal_parcel *p, size_t *off_p,
+                         void *out, size_t out_size)
 {
     if (out == NULL || out_size != sizeof(struct aidl_vec_of_u8)) {
         s_log_error("%s: Invalid parameters", __func__);
@@ -220,21 +238,16 @@ int parse_nullable_aidl_vec_of_u8(const struct kmhal_parcel *p, size_t *off_p,
     }
 
     /* std::nullopt */
-    if (vec_size < 0) {
+    if (vec_size <= 0) {
         vec->size = 0;
         vec->ptr = NULL;
         vec->owns = false;
         return 0;
     }
 
-    /* don't malloc(0) */
-    size_t malloc_size = (size_t)vec_size;
-    if (malloc_size == 0)
-        malloc_size = 1;
-
     vec->size = vec_size;
     vec->owns = false;
-    vec->ptr = malloc(malloc_size);
+    vec->ptr = malloc((size_t)vec_size);
     if (vec->ptr == NULL) {
         s_log_error("Failed to malloc a vector copy");
         destroy_aidl_vec_of_u8(vec);
@@ -244,23 +257,6 @@ int parse_nullable_aidl_vec_of_u8(const struct kmhal_parcel *p, size_t *off_p,
 
     if (kmhal_parcel_read_bytes(p, off_p, vec->ptr, (size_t)vec_size)) {
         s_log_error("Failed to read the vector bytes from the parcel");
-        destroy_aidl_vec_of_u8(vec);
-        return 1;
-    }
-
-    return 0;
-}
-
-int parse_aidl_vec_of_u8(const struct kmhal_parcel *p, size_t *off_p,
-                         void *out, size_t out_size)
-{
-    int r = parse_nullable_aidl_vec_of_u8(p, off_p, out, out_size);
-    if (r)
-        return r;
-
-    struct aidl_vec_of_u8 *const vec = out;
-    if (vec->ptr == NULL) {
-        s_log_error("Read a NULL vector");
         destroy_aidl_vec_of_u8(vec);
         return 1;
     }
@@ -301,7 +297,7 @@ void write_aidl_key_parameter(struct kmhal_parcel *p, const void *data)
 
         if (tt == KM_TAG_TYPE_BYTES || tt == KM_TAG_TYPE_BIGNUM) {
             /* blob; vec<u8> */
-            kp_parcelable_size += sizeof(kp->blob.size) + kp->blob.size;
+            kp_parcelable_size += sizeof(kp->blob.size) + align4(kp->blob.size);
         } else {
             /* integerParam; size <= sizeof(u64); depends on tag */
 
@@ -323,8 +319,6 @@ void write_aidl_key_parameter(struct kmhal_parcel *p, const void *data)
             }
         }
     }
-    s_assert(kp_parcelable_size == align4(kp_parcelable_size),
-            "Invalid calculated parcelable size");
 
     kmhal_parcel_write_u32(p, KMHAL_AIDL_PRESENT_FLAG);
     kmhal_parcel_write_u32(p, kp_parcelable_size);
@@ -361,10 +355,7 @@ int parse_aidl_key_parameter(const struct kmhal_parcel *p, size_t *off_p,
     }
 
     struct aidl_key_parameter *const kp = out;
-    if (kmhal_parcel_read_u32(p, off_p, &kp->tag)) {
-        s_log_error("Failed to read the `tag` field");
-        return 1;
-    }
+    try_read_primitive(u32, kp, tag);
 
     u32 kp_value_field_id = 0;
     if (kmhal_aidl_parse_union_header(p, off_p, false, &kp_value_field_id)) {
@@ -418,7 +409,7 @@ void destroy_aidl_key_characteristics(struct aidl_key_characteristics *kp)
     destroy_vec_of_parcelable(&kp->authorizations,
             sizeof(struct aidl_key_parameter),
             (void (*)(void *))destroy_aidl_key_parameter);
-    kp->slvl = 0;
+    kp->security_level = 0;
 }
 
 void write_aidl_key_characteristics(struct kmhal_parcel *p, const void *data)
@@ -432,7 +423,7 @@ void write_aidl_key_characteristics(struct kmhal_parcel *p, const void *data)
     const size_t start_off = kmhal_parcel_get_write_buffer_size(p);
     kmhal_parcel_write_u32(p, 0);
 
-    kmhal_parcel_write_u32(p, kc->slvl);
+    kmhal_parcel_write_u32(p, kc->security_level);
     write_aidl_vec_of_key_parameter(p, &kc->authorizations);
 
     const size_t end_off = kmhal_parcel_get_write_buffer_size(p);
@@ -456,17 +447,8 @@ int parse_aidl_key_characteristics(const struct kmhal_parcel *p, size_t *off_p,
 
     struct aidl_key_characteristics *const kc = out;
 
-    if (kmhal_parcel_read_u32(p, off_p, &kc->slvl)) {
-        s_log_error("Failed to read the securityLevel u32");
-        return 1;
-    }
-
-    if (parse_aidl_vec_of_key_parameter(p, off_p,
-                &kc->authorizations, sizeof(kc->authorizations)))
-    {
-        s_log_error("Failed to parse the authorizations vector");
-        return 1;
-    }
+    try_read_primitive(u32, kc, security_level);
+    try_read_vec_of(key_parameter, kc, authorizations);
 
     if (kmhal_aidl_validate_parcelable_size(start, *off_p, size)) {
         s_log_error("KeyCharacteristics parcelable size mismatch");
@@ -521,12 +503,7 @@ int parse_aidl_certificate(const struct kmhal_parcel *p, size_t *off_p,
 
     struct aidl_certificate *const cert = out;
 
-    if (parse_aidl_vec_of_u8(p, off_p, &cert->encoded_certificate,
-                                        sizeof(cert->encoded_certificate)))
-    {
-        s_log_error("Failed to parse the encoded_certificate vector");
-        return 1;
-    }
+    try_read_vec_of(u8, cert, encoded_certificate);
 
     if (kmhal_aidl_validate_parcelable_size(start, *off_p, size)) {
         s_log_error("Certificate parcelable size mismatch");
@@ -564,33 +541,132 @@ int parse_aidl_key_creation_result(const struct kmhal_parcel *p, size_t *off_p,
 
     struct aidl_key_creation_result *const kc = out;
 
-    s_log_trace("%s: keyBlob", __func__);
-    if (parse_aidl_vec_of_u8(p, off_p, &kc->key_blob, sizeof(kc->key_blob))) {
-        s_log_error("Failed to parse the keyBlob vec");
-        return 1;
-    }
-
-    s_log_trace("%s: keyCharacteristics", __func__);
-    if (parse_aidl_vec_of_key_characteristics(p, off_p,
-                &kc->key_characteristics, sizeof(kc->key_characteristics)))
-    {
-        s_log_error("Failed to parse the keyCharacteristics vec");
-        return 1;
-    }
-
-    s_log_trace("%s: certificateChain", __func__);
-    if (parse_aidl_vec_of_certificate(p, off_p,
-                &kc->certificate_chain, sizeof(kc->certificate_chain)))
-    {
-        s_log_error("Failed to parse the certificateChain vec");
-        return 1;
-    }
+    try_read_vec_of(u8, kc, key_blob);
+    try_read_vec_of(key_characteristics, kc, key_characteristics);
+    try_read_vec_of(certificate, kc, certificate_chain);
 
     if (kmhal_aidl_validate_parcelable_size(start, *off_p, size)) {
         s_log_error("KeyCreationResult parcelable size mismatch");
         return 1;
     }
 
+    return 0;
+}
+
+void destroy_aidl_hardware_auth_token(struct aidl_hardware_auth_token *hat)
+{
+    if (hat == NULL)
+        return;
+
+    if (hat->mac.ptr != NULL)
+        destroy_aidl_vec_of_u8(&hat->mac);
+
+    memset(hat, 0, sizeof(struct aidl_hardware_auth_token));
+}
+
+void write_nullable_aidl_hardware_auth_token(struct kmhal_parcel *p,
+                                             const void *data)
+{
+    if (data == NULL) {
+        kmhal_parcel_write_u32(p, KMHAL_AIDL_NULL_FLAG);
+        return;
+    }
+
+    const struct aidl_hardware_auth_token *const hat = data;
+
+    kmhal_parcel_write_u32(p, KMHAL_AIDL_PRESENT_FLAG);
+
+    const size_t start_off = kmhal_parcel_get_write_buffer_size(p);
+    kmhal_parcel_write_u32(p, 0);
+
+    kmhal_parcel_write_u64(p, hat->challenge);
+    kmhal_parcel_write_u64(p, hat->user_id);
+    kmhal_parcel_write_u64(p, hat->authenticator_id);
+    kmhal_parcel_write_u32(p, hat->authenticator_type);
+    kmhal_parcel_write_u64(p, hat->timestamp);
+    write_aidl_vec_of_u8(p, &hat->mac);
+
+    const size_t end_off = kmhal_parcel_get_write_buffer_size(p);
+    i32 data_size = end_off - start_off;
+    kmhal_parcel_patch(p, start_off, &data_size, sizeof(i32));
+}
+
+int parse_aidl_hardware_auth_token(const struct kmhal_parcel *p, size_t *off_p,
+                                   void *out, size_t out_size)
+{
+    if (out == NULL || out_size != sizeof(struct aidl_hardware_auth_token)) {
+        s_log_error("%s: Invalid parameters", __func__);
+        return -1;
+    }
+
+    i32 size = 0; size_t start = 0;
+    if (kmhal_aidl_parse_parcelable_header(p, off_p, &start, false, &size)) {
+        s_log_error("Invalid parcelable header");
+        return 1;
+    }
+
+    struct aidl_hardware_auth_token *const hat = out;
+
+    try_read_primitive(u64, hat, challenge);
+    try_read_primitive(u64, hat, user_id);
+    try_read_primitive(u64, hat, authenticator_id);
+    try_read_primitive(u32, hat, authenticator_type);
+    try_read_primitive(u64, hat, timestamp);
+    try_read_vec_of(u8, hat, mac);
+
+    if (kmhal_aidl_validate_parcelable_size(start, *off_p, size)) {
+        s_log_error("KeyCharacteristics parcelable size mismatch");
+        return 1;
+    }
+
+    return 0;
+}
+
+void destroy_aidl_begin_result(struct aidl_begin_result *res)
+{
+    if (res == NULL)
+        return;
+
+    destroy_aidl_vec_of_key_parameter(&res->params);
+    res->challenge = 0;
+    res->IKeyMintOperation_binder_handle = 0;
+}
+
+int parse_aidl_begin_result(const struct kmhal_parcel *p, size_t *off_p,
+                            u32 *out_handle_to_incref,
+                            void *out, size_t out_size)
+{
+    if (out == NULL || out_size != sizeof(struct aidl_begin_result) ||
+            out_handle_to_incref == NULL)
+    {
+        s_log_error("%s: Invalid parameters", __func__);
+        return -1;
+    }
+    *out_handle_to_incref = UINT32_MAX;
+
+    i32 size = 0; size_t start = 0;
+    if (kmhal_aidl_parse_parcelable_header(p, off_p, &start, false, &size)) {
+        s_log_error("Invalid parcelable header");
+        return 1;
+    }
+
+    struct aidl_begin_result *const res = out;
+
+    try_read_primitive(u64, res, challenge);
+    try_read_vec_of(key_parameter, res, params);
+
+    struct flat_binder_object binder;
+    if (kmhal_parcel_read_handle(p, off_p, &binder)) {
+        s_log_error("Failed to read the IKeyMintOperation binder handle");
+        return 1;
+    }
+    if (binder.handle == 0) {
+        s_log_error("Invalid IKeyMintOperation binder handle");
+        return 1;
+    }
+
+    res->IKeyMintOperation_binder_handle = binder.handle;
+    *out_handle_to_incref = binder.handle;
     return 0;
 }
 
@@ -619,6 +695,9 @@ static u32 get_aidl_integerparam_union_member_id(enum KM_Tag t)
     default:
     case KM_TAG_TYPE_INVALID:
         return invalid;
+    case KM_TAG_TYPE_BIGNUM:
+    case KM_TAG_TYPE_BYTES:
+        return blob;
     case KM_TAG_TYPE_ENUM:
     case KM_TAG_TYPE_ENUM_REP:
         switch (t) {
@@ -670,12 +749,12 @@ static void write_vec_of_parcelable(struct kmhal_parcel *p,
 
 static int parse_vec_of_parcelable(const struct kmhal_parcel *p, size_t *off_p,
                                    size_t item_size,
-                                   void *out, size_t out_size, bool nullable,
+                                   void *out, size_t out_size,
                                    kmhal_arg_parse_inline_data_proc_t proc,
                                    void (*destroy_proc)(void *))
 {
-    s_log_trace("%s: *off_p: %zu, item_size: %zu, out_size: %zu, "
-            "nullable: %d", __func__, *off_p, item_size, out_size, nullable);
+    s_log_trace("%s: *off_p: %zu, item_size: %zu, out_size: %zu",
+            __func__, *off_p, item_size, out_size);
 
     if (out == NULL || out_size != sizeof(struct aidl_vec_generic)) {
         s_log_error("%s: Invalid parameters", __func__);
@@ -697,10 +776,6 @@ static int parse_vec_of_parcelable(const struct kmhal_parcel *p, size_t *off_p,
         vec->size = 0;
         vec->ptr = NULL;
         vec->owns = false;
-        if (!nullable) {
-            s_log_error("Empty vec returned but nullable is false");
-            return 1;
-        }
         return 0;
     }
 

@@ -221,10 +221,21 @@ static const std::vector<cli_command> cmds = {
         { "out_key_blob", OUTPUT_FILE, ARG_MANDATORY,
             "The file to which the keymaster keyblob will be written"
         },
+        { "out_cert_chain", INPUT_STRING, ARG_OPTIONAL,
+            "On KeyMint, the file to which the cert chain of the generated key will be written"
+        }
     },
     [](arg_map_t& a) {
-        return cli::hal_ops::generate_key(*g_hal,
-                a["params"].in_key_params(), a["out_key_blob"].out_bytes());
+        std::vector<std::vector<u8>> cert_chain;
+        if (cli::hal_ops::generate_key(*g_hal,
+                a["params"].in_key_params(), a["out_key_blob"].out_bytes(),
+                cert_chain))
+            return EXIT_FAILURE;
+
+        if (!a["out_cert_chain"].in_string().empty())
+            return serialize_and_write_cert_chain(a["out_cert_chain"].in_string(), cert_chain);
+        else
+            return EXIT_SUCCESS;
     }
 },
 {
@@ -257,15 +268,28 @@ static const std::vector<cli_command> cmds = {
         util::init_default_params(params,
                 { { Tag::PURPOSE, { KeyPurpose::SIGN, KeyPurpose::VERIFY }}});
 
-        if (cli::hal_ops::generate_key(*g_hal, params, keyblob)) {
+        const bool is_keymint = g_hal->getVersion() >= HAL_KEYMINT_1_0;
+        if (is_keymint) {
+            util::init_default_params(params, {
+                { Tag::ATTESTATION_CHALLENGE, util::get_attestation_challenge() },
+                { Tag::ATTESTATION_APPLICATION_ID, util::get_attestation_application_id() }
+            });
+        }
+
+        std::vector<std::vector<uint8_t>> cert_chain;
+        if (cli::hal_ops::generate_key(*g_hal, params, keyblob, cert_chain)) {
             std::cerr << "Failed to generate ephemeral attested key!" << std::endl;
             return 1;
         }
 
-        std::vector<std::vector<uint8_t>> cert_chain;
-        if (cli::hal_ops::attest_key(*g_hal, keyblob, a["attest_params"].in_key_params(),
-                cert_chain))
-            return EXIT_FAILURE;
+        if (!is_keymint) {
+            if (cli::hal_ops::attest_key(*g_hal, keyblob, a["attest_params"].in_key_params(),
+                    cert_chain))
+                return EXIT_FAILURE;
+        } else {
+            if (cli::transact::server::verify_attestation(cert_chain))
+                return EXIT_FAILURE;
+        }
 
         if (!a["attestation"].in_string().empty())
             return serialize_and_write_cert_chain(a["attestation"].in_string(), cert_chain);
@@ -1302,8 +1326,8 @@ static const std::vector<cli_command> cmds = {
         par[3].tag = Tag::CERTIFICATE_NOT_AFTER;
         par[3].f.dateTime = UINT64_C(253402300799000);
         std::vector<u8> keyblob;
-        KeyCharacteristics kc;
-        e = hal.generateKey(par, keyblob, kc);
+        KeyCharacteristics kc; std::vector<std::vector<u8>> cert_chain;
+        e = hal.generateKey(par, keyblob, kc, cert_chain);
         std::cout << "generateKey result: " << toString(e) << std::endl;;
         std::cout << toString(toHidlView(kc)) << std::endl;
 
@@ -1553,6 +1577,9 @@ static __attribute__((unused)) void print_inithal_fail_msg(hal_version hal_ver)
     if (hal_ver == HAL_NONE) {
         std::cerr << "No valid HAL version selected" << std::endl;
         return;
+    } else if (hal_ver == HAL_ANY) {
+        std::cerr << "Couldn't initialize any Keymaster/KeyMint HAL instances" << std::endl;
+        return;
     }
 
     hal_version min, max;
@@ -1590,16 +1617,15 @@ static int init_g_hal(hal_version versions)
         if (!(versions & ver))
             continue; /* not allowed */
 
-        SusKMHal tmp;
         switch (ver) {
             case HAL_KEYMASTER_3_0:
-                tmp = SusHidlKeymaster3_0();
+                g_hal = std::make_unique<SusHidlKeymaster3_0>();
                 break;
             case HAL_KEYMASTER_4_0:
-                tmp = SusHidlKeymaster4_0();
+                g_hal = std::make_unique<SusHidlKeymaster4_0>();
                 break;
             case HAL_KEYMASTER_4_1:
-                tmp = SusHidlKeymaster4_1();
+                g_hal = std::make_unique<SusHidlKeymaster4_1>();
                 break;
             case HAL_KEYMINT_1_0:
             case HAL_KEYMINT_2_0:
@@ -1613,17 +1639,20 @@ static int init_g_hal(hal_version versions)
                 if (keymint_already_checked_and_failed)
                     break;
 
-                tmp = SusAidlKeyMint();
-                if (!tmp.isHALOk()) {
+                g_hal = std::make_unique<SusAidlKeyMint>();
+                if (!g_hal || !g_hal->isHALOk()) {
                     /* HAL initialization failed, it's not going to magically succeed
                      * if we try it 4 times over */
                     keymint_already_checked_and_failed = true;
+                    continue;
                 }
 
                 if (!(versions & g_hal->getVersion())) {
                     /* The running KeyMint version is not allowed at all.
                      * Re-initializing the HAL won't change it lol */
+                    std::cout << "version mismatch" << std::endl;
                     keymint_already_checked_and_failed = true;
+                    continue;
                 }
 
                 break;
@@ -1631,8 +1660,7 @@ static int init_g_hal(hal_version versions)
             default: break;
         }
 
-        if (tmp.isHALOk()) {
-            g_hal.reset(&tmp);
+        if (g_hal && g_hal->isHALOk()) {
             print_inithal_ok_msg(g_hal->getVersion());
             return EXIT_SUCCESS;
         }

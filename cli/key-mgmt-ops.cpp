@@ -76,7 +76,8 @@ int get_print_key_characteristics(SusKMHal& hal,
 
 int generate_key(SusKMHal& hal,
                  std::vector<KeyParameter> const& in_gen_params,
-                 std::vector<u8>& out_key_blob)
+                 std::vector<u8>& out_key_blob,
+                 std::vector<std::vector<u8>>& out_cert_chain)
 {
     Algorithm alg = util::find_algorithm(in_gen_params,
         { Algorithm::EC, Algorithm::RSA, Algorithm::AES, Algorithm::TRIPLE_DES, Algorithm::HMAC }
@@ -90,7 +91,7 @@ int generate_key(SusKMHal& hal,
             true, hal.getVersion() >= 0x100);
 
     KeyCharacteristics dummy;
-    ErrorCode e = hal.generateKey(params, out_key_blob, dummy);
+    ErrorCode e = hal.generateKey(params, out_key_blob, dummy, out_cert_chain);
     if (e != ErrorCode::OK) {
         std::cerr << "generateKey operation failed: "
             << static_cast<i32>(e) << " (" << toString(e) << ")" << std::endl;
@@ -107,13 +108,9 @@ int attest_key(SusKMHal& hal,
 {
     std::vector<KeyParameter> params = in_attest_params;
 
-    static const u8 ch[] = "suskeymaster TEST ATTESTATION CHALLENGE";
-    static const size_t ch_len = sizeof(ch) - 1;
-    static const u8 app_id[] = "suskeymaster TEST ATTESTATION APPLICATION ID";
-    static const size_t app_id_len = sizeof(app_id) - 1;
     kmhal::util::init_default_params(params, {
-        { Tag::ATTESTATION_CHALLENGE, std::vector<u8>(ch, ch + ch_len) },
-        { Tag::ATTESTATION_APPLICATION_ID, std::vector<u8>(app_id, app_id + app_id_len) }
+        { Tag::ATTESTATION_CHALLENGE, kmhal::util::get_attestation_challenge() },
+        { Tag::ATTESTATION_APPLICATION_ID, kmhal::util::get_attestation_application_id() }
     });
 
     std::vector<std::vector<u8>> cert_chain = {};

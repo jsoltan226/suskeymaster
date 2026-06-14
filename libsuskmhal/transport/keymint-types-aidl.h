@@ -196,7 +196,7 @@ AIDL_VEC_OF_PARCELABLE_DECL(struct aidl_key_parameter, key_parameter);
 /* In KeyMint, KeyCharacteristics only appear in a vector
  * (KeyCharacteristics[]). */
 struct aidl_key_characteristics {
-    enum KM_SecurityLevel slvl;
+    enum KM_SecurityLevel security_level;
     struct aidl_vec_of_key_parameter authorizations;
 };
 void destroy_aidl_key_characteristics(struct aidl_key_characteristics *kp);
@@ -248,6 +248,56 @@ void destroy_aidl_key_creation_result(struct aidl_key_creation_result *cr);
  */
 int parse_aidl_key_creation_result(const struct kmhal_parcel *p, size_t *off_p,
                                    void *out, size_t out_size);
+
+struct aidl_hardware_auth_token {
+    u64 challenge;
+    u64 user_id;
+    u64 authenticator_id;
+    u32 authenticator_type;
+    u64 timestamp;
+    struct aidl_vec_of_u8 mac;
+};
+void destroy_aidl_hardware_auth_token(struct aidl_hardware_auth_token *hat);
+
+/**
+ * @param data A pointer to a valid `struct aidl_hardware_auth_token`, or NULL
+ *  if the parameter is nullable and the value is not specified (std::nullopt).
+ */
+void write_nullable_aidl_hardware_auth_token(struct kmhal_parcel *p,
+                                             const void *data);
+
+/**
+ * @param out A non-null pointer to a zero-initialized
+ *  `struct aidl_hardware_auth_token`.
+ *
+ * @param out_size `sizeof(struct aidl_hardware_auth_token)`.
+ */
+int parse_aidl_hardware_auth_token(const struct kmhal_parcel *p, size_t *off_p,
+                                   void *out, size_t out_size);
+
+struct aidl_begin_result {
+    u64 challenge;
+    struct aidl_vec_of_key_parameter params;
+    u32 IKeyMintOperation_binder_handle;
+};
+/**
+ * Note: this doesn't doesn't unref the binder handle.
+ */
+void destroy_aidl_begin_result(struct aidl_begin_result *res);
+
+/**
+ * @param out A non-null pointer to a zero-initialized
+ *  `struct aidl_begin_result`.
+ *
+ * @param out_size `sizeof(struct aidl_begin_result)`.
+ *
+ * Note: This itself doesn't incref the handle,
+ * but when passed to `kmhal_call`, it will cause it to do so
+ * automatically via `out_handle_to_incref`.
+ */
+int parse_aidl_begin_result(const struct kmhal_parcel *p, size_t *off_p,
+                            u32 *out_handle_to_incref,
+                            void *out, size_t out_size);
 
 
 #ifdef __cplusplus

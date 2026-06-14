@@ -309,24 +309,28 @@ bool kmhal_binder_ctx_ok(const struct kmhal_binder_ctx *ctx)
 void kmhal_binder_write_acquire(struct kmhal_binder_txn *txn, u32 handle)
 {
     u_check_params(txn != NULL && txn->buf != NULL);
+    s_log_trace("%s: txn: %p, handle: %"PRIu32, __func__, (void *)txn, handle);
     write_generic_ref_cmd(BC_ACQUIRE, &txn->buf, handle);
 }
 
 void kmhal_binder_write_increfs(struct kmhal_binder_txn *txn, u32 handle)
 {
     u_check_params(txn != NULL && txn->buf != NULL);
+    s_log_trace("%s: txn: %p, handle: %"PRIu32, __func__, (void *)txn, handle);
     write_generic_ref_cmd(BC_INCREFS, &txn->buf, handle);
 }
 
 void kmhal_binder_write_release(struct kmhal_binder_txn *txn, u32 handle)
 {
     u_check_params(txn != NULL && txn->buf != NULL);
+    s_log_trace("%s: txn: %p, handle: %"PRIu32, __func__, (void *)txn, handle);
     write_generic_ref_cmd(BC_RELEASE, &txn->buf, handle);
 }
 
 void kmhal_binder_write_decrefs(struct kmhal_binder_txn *txn, u32 handle)
 {
     u_check_params(txn != NULL && txn->buf != NULL);
+    s_log_trace("%s: txn: %p, handle: %"PRIu32, __func__, (void *)txn, handle);
     write_generic_ref_cmd(BC_DECREFS, &txn->buf, handle);
 }
 
@@ -363,6 +367,9 @@ void kmhal_binder_write_transact(struct kmhal_binder_txn_args *arg)
 
     memset(&arg->out_reply, 0, sizeof(arg->out_reply));
     arg->out_reply.status = KMHAL_BINDER_TXN_PENDING;
+
+    s_log_trace("%s: SG: %d, handle: %"PRIu32", code: %"PRIu32,
+            __func__, cmd == BC_TRANSACTION_SG, i->handle, i->cmd);
 }
 
 void kmhal_binder_write_transact_sg(struct kmhal_binder_txn_args *arg)
@@ -402,12 +409,16 @@ void kmhal_binder_write_transact_sg(struct kmhal_binder_txn_args *arg)
 
     memset(&arg->out_reply, 0, sizeof(arg->out_reply));
     arg->out_reply.status = KMHAL_BINDER_TXN_PENDING;
+
+    s_log_trace("%s: SG: %d, handle: %"PRIu32", code: %"PRIu32,
+            __func__, cmd == BC_TRANSACTION_SG, i->handle, i->cmd);
 }
 
 void kmhal_binder_write_free_reply(struct kmhal_binder_txn *txn,
                                    const void *reply)
 {
     u_check_params(txn != NULL && txn->buf != NULL);
+    s_log_trace("%s: txn: %p, reply: %p", __func__, (void *)txn, reply);
     write_free_buf_cmd(&txn->buf, reply);
 }
 
@@ -459,6 +470,7 @@ void kmhal_binder_txn_destroy(struct kmhal_binder_txn **txn_p)
 {
     if (txn_p == NULL || *txn_p == NULL)
         return;
+    s_log_trace("%s: txn_p: %p, *txn_p: %p", __func__, txn_p, (void *)*txn_p);
 
     vector_destroy(&(*txn_p)->data);
     vector_destroy(&(*txn_p)->buf);

@@ -29,7 +29,8 @@ int get_print_key_characteristics(SusKMHal& hal,
 
 int generate_key(SusKMHal& hal,
                  std::vector<KeyParameter> const& in_gen_params,
-                 std::vector<u8>& out_wrapped_blob);
+                 std::vector<u8>& out_wrapped_blob,
+                 std::vector<std::vector<u8>>& out_cert_chain);
 
 int attest_key(SusKMHal& hal,
                std::vector<u8> const& key,

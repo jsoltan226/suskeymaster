@@ -309,7 +309,8 @@ int send_indata(SusKMHal& hal,
 
         /* the hal_ops::generate_key wrapper will automatically fill in the
          * required default generation parameters */
-        if (cli::hal_ops::generate_key(hal, partmp, tmp_keyblob)) {
+        std::vector<std::vector<u8>> dummy;
+        if (cli::hal_ops::generate_key(hal, partmp, tmp_keyblob, dummy)) {
             s_log_error("Failed to generate the ephemeral attested keyblob");
             return 1;
         }

@@ -42,9 +42,11 @@ public:
     }
 
     virtual ErrorCode generateKey(std::vector<KeyParameter> const& keyParams,
-            std::vector<u8>& out_keyBlob, KeyCharacteristics& out_keyCharacteristics)
+            std::vector<u8>& out_keyBlob, KeyCharacteristics& out_keyCharacteristics,
+            std::vector<std::vector<u8>>& out_certChain)
     {
         (void) keyParams; (void) out_keyBlob; (void) out_keyCharacteristics;
+        (void) out_certChain;
         return ErrorCode::UNIMPLEMENTED;
     }
 
@@ -173,7 +175,8 @@ public:
 
     ErrorCode generateKey(std::vector<KeyParameter> const& keyParams,
             std::vector<u8>& out_keyBlob,
-            KeyCharacteristics& out_keyCharacteristics) override;
+            KeyCharacteristics& out_keyCharacteristics,
+            std::vector<std::vector<u8>>& out_certChain) override;
 
     ErrorCode importKey(std::vector<KeyParameter> const& keyParams,
             KeyFormat keyFormat, std::vector<u8> const& keyData,
@@ -354,9 +357,20 @@ public:
     SusAidlKeyMint();
 
 #ifndef SUSKEYMASTER_BUILD_HOST
+    ~SusAidlKeyMint();
 private:
     std::unique_ptr<struct kmhal_sp, decltype(&transport::kmhal_sp_deleter)> hal_;
     i32 keymint_version = -1;
+    std::vector<struct kmhal_sp *> activeOperationHandles;
+
+    int get_op_handle(OpaqueOpHandle user_handle,
+                      size_t& out_idx, struct kmhal_sp *& out_handle);
+
+    /* Converts `Tag::ASSOCIATED_DATA` to `updateAad` calls in `update()` */
+    ErrorCode handle_aad_compat(struct kmhal_sp *op,
+        std::vector<KeyParameter>& params, const HardwareAuthToken& authToken);
+
+    void delete_invalidate_op_handle(OpaqueOpHandle& user_handle);
 
 public:
     struct kmhal_sp * getHalSp(void) const override;
@@ -371,7 +385,8 @@ public:
 
     ErrorCode generateKey(std::vector<KeyParameter> const& keyParams,
             std::vector<u8>& out_keyBlob,
-            KeyCharacteristics& out_keyCharacteristics) override;
+            KeyCharacteristics& out_keyCharacteristics,
+            std::vector<std::vector<u8>>& out_certChain) override;
 
     ErrorCode importKey(std::vector<KeyParameter> const& keyParams,
             KeyFormat keyFormat, std::vector<u8> const& keyData,

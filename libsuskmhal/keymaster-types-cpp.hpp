@@ -550,6 +550,11 @@ struct HardwareAuthToken final {
      * that this auth token is empty.
      */
     std::vector<uint8_t> mac;
+
+    /**
+     * See above (`mac`)
+     */
+    bool empty() const { return mac.empty(); }
 };
 const hidl::HardwareAuthToken toHidlView(const HardwareAuthToken&);
 
