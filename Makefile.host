@@ -25,8 +25,8 @@ ifeq ($(PLATFORM), windows)
 COMMON_DEFINES += -DSUSKEYMASTER_BUILD_WINDOWS
 endif
 
-COMMON_CFLAGS := -std=c11 -Wall -Wpedantic -Wextra -pipe -fPIC $(COMMON_DEFINES) $(INCLUDES)
-COMMON_CXXFLAGS := -std=c++17 -Wall -Wpedantic -Wextra -Wno-unknown-pragmas -pipe -fPIC -fno-exceptions -fno-rtti $(COMMON_DEFINES) $(INCLUDES)
+COMMON_CFLAGS := -std=c11 -Wall -Wextra -pipe -fPIC $(COMMON_DEFINES) $(INCLUDES)
+COMMON_CXXFLAGS := -std=c++17 -Wall -Wextra -Wno-unknown-pragmas -pipe -fPIC -fno-exceptions -fno-rtti $(COMMON_DEFINES) $(INCLUDES)
 
 DEPFLAGS ?= -MMD -MP
 

@@ -1610,6 +1610,11 @@ static int init_g_hal(hal_version versions)
     else if (versions == HAL_NONE)
         return EXIT_FAILURE;
 
+#ifdef SUSKEYMASTER_BUILD_HOST
+    std::cerr << "No HAL support in host build!" << std::endl;
+    return EXIT_FAILURE;
+#else
+
     bool keymint_already_checked_and_failed = false;
     for (int i = u_arr_size(ordered_hal_versions) - 1; i >= 0; i--) {
         const hal_version ver = ordered_hal_versions[i];
@@ -1619,14 +1624,21 @@ static int init_g_hal(hal_version versions)
 
         switch (ver) {
             case HAL_KEYMASTER_3_0:
+#ifndef SUSKEYMASTER_HAL_DISABLE_3_0
                 g_hal = std::make_unique<SusHidlKeymaster3_0>();
+#endif /* SUSKEYMASTER_HAL_DISABLE_3_0 */
                 break;
             case HAL_KEYMASTER_4_0:
+#ifndef SUSKEYMASTER_HAL_DISABLE_4_0
                 g_hal = std::make_unique<SusHidlKeymaster4_0>();
+#endif /* SUSKEYMASTER_HAL_DISABLE_4_0 */
                 break;
             case HAL_KEYMASTER_4_1:
+#ifndef SUSKEYMASTER_HAL_DISABLE_4_1
                 g_hal = std::make_unique<SusHidlKeymaster4_1>();
+#endif /* SUSKEYMASTER_HAL_DISABLE_4_1 */
                 break;
+#ifndef SUSKEYMASTER_HAL_DISABLE_KEYMINT
             case HAL_KEYMINT_1_0:
             case HAL_KEYMINT_2_0:
             case HAL_KEYMINT_3_0:
@@ -1656,6 +1668,7 @@ static int init_g_hal(hal_version versions)
                 }
 
                 break;
+#endif /* SUSKEYMASTER_HAL_DISABLE_KEYMINT */
 
             default: break;
         }
@@ -1668,6 +1681,7 @@ static int init_g_hal(hal_version versions)
 
     print_inithal_fail_msg(versions);
     return EXIT_FAILURE;
+#endif /* SUSKEYMASTER_BUILD_HOST */
 }
 
 static int read_file(const std::string& path, const std::string& param_name,

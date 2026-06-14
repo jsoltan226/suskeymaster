@@ -1,3 +1,5 @@
+#ifndef SUSKEYMASTER_BUILD_HOST
+
 #ifndef SUSKEYMASTER_KMHAL_TRANSPORT_AIDL2GENERIC_H_
 #define SUSKEYMASTER_KMHAL_TRANSPORT_AIDL2GENERIC_H_
 
@@ -76,3 +78,5 @@ std::vector<std::vector<u8>> fromAidlDestroy(aidl_vec_of_certificate&);
 } /* namespace suskeymaster */
 
 #endif /* SUSKEYMASTER_KMHAL_TRANSPORT_AIDL2GENERIC_H_ */
+
+#endif /* SUSKEYMASTER_BUILD_HOST */

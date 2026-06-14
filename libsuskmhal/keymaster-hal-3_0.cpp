@@ -1,7 +1,6 @@
 #ifndef SUSKEYMASTER_HAL_DISABLE_3_0
 
 #include "suskmhal.hpp"
-#include "hal-version.hpp"
 
 #ifndef SUSKEYMASTER_BUILD_HOST
 #include "keymaster-types-cpp.hpp"

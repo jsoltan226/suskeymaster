@@ -165,6 +165,7 @@ gk_hal::gk_hal(SusKMHal& kmhal) {
     std::cout << "Successfully initialized Gatekeeper HAL" << std::endl;
     this->owns = true;
 #else
+    (void) kmhal;
     std::cerr << "Gatekeeper HAL not supported on host build" << std::endl;
 #endif /* SUSKEYMASTER_BUILD_HOST */
 }

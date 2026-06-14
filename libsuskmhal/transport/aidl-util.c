@@ -251,11 +251,15 @@ kmhal_aidl_manager_get(struct kmhal_binder_ctx *binder,
 
 err:
     if (ret != OK) {
-        s_log_error(
+        /* PERMISSION_DENIED usually just means that the HAL couldn't be found,
+         * which isn't enough of a reason to spam error messages here */
+        if (ret != PERMISSION_DENIED) {
+            s_log_error(
                 "android.os.IServiceManager.getService(\"%s\"): ret: %d (%s)",
                 fqinstname_str != NULL ? fqinstname_str : "<N/A>",
                 ret, kmhal_android_status_toString(ret)
-        );
+            );
+        }
         kmhal_util_destroy_txn_tmps(txn_p, &parcel);
     }
 

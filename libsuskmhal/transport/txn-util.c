@@ -80,7 +80,7 @@ kmhal_util_transact_and_unpack(struct kmhal_binder_ctx *binder,
         }
         memcpy(&status, reply.data_buf, sizeof(i32));
 
-        s_log_error("Got status code: %"PRIi32" (%s)",
+        s_log_verbose("Got status code: %"PRIi32" (%s)",
                 status, kmhal_android_status_toString(status));
         return kmhal_android_status_prune(status);
     }

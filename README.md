@@ -2,7 +2,7 @@
 
 A toolkit for interacting with and subverting Android KeyMaster/KeyMint HALs. Consists of a runtime HAL hook that intercepts and replaces attestation certificate chains on the fly, and a CLI for general-purpose Keymaster/KeyMint operations.
 
-> **Disclaimer:** This software is intended for security research, firmware development, and forensic/data recovery purposes on devices you own or have explicit authorization to modify. Bypassing hardware attestation may violate terms of service of applications that rely on it. Use responsibly.
+> **Disclaimer:** This software is intended for security research, firmware development, and forensic/data recovery purposes on devices you own or have explicit authorization to modify. Spoofing hardware attestation may violate terms of service of applications that rely on it. Use responsibly.
 
 ---
 
@@ -14,12 +14,12 @@ The library is OpenSSL's `libcrypto` implementation, version 4.0, compiled with 
 On host targets it just links to the system `libcrypto`.
 
 ### `libsuskmhal`
-KeyMaster/KeyMint HAL abstraction layer. Supports both HIDL (KeyMaster 3.0, 4.0, 4.1) and AIDL (KeyMint 1.0, 2.0, 3.0) transports. Implements its own binder/parcel serialization down to the `ioctl` level — no dependency on `libbinder` or any AOSP compnents.
+KeyMaster/KeyMint HAL abstraction layer. Supports both HIDL (KeyMaster 3.0, 4.0, 4.1) and AIDL (KeyMint 1.0, 2.0, 3.0) transports. Implements its own binder/parcel serialization down to the `ioctl` level - no dependency on `libbinder` or any AOSP compnents.
 
-### `libsuskeymaster` — the HAL hook
+### `libsuskeymaster` - the HAL hook
 A shared library injected into the KeyMaster/KeyMint HAL process. Hooks the attestation callback to intercept outgoing certificate chains and replace them with ones signed by keys from a user-supplied keybox. See [Installation](#installation) below.
 
-### `cli` — `suskeymaster` binary
+### `cli` - `suskeymaster` binary
 Standalone command-line tool exposing KeyMaster/KeyMint operations and keybox utilities. Some commands require an on-device HAL connection; others (keybox manipulation, cert wrapping, attestation verification) run on a host Linux/Windows build.
 The CLI, apart from strictly Keymaster/KeyMint operations, also includes utilities for decrypting Android userdata encryption keys (DE and CE). Only Gatekeeper authentication is supported for now, but Weaver support is coming soon. Note that this feature is only really tested on older devices running Keymaster (Android 9, Samsung's Android 14) - it might not fully work yet on newer devices with KeyMint.
 
@@ -51,7 +51,7 @@ The CLI, apart from strictly Keymaster/KeyMint operations, also includes utiliti
         ├── libsuskmhal  (HIDL/AIDL transport, binder ioctls)
         │       └── talks directly to /dev/hwbinder or /dev/binder
         │
-        └── libsuscertmod  (keybox, cert ops — no HAL needed)
+        └── libsuscertmod  (keybox, cert ops - no HAL needed)
 ```
 
 ---
@@ -93,6 +93,7 @@ make -f Makefile.android -j$(nproc) release # Release build (-O3, LTO, stripped)
 ```sh
 export CC=gcc
 export CXX=g++
+export PLATFORM=linux
 make -f Makefile.host clean
 
 make -f Makefile.host -j$(nproc) # Debug build
@@ -127,7 +128,7 @@ Installation is manual and device-specific. The high-level process:
    patchelf --add-needed libsuskeymaster.so <hal_binary>
    ```
 
-4. **Patch the attestation callback branch** in the HAL binary. Find the call site that invokes the HIDL user callback after attestation and redirect it to `sus_attest_cb` (exported by `libsuskeymaster.so`). This requires disassembly of the HAL binary and manual instruction patching — the exact location is vendor- and version-specific. Also, for now it's only supported/working on my own device configuration - Samsung SKeymaster4device HIDL HAL on Android 14. Integration on other devices and HAL versions is definetly possible but probably requires the `libsuskeymaster/handler.cpp` hook. The rest of the code is generic and works on any version (apart from `libsuskeymaster/key-desc`, that needs a little bit of work to support newer KeyMint attestations).
+4. **Patch the attestation callback branch** in the HAL binary. Find the call site that invokes the HIDL user callback after attestation and redirect it to `sus_attest_cb` (exported by `libsuskeymaster.so`). This requires disassembly of the HAL binary and manual instruction patching - the exact location is vendor- and version-specific. Also, for now it's only supported/working on my own device configuration - Samsung SKeymaster4device HIDL HAL on Android 14. Integration on other devices and HAL versions is definetly possible but probably requires the `libsuskeymaster/handler.cpp` hook. The rest of the code is generic and works on any version (apart from `libsuskeymaster/key-desc`, that needs a little bit of work to support newer KeyMint attestations).
 
 5. **Place a keybox** at the path expected by `libsuskeymaster` (`/data/vendor/suskeybox.bin`) and restart the HAL, preferably by rebooting. A "fallback" keybox may also be built into the `libsuskeymaster` library directly, by placing a C hexdump of the binary keybox (`xxd -i`) into `libsuskeymaster/builtin-keybox.c`.
 
@@ -163,7 +164,7 @@ suskeymaster generate <params> <out_key_blob> [out_cert_chain]
 # Import a raw or PKCS#8 private key
 suskeymaster import <in_private_key> <out_key_blob> [params]
 
-# Export public key (asymmetric) or raw bytes — KeyMaster ≤ 4.1 only
+# Export public key (asymmetric) or raw bytes - KeyMaster ≤ 4.1 only
 suskeymaster export <in_keyblob> <out_exported> [deserialization_params]
 
 # Print key characteristics
@@ -179,7 +180,7 @@ suskeymaster upgrade <in_keyblob_to_upgrade> <out_upgraded_keyblob> [upgrade_par
 # Generate an ephemeral key and attest it (not working yet on KeyMint :( )
 suskeymaster attest generated [generate_params] [attest_params] [attestation]
 
-# Attest an existing key blob — KeyMaster <= 4.1 only
+# Attest an existing key blob - KeyMaster <= 4.1 only
 suskeymaster attest file <keyblob> [attest_params] [attestation]
 ```
 
@@ -232,7 +233,7 @@ suskeymaster vold decrypt-ce-key <in_synthetic_password> <sp_blob_ver> \
     <in_encrypted_key> <out_decrypted_key> [in_secdiscardable]
 
 ```
-### Install a raw fscrypt key into the kernel keyring; for old devices that don't support the fscrypt ioctls needed by `fscryptctl` - On device or Linux host
+### Install a raw fscrypt key into the kernel keyring; for old devices that don't support the fscrypt ioctls needed by `fscryptctl`  (on-device or linux host)
 ```suskeymaster vold fscrypt-legacy install-key <in_fscrypt_key>```
 
 ### Gatekeeper authentication / Synthetic Password (on-device)
@@ -267,17 +268,30 @@ suskeymaster samsung ekey del-tags  <in_keyblob> <out_keyblob> <tags>
 
 ## HAL version support
 
-| HAL | Transport | Supported |
+| HAL | Transport | Support |
 |-----|-----------|-----------|
-| KeyMaster 3.0 | HIDL | ✓ |
-| KeyMaster 4.0 | HIDL | ✓ |
-| KeyMaster 4.1 | HIDL | ✓ |
-| KeyMint 1.0 | AIDL | ✓ |
-| KeyMint 2.0 | AIDL | ✓ |
-| KeyMint 3.0 | AIDL | ✓ |
-| KeyMint 4.0 | AIDL | ✓ |
+| Keymaster 2.0 and below | Passthrough | No |
+| Keymaster 3.0 | HIDL | Yes |
+| Keymaster 4.0 | HIDL | Yes |
+| Keymaster 4.1 | HIDL | Yes |
+| KeyMint 1.0 | AIDL | Yes* |
+| KeyMint 2.0 | AIDL | Yes* |
+| KeyMint 3.0 | AIDL | Yes* |
+| KeyMint 4.0 | AIDL | Yes* |
 
-Some CLI commands are restricted by HAL version (e.g. `export` and `attest file` are KeyMaster <= 4.1 only; `transact` (`importWrappedKey`) requires KeyMaster >= 4.0).
+* Some features (attestation parsing/verification) are not yet supported on KeyMint.
+Furthermore, some CLI commands are restricted by HAL version (e.g. `export` and `attest file` are KeyMaster <= 4.1 only; `transact` (`importWrappedKey`) requires KeyMaster >= 4.0).
+
+StrongBox support is coming soon.
+
+### Authentication HALs
+
+| HAL | Transport | Support |
+|:-----|-----------|---------|
+| Gatekeeper | HIDL | Yes |
+|            | AIDL | No |
+| Weaver | HIDL | No |
+|        | AIDL | No |
 
 ---
 
@@ -285,6 +299,6 @@ Some CLI commands are restricted by HAL version (e.g. `export` and `attest file`
 
 - **The Android NDK compiler** for android build, or standard Clang/GCC for host build
 - **`make`**
-- **OpenSSL** — used by `libsuscertmod` for cert parsing and signing; prebuilt in `libsuscertmod/external`
+- **OpenSSL** - used by `libsuscertmod` for cert parsing and signing; prebuilt in `libsuscertmod/external`
 - A disassembler (e.g. Ghidra, IDA, Binary Ninja) for locating the attestation callback call site in the HAL binary
-- patchelf (or other ELF .so patching tools) — for hook installation
+- patchelf (or other ELF .so patching tools) - for hook installation

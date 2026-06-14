@@ -1,3 +1,5 @@
+#ifndef SUSKEYMASTER_BUILD_HOST
+
 #include "aidl2generic.hpp"
 #include "keymint-types-aidl.h"
 #include "../keymaster-types-c.h"
@@ -191,3 +193,5 @@ std::vector<std::vector<u8>> fromAidlDestroy(aidl_vec_of_certificate& aidl)
 } /* namespace transport */
 } /* namespace kmhal */
 } /* namespace suskeymaster */
+
+#endif /* SUSKEYMASTER_BUILD_HOST */

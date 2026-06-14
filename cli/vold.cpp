@@ -202,6 +202,7 @@ int fscrypt_legacy_install_key(std::vector<u8> const& key)
 
     return EXIT_SUCCESS;
 #else
+    (void) key;
     std::cerr << __func__ << " is not implemented on windows" << std::endl;
     return EXIT_FAILURE;
 #endif /* SUSKEYMASTER_BUILD_WINDOWS */

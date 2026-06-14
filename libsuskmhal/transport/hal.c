@@ -553,15 +553,17 @@ static int do_aidl_hal_get_handle(struct kmhal_sp *hal)
     }
     hal->manager_acquired = true;
 
-    if (kmhal_aidl_manager_get(hal->binder, &hal->txn, hal->aidl_tx_hdr_type,
-                hal->fqname, hal->instname, &hal->handle) != OK)
-    {
+    enum kmhal_android_status s = kmhal_aidl_manager_get(hal->binder,
+            &hal->txn, hal->aidl_tx_hdr_type, hal->fqname, hal->instname,
+            &hal->handle);
+    if (s != OK && s != PERMISSION_DENIED) {
         s_log_error("Failed to getService() a handle to the AIDL HAL");
         return 1;
-    } else if (hal->handle == 0) {
-        /* In AIDL we only really try to get the service once,
-         * so this should be an error message */
-        s_log_error("No handle received");
+    } else if (hal->handle == 0 || s == PERMISSION_DENIED) {
+        /* This error is expected when getting the wrong version,
+         * so we might need to call this function multiple times
+         * before we get the correct one, therefore don't spam this error */
+        s_log_verbose("No handle received");
         return 1;
     }
 
