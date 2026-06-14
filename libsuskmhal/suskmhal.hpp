@@ -111,14 +111,14 @@ public:
 
     virtual ErrorCode begin(KeyPurpose purpose, std::vector<u8> const& keyBlob,
             std::vector<KeyParameter> const& inParams, HardwareAuthToken const& authToken,
-            std::vector<KeyParameter>& out_outParams, u64& out_operationHandle)
+            std::vector<KeyParameter>& out_outParams, OpaqueOpHandle& out_operationHandle)
     {
         (void) purpose; (void) keyBlob; (void) inParams; (void) authToken;
         (void) out_outParams; (void) out_operationHandle;
         return ErrorCode::UNIMPLEMENTED;
     }
 
-    virtual ErrorCode update(u64 operationHandle,
+    virtual ErrorCode update(OpaqueOpHandle& operationHandle,
             std::vector<KeyParameter> const& inParams, std::vector<u8> const& input,
             HardwareAuthToken const& authToken,
             u32& out_inputConsumed, std::vector<KeyParameter>& out_outParams,
@@ -130,7 +130,7 @@ public:
         return ErrorCode::UNIMPLEMENTED;
     }
 
-    virtual ErrorCode finish(u64 operationHandle,
+    virtual ErrorCode finish(OpaqueOpHandle& operationHandle,
             std::vector<KeyParameter> const& inParams, std::vector<u8> const& input,
             std::vector<u8> const& signature, HardwareAuthToken const& authToken,
             std::vector<KeyParameter>& out_outParams, std::vector<u8>& out_output)
@@ -141,7 +141,7 @@ public:
         return ErrorCode::UNIMPLEMENTED;
     }
 
-    virtual ErrorCode abort(u64 operationHandle) {
+    virtual ErrorCode abort(OpaqueOpHandle& operationHandle) {
         (void) operationHandle; return ErrorCode::UNIMPLEMENTED;
     }
 };
@@ -201,7 +201,7 @@ public:
 
     ErrorCode destroyAttestationIds(void) override;
 
-    ErrorCode abort(u64 operationHandle) override;
+    ErrorCode abort(OpaqueOpHandle& operationHandle) override;
 
 protected:
     /* While the argument structure is always the exact same for these common methods,
@@ -261,15 +261,16 @@ public:
 
     ErrorCode begin(KeyPurpose purpose, std::vector<u8> const& keyBlob,
             std::vector<KeyParameter> const& inParams, HardwareAuthToken const& authToken,
-            std::vector<KeyParameter>& out_outParams, u64& out_operationHandle) override;
+            std::vector<KeyParameter>& out_outParams, OpaqueOpHandle& out_operationHandle)
+        override;
 
-    ErrorCode update(u64 operationHandle,
+    ErrorCode update(OpaqueOpHandle& operationHandle,
             std::vector<KeyParameter> const& inParams, std::vector<u8> const& input,
             HardwareAuthToken const& authToken,
             u32& out_inputConsumed, std::vector<KeyParameter>& out_outParams,
             std::vector<u8>& out_output) override;
 
-    ErrorCode finish(u64 operationHandle,
+    ErrorCode finish(OpaqueOpHandle& operationHandle,
             std::vector<KeyParameter> const& inParams, std::vector<u8> const& input,
             std::vector<u8> const& signature, HardwareAuthToken const& authToken,
             std::vector<KeyParameter>& out_outParams, std::vector<u8>& out_output) override;
@@ -307,15 +308,16 @@ public:
 
     ErrorCode begin(KeyPurpose purpose, std::vector<u8> const& keyBlob,
             std::vector<KeyParameter> const& inParams, HardwareAuthToken const& authToken,
-            std::vector<KeyParameter>& out_outParams, u64& out_operationHandle) override;
+            std::vector<KeyParameter>& out_outParams, OpaqueOpHandle& out_operationHandle)
+        override;
 
-    ErrorCode update(uint64_t operationHandle,
+    ErrorCode update(OpaqueOpHandle& operationHandle,
         std::vector<KeyParameter> const& inParams, std::vector<u8> const& input,
         HardwareAuthToken const& authToken,
         uint32_t& out_inputConsumed, std::vector<KeyParameter>& out_outParams,
         std::vector<u8>& out_output) override;
 
-    ErrorCode finish(u64 operationHandle,
+    ErrorCode finish(OpaqueOpHandle& operationHandle,
             std::vector<KeyParameter> const& inParams, std::vector<u8> const& input,
             std::vector<u8> const& signature, HardwareAuthToken const& authToken,
             std::vector<KeyParameter>& out_outParams, std::vector<u8>& out_output) override;
@@ -382,13 +384,7 @@ public:
             std::vector<u8> const& applicationId, std::vector<u8> const& applicationData,
             KeyCharacteristics& out_keyCharacteristics) override;
 
-    ErrorCode exportKey(KeyFormat keyFormat, std::vector<u8> const& keyBlob,
-            std::vector<u8> const& applicationId, std::vector<u8> const& applicationData,
-            std::vector<u8>& out_keyMaterial) override;
-
-    ErrorCode attestKey(std::vector<u8> const& keyToAttest,
-            std::vector<KeyParameter> const& attestParams,
-            std::vector<std::vector<u8>>& out_certChain) override;
+    /* `exportKey` and `attestKey` are not supported in KeyMint */
 
     ErrorCode upgradeKey(std::vector<u8> const& keyBlobToUpgrade,
             std::vector<KeyParameter> const& upgradeParams,
@@ -402,20 +398,21 @@ public:
 
     ErrorCode begin(KeyPurpose purpose, std::vector<u8> const& keyBlob,
             std::vector<KeyParameter> const& inParams, HardwareAuthToken const& authToken,
-            std::vector<KeyParameter>& out_outParams, u64& out_operationHandle) override;
+            std::vector<KeyParameter>& out_outParams, OpaqueOpHandle& out_operationHandle)
+        override;
 
-    ErrorCode update(u64 operationHandle,
+    ErrorCode update(OpaqueOpHandle& operationHandle,
             std::vector<KeyParameter> const& inParams, std::vector<u8> const& input,
             HardwareAuthToken const& authToken,
             u32& out_inputConsumed, std::vector<KeyParameter>& out_outParams,
             std::vector<u8>& out_output) override;
 
-    ErrorCode finish(u64 operationHandle,
+    ErrorCode finish(OpaqueOpHandle& operationHandle,
             std::vector<KeyParameter> const& inParams, std::vector<u8> const& input,
             std::vector<u8> const& signature, HardwareAuthToken const& authToken,
             std::vector<KeyParameter>& out_outParams, std::vector<u8>& out_output) override;
 
-    ErrorCode abort(u64 operationHandle) override;
+    ErrorCode abort(OpaqueOpHandle& operationHandle) override;
 #endif /* SUSKEYMASTER_BUILD_HOST */
 };
 #endif /* SUSKEYMASTER_HAL_DISABLE_KEYMINT */

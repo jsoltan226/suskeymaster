@@ -46,16 +46,17 @@ int get_print_key_characteristics(SusKMHal& hal,
     }
 
     {
-        KM_PARAM_LIST *sw_par = NULL, *hw_par = NULL;
+        std::unique_ptr<KM_PARAM_LIST, decltype(&KM_PARAM_LIST_free)>
+            sw_par(nullptr, KM_PARAM_LIST_free), hw_par(nullptr, KM_PARAM_LIST_free);
 
-        sw_par = kmhal::util::key_params_2_param_list(kc.softwareEnforced);
+        sw_par.reset(kmhal::util::key_params_2_param_list(kc.softwareEnforced));
         if (sw_par == NULL) {
             std::cerr << "Failed to convert softwareEnforced key param vec to a param list"
                 << std::endl;
             return EXIT_FAILURE;
         }
 
-        hw_par = kmhal::util::key_params_2_param_list(kc.hardwareEnforced);
+        hw_par.reset(kmhal::util::key_params_2_param_list(kc.hardwareEnforced));
         if (hw_par == NULL) {
             std::cerr << "Failed to convert hardwareEnforced key param vec to a param list"
                 << std::endl;
@@ -64,8 +65,8 @@ int get_print_key_characteristics(SusKMHal& hal,
 
         std::cout << "===== BEGIN KEY CHARACTERISTICS DUMP =====" << std::endl;
         std::cout << "KeyCharacteristics kc = {" << std::endl;
-        KM_dump_param_list(pr_info, "softwareEnforced", sw_par, 1, false);
-        KM_dump_param_list(pr_info, "hardwareEnforced", hw_par, 1, true);
+        KM_dump_param_list(pr_info, "softwareEnforced", sw_par.get(), 1, false);
+        KM_dump_param_list(pr_info, "hardwareEnforced", hw_par.get(), 1, true);
         std::cout << "};" << std::endl;
         std::cout << "=====  END KEY CHARACTERISTICS DUMP  =====" << std::endl;
     }
@@ -85,7 +86,8 @@ int generate_key(SusKMHal& hal,
 
     std::vector<KeyParameter> params(in_gen_params);
     util::init_default_params_for_alg_and_purposes(params, alg,
-            util::find_rep_tag<KeyPurpose>(Tag::PURPOSE, params), true);
+            util::find_rep_tag<KeyPurpose>(Tag::PURPOSE, params),
+            true, hal.getVersion() >= 0x100);
 
     KeyCharacteristics dummy;
     ErrorCode e = hal.generateKey(params, out_key_blob, dummy);
@@ -162,7 +164,8 @@ int import_key(SusKMHal& hal,
 
     std::vector<KeyParameter> params(in_import_params);
     util::init_default_params_for_alg_and_purposes(params, alg,
-            util::find_rep_tag<KeyPurpose>(Tag::PURPOSE, params), false);
+            util::find_rep_tag<KeyPurpose>(Tag::PURPOSE, params),
+            false, hal.getVersion() >= 0x100);
 
     KeyCharacteristics c;
     ErrorCode e = hal.importKey(params, format, in_private_key, out_key_blob, c);

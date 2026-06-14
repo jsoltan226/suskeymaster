@@ -141,6 +141,8 @@ KM_ENUM_LIST__
 
 typedef uint64_t OperationHandle;
 
+typedef void * OpaqueOpHandle; /* Needed for KeyMint support */
+
 struct KeyParameter;
 struct KeyCharacteristics;
 struct HardwareAuthToken;

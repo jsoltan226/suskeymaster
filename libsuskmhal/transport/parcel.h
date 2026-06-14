@@ -118,6 +118,15 @@ void kmhal_parcel_patch(struct kmhal_parcel *parcel,
                         size_t offset, const void *data, size_t len);
 
 /**
+ * Retrieve the current write buffer size (write index) of a parcel.
+ *
+ * @param parcel Parcel whose write buffer size to get. Must not be NULL.
+ *
+ * @return The parcel's current write buffer size.
+ */
+size_t kmhal_parcel_get_write_buffer_size(const struct kmhal_parcel *parcel);
+
+/**
  * Append a 32-bit unsigned integer to the parcel.
  *
  * Data is serialized using native-endian binder format
@@ -350,6 +359,24 @@ kmhal_parcel_obj_find_by_offset(const struct kmhal_parcel *parcel,
  */
 int kmhal_parcel_peek(const struct kmhal_parcel *parcel,
                       size_t offset, void *out, size_t len);
+
+/* Read a stram of bytes from the parcel's buffer.
+ *
+ * @param parcel The parcel to read from.
+ *
+ * @param offset_p A pointer to the offset of the object. Must not be NULL.
+ *  On success, incremented to point to after the read object.
+ *  Note: The value must be 4-byte aligned.
+ *
+ * @param out Output pointer. May be NULL.
+ *
+ * @param len The amount of data to read.
+ *  If @out is not NULL, the provided buffer must be at least @len long.
+ *
+ * @return 0 on success, non-zero on failure.
+ */
+int kmhal_parcel_read_bytes(const struct kmhal_parcel *parcel,
+                            size_t *offset_p, void *out, size_t len);
 
 /* Read a uint32 value from the parcel's buffer.
  * The offset must be 4-byte aligned.

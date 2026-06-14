@@ -128,7 +128,7 @@ Algorithm determine_algorithm_from_params_and_pkey(std::vector<KeyParameter> con
 void init_default_params_for_alg_and_purposes(std::vector<KeyParameter>& params,
                                               Algorithm alg,
                                               const std::vector<KeyPurpose>& purposes,
-                                              bool is_generate_key)
+                                              bool is_generate_key, bool is_keymint)
 {
     bool sign_verify = false, enc_dec = false, wrap_key = false;
     bool private_ops = false;
@@ -193,6 +193,16 @@ void init_default_params_for_alg_and_purposes(std::vector<KeyParameter>& params,
         { Tag::NO_AUTH_REQUIRED, true }
     };
 
+    /* KeyMint requires notAfter and notBefore tags for asymmetric keys */
+    if (is_keymint && (alg == Algorithm::RSA || alg == Algorithm::EC)) {
+        /* The KeyMint spec recommends these values for importWrappedKey
+         * (where there's now way to specify this otherwise),
+         * so let's just steal them and treat them as the "defaults" here */
+
+        defaults.emplace_back(Tag::CERTIFICATE_NOT_BEFORE, UINT64_C(0));
+        defaults.emplace_back(Tag::CERTIFICATE_NOT_AFTER, UINT64_C(253402300799000));
+    }
+
     switch (alg) {
     case Algorithm::RSA:
         if (is_generate_key) {
@@ -212,6 +222,7 @@ void init_default_params_for_alg_and_purposes(std::vector<KeyParameter>& params,
         if (wrap_key) padding_modes.push_back(PaddingMode::RSA_OAEP);
 
         defaults.emplace_back(Tag::PADDING, padding_modes);
+
         break;
     case Algorithm::EC:
         /* Only P-256 EC keys are guaranteed to be supported

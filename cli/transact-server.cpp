@@ -247,7 +247,7 @@ int wrap_key(std::vector<u8> const& in_private_key,
         " (inferred format: " << toString(format) << ")" << std::endl;
 
     util::init_default_params_for_alg_and_purposes(params, pkey_alg,
-        util::find_rep_tag<KeyPurpose>(Tag::PURPOSE, params), false);
+        util::find_rep_tag<KeyPurpose>(Tag::PURPOSE, params), false, false);
 
     if (encode_iwk_key_desc_der(iwk_key_desc_der, iwk_key_desc, params, format)) {
         std::cerr << "Failed to serialize the importWrappedKey keyDescription" << std::endl;

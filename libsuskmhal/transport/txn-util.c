@@ -1,3 +1,4 @@
+#include "core/util.h"
 #ifndef SUSKEYMASTER_BUILD_HOST
 
 #include "txn-util.h"
@@ -10,6 +11,9 @@
 #include <linux/android/binder.h>
 
 #define MODULE_NAME "txn-util"
+
+static void do_check_aidl_ex(const struct kmhal_parcel *p, i32 aidl_ex,
+                             u32 *out_aidl_svc_specific_error_code);
 
 enum kmhal_android_status
 kmhal_util_check_allocate_txn_tmps(struct kmhal_binder_txn **txn_p,
@@ -39,7 +43,8 @@ kmhal_util_transact_and_unpack(struct kmhal_binder_ctx *binder,
                                struct kmhal_binder_txn **txn_p,
                                struct kmhal_parcel **parcel_p,
                                struct kmhal_binder_txn_args_out *out_reply,
-                               bool write_free_reply, bool check_aidl_ex)
+                               bool write_free_reply, bool check_aidl_ex,
+                               u32 *out_aidl_svc_specific_error_code)
 {
     enum kmhal_android_status ret = UNKNOWN_ERROR;
     struct kmhal_binder_txn_args_out reply;
@@ -104,14 +109,11 @@ kmhal_util_transact_and_unpack(struct kmhal_binder_ctx *binder,
 
         i32 aidl_ex = 0;
         memcpy(&aidl_ex, reply.data_buf, sizeof(i32));
-        ret = kmhal_aidl_exception_to_android_status(aidl_ex);
+        do_check_aidl_ex(*parcel_p, aidl_ex, out_aidl_svc_specific_error_code);
 
-        if (ret != OK) {
-            s_log_error("Got AIDL exception: %"PRIi32" (%s)",
-                    aidl_ex, kmhal_aidl_exception_toString(aidl_ex));
-            return ret;
-        }
+        return kmhal_aidl_exception_to_android_status(aidl_ex);
     }
+
     return OK;
 }
 
@@ -120,6 +122,48 @@ void kmhal_util_destroy_txn_tmps(struct kmhal_binder_txn **txn_p,
 {
     kmhal_binder_txn_destroy(txn_p);
     kmhal_parcel_destroy(parcel_p);
+}
+
+static void do_check_aidl_ex(const struct kmhal_parcel *p, i32 aidl_ex,
+                             u32 *out_aidl_svc_specific_error_code)
+{
+    if (aidl_ex == EX_NONE)
+        return;
+
+    s_log_debug("aidl_ex: %"PRIi32" (%s)",
+            aidl_ex, kmhal_aidl_exception_toString(aidl_ex));
+
+    char *ex_msg = NULL;
+    size_t off = KMHAL_PARCEL_DATA_START_OFFSET;
+    i32 remote_stack_trace_header_size = 0;
+
+    if (kmhal_parcel_read_convert_aidl_string16(p, &off, &ex_msg, NULL))
+        goto_error("Got exception but failed to read message");
+
+    if (kmhal_parcel_read_u32(p, &off, (u32 *)&remote_stack_trace_header_size))
+        goto_error("Failed to read the remote stack trace header size");
+    else if (remote_stack_trace_header_size < 0)
+        goto_error("Invalid remote stack trace header size");
+
+    off += remote_stack_trace_header_size;
+
+    if (aidl_ex == EX_SERVICE_SPECIFIC &&
+            out_aidl_svc_specific_error_code != NULL)
+    {
+        if (kmhal_parcel_read_u32(p, &off, out_aidl_svc_specific_error_code))
+            s_log_error("Failed to read the service-specific error code");
+    } else {
+        s_log_error("Got AIDL exception: %"PRIi32" (%s); "
+                "message: \"%s\"", aidl_ex,
+                kmhal_aidl_exception_toString(aidl_ex),
+                ex_msg);
+    }
+
+err:
+    if (ex_msg != NULL) {
+        free(ex_msg);
+        ex_msg = NULL;
+    }
 }
 
 #endif /* SUSKEYMASTER_BUILD_HOST */

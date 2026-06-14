@@ -288,7 +288,7 @@ Algorithm determine_algorithm_from_params_and_pkey(std::vector<KeyParameter> con
 void init_default_params_for_alg_and_purposes(std::vector<KeyParameter>& params,
                                               Algorithm alg,
                                               const std::vector<KeyPurpose>& purposes,
-                                              bool is_generate_key);
+                                              bool is_generate_key, bool is_keymint);
 
 /* Gatekeeper/vold crypto utilities */
 

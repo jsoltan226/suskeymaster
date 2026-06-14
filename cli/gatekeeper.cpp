@@ -190,27 +190,26 @@ int verify(SusKMHal& kmhal, u32 uid, u64 challenge, std::vector<u8> const& cred,
 
     {
 #ifndef SUSKEYMASTER_BUILD_HOST
-        u64 challenge = 0;
         hidl_vec<u8> pwd_handle = toHidlView(handle);
         hidl_vec<u8> gk_password = toHidlView(cred);
 
         const hidl_GatekeeperResponse *res_p = nullptr;
 
         const struct kmhal_arg_write_desc in_args[] = {
-            kmhal::transport::init_write("uid", uid, kmhal_arg_write_u32),
-            kmhal::transport::init_write("challenge", challenge, kmhal_arg_write_u64),
-            kmhal::transport::init_write("enrolledPasswordHandle", &pwd_handle,
+            kmhal::transport::init_write_p("uid", uid, kmhal_arg_write_u32),
+            kmhal::transport::init_write_p("challenge", challenge, kmhal_arg_write_u64),
+            kmhal::transport::init_write_b("enrolledPasswordHandle", &pwd_handle,
                     kmhal_hidl_arg_write_vec_of_u8),
-            kmhal::transport::init_write("providedPassword", &gk_password,
+            kmhal::transport::init_write_b("providedPassword", &gk_password,
                     kmhal_hidl_arg_write_vec_of_u8)
         };
         struct kmhal_arg_parse_desc out_args[] = {
-            kmhal::transport::init_parse("response", &res_p, read_gatekeeper_response)
+            kmhal::transport::init_parse_b("response", &res_p, read_gatekeeper_response)
         };
 
         std::cout << "Calling IGatekeeper::Verify..." << std::endl;
         if (kmhal_call(gk_hal.get_hal_sp(), static_cast<u32>(GK_HAL_CMD::VERIFY),
-                        in_args, u_arr_size(in_args), out_args, u_arr_size(out_args)))
+                        in_args, u_arr_size(in_args), out_args, u_arr_size(out_args), nullptr))
         {
             std::cerr << "Gatekeeper HAL call failed" << std::endl;
             return EXIT_FAILURE;
@@ -218,6 +217,10 @@ int verify(SusKMHal& kmhal, u32 uid, u64 challenge, std::vector<u8> const& cred,
 
         res = *res_p;
 #else
+        (void) uid;
+        (void) challenge;
+        (void) handle;
+        (void) cred;
         std::cerr << "Gatekeeper HAL not supported on host build" << std::endl;
         res.code = GatekeeperStatusCode::ERROR_NOT_IMPLEMENTED;
 #endif /* SUSKEYMASTER_BUILD_HOST */

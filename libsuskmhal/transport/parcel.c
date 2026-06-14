@@ -182,6 +182,14 @@ void kmhal_parcel_patch(struct kmhal_parcel *parcel,
     memcpy(parcel->write_buffer + offset, data, len);
 }
 
+size_t kmhal_parcel_get_write_buffer_size(const struct kmhal_parcel *parcel)
+{
+    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
+    u_check_params(parcel->write_buffer != NULL);
+
+    return vector_size(parcel->write_buffer);
+}
+
 void kmhal_parcel_write_u32(struct kmhal_parcel *parcel, u32 u)
 {
     u32 u_ = u;
@@ -568,6 +576,35 @@ int kmhal_parcel_peek(const struct kmhal_parcel *parcel,
     return 0;
 }
 
+int kmhal_parcel_read_bytes(const struct kmhal_parcel *parcel,
+                            size_t *offset_p, void *out, size_t len)
+{
+    u_check_params(parcel != NULL && atomic_load(&parcel->initialized_));
+    u_check_params(len < UINT32_MAX);
+    u_check_params(offset_p != NULL && *offset_p == align4(*offset_p) &&
+            *offset_p < UINT32_MAX - len);
+    if (parcel->read_buffer == NULL || parcel->read_buffer_size == 0) {
+        s_log_error("Parcel not initialized with reply data");
+        return -1;
+    }
+
+    s_log_trace("%s: *offset_p: %zu, parcel->read_buffer_size: %zu",
+            __func__, *offset_p, parcel->read_buffer_size);
+
+    if (len > parcel->read_buffer_size ||
+            *offset_p > parcel->read_buffer_size - len)
+    {
+        s_log_error("Requested length outside of parcel buffer");
+        return -1;
+    }
+
+    if (out != NULL)
+        memcpy(out, (const u8 *)parcel->read_buffer + *offset_p, len);
+    *offset_p += align4(len);
+
+    return 0;
+}
+
 int kmhal_parcel_read_u32(const struct kmhal_parcel *parcel,
                           size_t *offset_p, u32 *out)
 {
@@ -578,6 +615,11 @@ int kmhal_parcel_read_u32(const struct kmhal_parcel *parcel,
         s_log_error("Parcel not initialized with reply data");
         return -1;
     }
+
+    /*
+    s_log_trace("%s: *offset_p: %zu, parcel->read_buffer_size: %zu",
+            __func__, *offset_p, parcel->read_buffer_size);
+            */
 
     if (*offset_p + sizeof(u32) > parcel->read_buffer_size) {
         s_log_error("Requested offset outside of parcel buffer");
@@ -602,6 +644,9 @@ int kmhal_parcel_read_u64(const struct kmhal_parcel *parcel,
         return -1;
     }
 
+    s_log_trace("%s: *offset_p: %zu, parcel->read_buffer_size: %zu",
+            __func__, *offset_p, parcel->read_buffer_size);
+
     if (*offset_p + sizeof(u64) > parcel->read_buffer_size) {
         s_log_error("Requested *offset_p outside of parcel buffer");
         return -1;
@@ -625,6 +670,9 @@ int kmhal_parcel_read_aidl_string16(const struct kmhal_parcel *parcel,
         s_log_error("Parcel not initialized with reply data");
         return -1;
     }
+
+    s_log_trace("%s: *offset_p: %zu, parcel->read_buffer_size: %zu",
+            __func__, *offset_p, parcel->read_buffer_size);
 
     if (*offset_p + sizeof(u32) > parcel->read_buffer_size) {
         s_log_error("Requested *offset_p outside of parcel buffer");
@@ -750,6 +798,9 @@ int kmhal_parcel_read_handle(const struct kmhal_parcel *parcel,
         return -1;
     }
 
+    s_log_trace("%s: *offset_p: %zu, parcel->read_buffer_size: %zu",
+            __func__, *offset_p, parcel->read_buffer_size);
+
     const size_t off = *offset_p;
     if (parcel->read_buffer_size < sizeof(struct flat_binder_object) ||
         off > parcel->read_buffer_size - sizeof(struct flat_binder_object))
@@ -802,6 +853,9 @@ int kmhal_parcel_read_buffer_obj(const struct kmhal_parcel *parcel,
         s_log_error("Parcel not initialized with reply data");
         return -1;
     }
+
+    s_log_trace("%s: *offset_p: %zu, parcel->read_buffer_size: %zu",
+            __func__, *offset_p, parcel->read_buffer_size);
 
     const size_t off = *offset_p;
     if (parcel->read_buffer_size < sizeof(struct binder_buffer_object) ||
@@ -857,6 +911,9 @@ int kmhal_parcel_read_embedded_buffer(const struct kmhal_parcel *p,
         s_log_error("Parcel not initialized with reply data");
         return -1;
     }
+
+    s_log_trace("%s: *offset_p: %zu, parcel->read_buffer_size: %zu",
+            __func__, *off_p, p->read_buffer_size);
 
     if (validate_parcel_object_ref(p, parent_ref)) {
         s_log_error("Invalid parent object reference");

@@ -19,7 +19,7 @@ using namespace ::suskeymaster::kmhal::generic;
 
 static std::unique_ptr<suskeymaster::kmhal::SusKMHal> get_hal(void);
 static int get_keyblob_from_current_keybox(enum sus_key_variant variant,
-        std::vector<uint8_t>& out);
+        std::vector<u8>& out);
 static std::vector<KeyParameter> init_params(enum sus_key_variant variant);
 
 extern "C" {
@@ -35,7 +35,7 @@ i32 sus_cert_sign(VECTOR(u8 const) tbs_der, VECTOR(u8) *out_sig,
     }
 
     ErrorCode e = ErrorCode::UNKNOWN_ERROR;
-    std::vector<uint8_t> keyblob;
+    std::vector<u8> keyblob;
     std::vector<KeyParameter> params;
     std::unique_ptr<suskeymaster::kmhal::SusKMHal> hal = nullptr;
 
@@ -48,26 +48,28 @@ i32 sus_cert_sign(VECTOR(u8 const) tbs_der, VECTOR(u8) *out_sig,
         if ((hal = get_hal()) == nullptr)
             goto_error("Couldn't obtain a handle to the Keymaster HAL service");
 
-        uint64_t op_handle = 0;
+        OpaqueOpHandle op_handle{};
 
-        /* Do the HIDL transactions for a SIGN operation (begin + finish) */
-
-        if (hal == NULL)
-            goto_error("Couldn't obtain a handle to the keymaster HAL");
+        /* Do the transactions for a SIGN operation (begin + finish) */
 
         std::vector<KeyParameter> dummy;
         e = hal->begin(KeyPurpose::SIGN, keyblob, params, {}, dummy, op_handle);
         if (e != ErrorCode::OK)
             goto_error("BEGIN operation failed: %u (%s)",
-                    (uint32_t)e, KM_ErrorCode_toString((uint32_t)e));
+                    (u32)e, KM_ErrorCode_toString((u32)e));
 
         const std::vector<u8> tbs_der_vec(tbs_der, tbs_der + vector_size(tbs_der));
 
-        std::vector<uint8_t> sig_vec;
+        /* X.509 TBSCertificate structures are small enough to be
+         * supplied entirely in finish(); no streaming update() calls
+         * are performed here.
+         */
+
+        std::vector<u8> sig_vec;
         e = hal->finish(op_handle, {}, tbs_der_vec, {}, {}, dummy, sig_vec);
         if (e != ErrorCode::OK)
             goto_error("FINISH operation failed: %u (%s)",
-                    (uint32_t)e, KM_ErrorCode_toString((uint32_t)e));
+                    (u32)e, KM_ErrorCode_toString((u32)e));
 
         *out_sig = vector_new(u8);
         vector_resize(out_sig, sig_vec.size());
@@ -112,7 +114,7 @@ static std::unique_ptr<suskeymaster::kmhal::SusKMHal> get_hal(void)
 }
 
 static int get_keyblob_from_current_keybox(enum sus_key_variant variant,
-        std::vector<uint8_t>& out)
+        std::vector<u8>& out)
 {
     const struct keybox *keybox = NULL;
     int ret = 0;

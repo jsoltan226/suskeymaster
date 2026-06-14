@@ -30,6 +30,9 @@ static void prop_read_cb(void *, const char *, const char *, u32);
 static int read_handle(const struct kmhal_parcel *parcel,
                        size_t *offset_p, u32 *out_handle);
 
+static int parse_present_flag(const struct kmhal_parcel *p, size_t *off_p,
+                              bool nullable, i32 *out_flag);
+
 enum kmhal_aidl_tx_header_type
 kmhal_aidl_get_tx_header_type(struct kmhal_binder_ctx *binder)
 {
@@ -79,19 +82,22 @@ void kmhal_aidl_write_tx_header(struct kmhal_parcel *parcel,
     kmhal_parcel_write_aidl_string16(parcel, iface_token);
 }
 
-int kmhal_aidl_parse_rx_parcelable_header(struct kmhal_parcel *p, size_t *off_p,
-                                          size_t *out_start_off,
-                                          i32 *out_parcelable_size)
+int kmhal_aidl_parse_parcelable_header(const struct kmhal_parcel *p,
+                                       size_t *off_p,
+                                       size_t *out_start_off, bool nullable,
+                                       i32 *out_parcelable_size)
 {
-    i32 stability = 0;
+    u_check_params(p != NULL && off_p != NULL && out_parcelable_size != NULL);
+
     i32 parcelable_size = 0;
+    i32 present_flag = 0;
 
-    if (kmhal_parcel_read_u32(p, off_p, (u32 *)&stability)) {
-        s_log_error("Failed to read the wire stability");
+    if (parse_present_flag(p, off_p, nullable, &present_flag))
         return 1;
+    if (present_flag == KMHAL_AIDL_NULL_FLAG) {
+        *out_parcelable_size = -1;
+        return 0;
     }
-
-    s_log_trace("Parcelable stability: %s", !!stability ? "VINTF" : "LOCAL");
 
     *out_start_off = *off_p;
 
@@ -99,13 +105,59 @@ int kmhal_aidl_parse_rx_parcelable_header(struct kmhal_parcel *p, size_t *off_p,
         s_log_error("Failed to read the parcelable size");
         return 1;
     }
-    s_log_trace("Parcelable payload size: %"PRIi32, (i32)parcelable_size);
+    /* s_log_trace("Parcelable payload size: %"PRIi32, (i32)parcelable_size); */
     if (parcelable_size < 0) {
         s_log_error("Invalid parcelable size");
         return 1;
     }
 
     *out_parcelable_size = parcelable_size;
+    return 0;
+}
+
+int kmhal_aidl_validate_parcelable_size(size_t start, size_t cur,
+                                        i32 parcelable_size)
+{
+    s_log_trace("start: %zu, cur: %zu, parcelable_size: %"PRIi32,
+            start, cur, parcelable_size);
+    return !(cur >= start && cur - start == (size_t)parcelable_size);
+}
+
+int kmhal_aidl_parse_union_header(const struct kmhal_parcel *p, size_t *off_p,
+                                  bool nullable, u32 *out_union_field_id)
+{
+    u_check_params(p != NULL && off_p != NULL && out_union_field_id != NULL);
+
+    i32 present_flag;
+    if (parse_present_flag(p, off_p, nullable, &present_flag))
+        return 1;
+    if (present_flag == KMHAL_AIDL_NULL_FLAG) {
+        *out_union_field_id = UINT32_MAX;
+        return 0;
+    }
+
+    if (kmhal_parcel_read_u32(p, off_p, out_union_field_id)) {
+        s_log_error("Failed to read the union field ID");
+        return 1;
+    }
+    return 0;
+}
+
+int kmhal_aidl_parse_array_header(const struct kmhal_parcel *p, size_t *off_p,
+                                  i32 *out_array_size)
+{
+    u_check_params(p != NULL && off_p != NULL && out_array_size != NULL);
+    i32 array_size = 0;
+
+    if (kmhal_parcel_read_u32(p, off_p, (u32 *)&array_size)) {
+        s_log_error("Failed to read the array size");
+        return 1;
+    } else if (array_size < 0) {
+        s_log_error("Invalid array size");
+        return 1;
+    }
+
+    *out_array_size = array_size;
     return 0;
 }
 
@@ -174,7 +226,7 @@ kmhal_aidl_manager_get(struct kmhal_binder_ctx *binder,
      * before writing the FREE_BUFFER command */
     kmhal_parcel_pack(*txn_p, parcel, 0, 1, 0);
     ret = kmhal_util_transact_and_unpack(binder, txn_p,
-            &parcel, &reply, false, true);
+            &parcel, &reply, false, true, NULL);
     if (ret != OK)
         goto err;
 
@@ -229,7 +281,8 @@ kmhal_aidl_ping(struct kmhal_binder_ctx *binder,
 
     kmhal_parcel_pack(*txn_p, parcel, handle, AIDL_PING_TRANSACTION, 0);
 
-    ret = kmhal_util_transact_and_unpack(binder, txn_p, &parcel, NULL, 1, 1);
+    ret = kmhal_util_transact_and_unpack(binder, txn_p, &parcel,
+            NULL, 1, 1, NULL);
 
 err:
     if (ret != OK)
@@ -265,7 +318,7 @@ kmhal_aidl_get_interface_version(struct kmhal_binder_ctx *binder,
             AIDL_META_CMD_GET_INTERFACE_VERSION, 0);
 
     if ((ret = kmhal_util_transact_and_unpack(binder, txn_p,
-                    &parcel, NULL, 1, 1)) != OK)
+                    &parcel, NULL, 1, 1, NULL)) != OK)
         goto err;
 
     size_t off = KMHAL_PARCEL_DATA_START_OFFSET;
@@ -281,6 +334,56 @@ err:
         kmhal_parcel_destroy(&parcel);
 
     return ret;
+}
+
+void kmhal_aidl_write_string16(struct kmhal_parcel *parcel, const void *data)
+{
+    kmhal_parcel_write_aidl_string16(parcel, data);
+}
+
+void kmhal_aidl_write_convert_string16(struct kmhal_parcel *parcel,
+                                       const void *data)
+{
+    kmhal_parcel_write_convert_aidl_string16(parcel, data);
+}
+
+int kmhal_aidl_parse_string16(const struct kmhal_parcel *parcel, size_t *off_p,
+                              void *out, size_t out_size)
+{
+    if (out == NULL || out_size != sizeof(char16_t *)) {
+        s_log_error("%s: Invalid parameters", __func__);
+        return -1;
+    }
+
+    char16_t **const outp = out;
+    char16_t *tmp = NULL;
+    if (kmhal_parcel_read_aidl_string16(parcel, off_p, &tmp, NULL)) {
+        s_log_error("Failed to read AIDL UTF-16 string");
+        return 1;
+    }
+
+    *outp = tmp;
+    return 0;
+}
+
+int kmhal_aidl_parse_convert_string16(const struct kmhal_parcel *parcel,
+                                      size_t *off_p,
+                                      void *out, size_t out_size)
+{
+    if (out == NULL || out_size != sizeof(char *)) {
+        s_log_error("%s: Invalid parameters", __func__);
+        return -1;
+    }
+
+    char **const outp = out;
+    char *tmp = NULL;
+    if (kmhal_parcel_read_convert_aidl_string16(parcel, off_p, &tmp, NULL)) {
+        s_log_error("Failed to read and convert AIDL UTF-16");
+        return 1;
+    }
+
+    *outp = tmp;
+    return 0;
 }
 
 #ifdef SUSKEYMASTER_BUILD_ANDROID
@@ -309,6 +412,28 @@ static int read_handle(const struct kmhal_parcel *parcel,
 
     if (out_handle != NULL)
         *out_handle = flat_binder_obj.handle;
+    return 0;
+}
+
+static int parse_present_flag(const struct kmhal_parcel *p, size_t *off_p,
+                              bool nullable, i32 *out_flag)
+{
+    i32 present_flag = 0;
+
+    if (kmhal_parcel_read_u32(p, off_p, (u32 *)&present_flag)) {
+        s_log_error("Failed to read the present flag");
+        return 1;
+    } else if (!nullable && present_flag != KMHAL_AIDL_PRESENT_FLAG) {
+        s_log_error("Present flag not set");
+        return 1;
+    } else if (present_flag != KMHAL_AIDL_NULL_FLAG &&
+               present_flag != KMHAL_AIDL_PRESENT_FLAG)
+    {
+        s_log_error("Invalid value of the present flag");
+        return 1;
+    }
+
+    if (out_flag) *out_flag = present_flag;
     return 0;
 }
 

@@ -6,8 +6,6 @@
 #include <libsuskmhal/keymaster-types-cpp.hpp>
 #include <libsuskmhal/util/km-params.hpp>
 #include <libsuskmhal/transport/hal.h>
-#include <libsuskmhal/transport/serdes-aidl.h>
-#include <libsuskmhal/transport/aidl-util.h>
 #include <strings.h>
 #include <cstdio>
 #include <string>
@@ -23,6 +21,7 @@
 #include <ostream>
 #include <iostream>
 #include <charconv>
+#include <cinttypes>
 #include <system_error>
 #include <unordered_map>
 
@@ -35,7 +34,7 @@ namespace suskeymaster {
 
 static std::unique_ptr<kmhal::SusKMHal> g_hal = nullptr;
 
-enum hal_version : uint8_t {
+enum hal_version : uint16_t {
     HAL_NOT_NEEDED = 0x00,
     HAL_NONE = 0x00,
 
@@ -46,13 +45,19 @@ enum hal_version : uint8_t {
     HAL_4_0 = 0x40,
 
     HAL_NEEDED_4_1 = 0x41,
-    HAL_4_1 = 0x41
+    HAL_4_1 = 0x41,
+
+    HAL_NEEDED_KEYMINT = 0x100,
+    HAL_KEYMINT = 0x100
 };
 static constexpr int hal_version_major(hal_version ver) {
-    return (static_cast<uint8_t>(ver) & 0xF0) >> 4;
+    if (ver >= HAL_KEYMINT)
+        return (static_cast<u16>(ver) & 0xFF00) >> 8;
+    else
+        return (static_cast<u16>(ver) & 0x00F0) >> 4;
 }
 static constexpr int hal_version_minor(hal_version ver) {
-    return (static_cast<uint8_t>(ver) & 0x0F);
+    return (static_cast<uint16_t>(ver) & 0x000F);
 }
 
 enum cli_arg_type {
@@ -1308,6 +1313,25 @@ static const std::vector<cli_command> cmds = {
         std::cout << "keymasterName: " << name.c_str() << std::endl;
         std::cout << "keymasterAuthorName: " << authorName.c_str() << std::endl;
 
+        std::vector<u8> sus(0);
+        ErrorCode e = hal.addRngEntropy(sus);
+        std::cout << "addRngEntropy result: " << toString(e) << std::endl;;
+
+        std::vector<KeyParameter> par(4);
+        par[0].tag = Tag::ALGORITHM;
+        par[0].f.algorithm = Algorithm::EC;
+        par[1].tag = Tag::EC_CURVE;
+        par[1].f.ecCurve = EcCurve::P_256;
+        par[2].tag = Tag::CERTIFICATE_NOT_BEFORE;
+        par[2].f.dateTime = 0;
+        par[3].tag = Tag::CERTIFICATE_NOT_AFTER;
+        par[3].f.dateTime = UINT64_C(253402300799000);
+        std::vector<u8> keyblob;
+        KeyCharacteristics kc;
+        e = hal.generateKey(par, keyblob, kc);
+        std::cout << "generateKey result: " << toString(e) << std::endl;;
+        std::cout << toString(toHidlView(kc)) << std::endl;
+
         std::cout << "OK" << std::endl;
         return EXIT_SUCCESS;
     }
@@ -1466,7 +1490,8 @@ static __attribute__((unused)) void print_inithal_ok_msg(hal_version hal_ver)
     std::string km_name;
     std::string km_author_name;
     g_hal->getHardwareInfo(slvl, km_name, km_author_name);
-    std::cout << "Using " << toString(slvl) << " Keymaster " <<
+    std::cout << "Using " << toString(slvl) << " " <<
+        (hal_ver >= HAL_KEYMINT ? "KeyMint" : "Keymaster") << " " <<
         hal_version_major(hal_ver) << "." << hal_version_minor(hal_ver) <<
         " HAL \"" << km_name.c_str() <<
         "\" (by \"" << km_author_name.c_str() << "\") " << std::endl;
@@ -1484,6 +1509,19 @@ static int init_g_hal(hal_version min_ver)
 
     const char *km_ver_env = std::getenv("SUSKEYMASTER_HAL_VERSION");
     (void) km_ver_env;
+
+#ifndef SUSKEYMASTER_HAL_DISABLE_KEYMINT
+    if ((min_ver <= HAL_KEYMINT && !km_ver_env) || !strcmp(km_ver_env ? km_ver_env : "", "100")) {
+        g_hal = std::make_unique<kmhal::SusAidlKeyMint>();
+        if (g_hal->isHALOk()) {
+            print_inithal_ok_msg(static_cast<hal_version>(g_hal->getVersion()));
+            return EXIT_SUCCESS;
+        } else if (km_ver_env && !strcmp(km_ver_env, "100")) {
+            print_inithal_fail_msg(HAL_KEYMINT);
+            return EXIT_FAILURE;
+        }
+    }
+#endif /* SUSKEYMASTER_HAL_DISABLE_KEYMINT */
 
 #ifndef SUSKEYMASTER_HAL_DISABLE_4_1
     if ((min_ver <= HAL_4_1 && !km_ver_env) || !strcmp(km_ver_env ? km_ver_env : "", "4.1")) {

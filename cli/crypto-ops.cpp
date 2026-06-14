@@ -172,7 +172,7 @@ static ErrorCode do_generic_operation_cycle(SusKMHal& hal,
         std::vector<u8> const* finish_signature,
         std::vector<u8>* output, std::vector<u8>* out_gcm_begin_iv)
 {
-    OperationHandle operation_handle = 0;
+    OpaqueOpHandle operation_handle{};
     std::vector<KeyParameter> kp_tmp;
     ErrorCode e = ErrorCode::UNKNOWN_ERROR;
 

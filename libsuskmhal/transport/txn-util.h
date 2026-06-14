@@ -65,6 +65,10 @@ kmhal_util_check_allocate_txn_tmps(struct kmhal_binder_txn **txn_p,
  *  while on failure, both `txn_p` and `parcel_p` should be passed to
  *  `kmhal_util_destroy_txn_tmps`.
  *
+ * @param out_aidl_svc_specific_error_code For AIDL calls, an optional output
+ *  pointer for an error code returned with the EX_SERVICE_SPECIFIC exception.
+ *  Only used if @check_aidl_ex is `true`.
+ *
  * Note: In any case, `txn_p` and `parcel_p` should later be freed
  * with `kmhal_util_destroy_txn_tmps` as needed.
  * The parcel should always get destroyed after the transaction,
@@ -77,7 +81,8 @@ kmhal_util_transact_and_unpack(struct kmhal_binder_ctx *binder,
                                struct kmhal_binder_txn **txn_p,
                                struct kmhal_parcel **parcel_p,
                                struct kmhal_binder_txn_args_out *out_reply,
-                               bool write_free_reply, bool check_aidl_ex);
+                               bool write_free_reply, bool check_aidl_ex,
+                               u32 *out_aidl_svc_specific_error_code);
 
 /*
  * Destroys the binder transaction context and parcel, if they exist.

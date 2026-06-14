@@ -833,6 +833,38 @@
      */                                                                                                 \
     KM_DECL_TAG(STORAGE_KEY, BOOL, 722, storageKey, NULL, NULL, _)                                      \
                                                                                                         \
+    /**                                                                                                 \
+     * Added in KeyMint.                                                                                \
+     *                                                                                                  \
+     * Tag::ATTESTATION_ID_SECOND_IMEI provides an additional IMEI of one of the radios on the          \
+     * device to attested key generation/import operations. It should be used to convey an              \
+     * IMEI different to the one conveyed by the Tag::ATTESTATION_ID_IMEI tag. Like all other           \
+     * ID attestation flags, it may be included independently of other tags.                            \
+     *                                                                                                  \
+     * If the device does not support ID attestation (or destroyAttestationIds() was previously         \
+     * called and the device can no longer attest its IDs), any key attestation request that            \
+     * includes this tag must fail with ErrorCode::CANNOT_ATTEST_IDS.                                   \
+     *                                                                                                  \
+     * Must never appear in KeyCharacteristics.                                                         \
+     */                                                                                                 \
+    KM_DECL_TAG(ATTESTATION_ID_SECOND_IMEI, BYTES, 723, attestationIdSecondImei, NULL, OCTET_STRING, _) \
+                                                                                                        \
+    /**                                                                                                 \
+     * Added in KeyMint.                                                                                \
+     *                                                                                                  \
+     * Tag::MODULE_HASH specifies the SHA-256 hash of the DER-encoded module information (see           \
+     * KeyCreationResult.aidl for the ASN.1 schema).                                                    \
+     *                                                                                                  \
+     * KeyStore clients can retrieve the unhashed DER-encoded module information from Android           \
+     * via KeyStoreManager.getSupplementaryAttestationInfo.                                             \
+     *                                                                                                  \
+     * This tag is never provided or returned from KeyMint in the key characteristics. It exists        \
+     * only to define the tag for use in the attestation record.                                        \
+     *                                                                                                  \
+     * Must never appear in KeyCharacteristics.                                                         \
+     */                                                                                                 \
+    KM_DECL_TAG(MODULE_HASH, BYTES, 724, moduleHash, NULL, INTEGER, _)                                  \
+                                                                                                        \
     /* Internal Samsung tag: used to validate datetime requirements in begin(). */                      \
     KM_DECL_TAG(INTERNAL_CURRENT_DATETIME, DATE, 800, internalCurrentDateTime, NULL, INTEGER, _)        \
                                                                                                         \
@@ -846,6 +878,8 @@
      * Tag::ASSOCIATED_DATA provides "associated data" for AES-GCM encryption or decryption. This       \
      * tag is provided to update and specifies data that is not encrypted/decrypted, but is used in     \
      * computing the GCM tag.                                                                           \
+     *                                                                                                  \
+     * Deprecated in KeyMint (functionality replaced by IKeyMintOpertion::updateAad).                   \
      *                                                                                                  \
      * Must never appear in KeyCharacteristics.                                                         \
      */                                                                                                 \
@@ -901,9 +935,68 @@
      * confirmed a signing request.  The content is a full-length HMAC-SHA256 value.  See the           \
      * ConfirmationUI HAL for details of token computation.                                             \
      *                                                                                                  \
+     * Deprecated in KeyMint (replaced by dedicated argument in IKeyMintOpertion::finish)               \
+     *                                                                                                  \
      * Must never appear in KeyCharacteristics.                                                         \
      */                                                                                                 \
     KM_DECL_TAG(CONFIRMATION_TOKEN, BYTES, 1005, confirmationToken, NULL, OCTET_STRING, _)              \
+                                                                                                        \
+    /**                                                                                                 \
+     * Added in KeyMint.                                                                                \
+     *                                                                                                  \
+     * Tag::CERTIFICATE_SERIAL specifies the serial number to be assigned to the attestation            \
+     * certificate to be generated for the given key.  This parameter should only be passed to          \
+     * keyMint in the attestation parameters during generateKey() and importKey().  If not provided,    \
+     * the serial shall default to 1.                                                                   \
+     */                                                                                                 \
+    KM_DECL_TAG(CERTIFICATE_SERIAL, BIGNUM, 1006, certificateSerial, NULL, INTEGER, _)                  \
+                                                                                                        \
+    /**                                                                                                 \
+     * Added in KeyMint.                                                                                \
+     *                                                                                                  \
+     * Tag::CERTIFICATE_SUBJECT the certificate subject.  The value is a DER encoded X509 NAME.         \
+     * This value is used when generating a self signed certificates.  This tag may be specified        \
+     * during generateKey and importKey. If not provided the subject name shall default to              \
+     * CN="Android Keystore Key".                                                                       \
+     */                                                                                                 \
+    KM_DECL_TAG(CERTIFICATE_SUBJECT, BYTES, 1007, certificateSubject, NULL, OCTET_STRING, _)            \
+                                                                                                        \
+    /**                                                                                                 \
+     * Added in KeyMint.                                                                                \
+     *                                                                                                  \
+     * Tag::CERTIFICATE_NOT_BEFORE the beginning of the validity of the certificate in UNIX epoch       \
+     * time in milliseconds.  This value is used when generating attestation or self signed             \
+     * certificates.  ErrorCode::MISSING_NOT_BEFORE must be returned if this tag is not provided if     \
+     * this tag is not provided to generateKey or importKey.  For importWrappedKey, there is no way     \
+     * to specify the value of this tag for a wrapped asymmetric key, so a value of 0 is suggested      \
+     * for certificate generation.                                                                      \
+     */                                                                                                 \
+    KM_DECL_TAG(CERTIFICATE_NOT_BEFORE, DATE, 1008, certificateNotBefore, NULL, INTEGER, _)             \
+                                                                                                        \
+    /**                                                                                                 \
+     * Added in KeyMint.                                                                                \
+     *                                                                                                  \
+     * Tag::CERTIFICATE_NOT_AFTER the end of the validity of the certificate in UNIX epoch time in      \
+     * milliseconds.  This value is used when generating attestation or self signed certificates.       \
+     * ErrorCode::MISSING_NOT_AFTER must be returned if this tag is not provided to generateKey or      \
+     * importKey.  For importWrappedKey, there is no way to specify the value of this tag for a         \
+     * wrapped asymmetric key, so a value of 253402300799000 is suggested for certificate               \
+     * generation.                                                                                      \
+     */                                                                                                 \
+    KM_DECL_TAG(CERTIFICATE_NOT_AFTER, DATE, 1009, certificateNotAfter, NULL, INTEGER, _)               \
+                                                                                                        \
+    /**                                                                                                 \
+     * Added in KeyMint.                                                                                \
+     *                                                                                                  \
+     * Tag::MAX_BOOT_LEVEL specifies a maximum boot level at which a key should function.               \
+     *                                                                                                  \
+     * Over the course of the init process, the boot level will be raised to                            \
+     * monotonically increasing integer values. Implementations MUST NOT allow the key                  \
+     * to be used once the boot level advances beyond the value of this tag.                            \
+     *                                                                                                  \
+     * Cannot be hardware enforced in this version.                                                     \
+     */                                                                                                 \
+    KM_DECL_TAG(MAX_BOOT_LEVEL, UINT, 1010, maxBootLevel, NULL, INTEGER, _)                             \
                                                                                                         \
     /** Samsung-specific tags **/                                                                       \
                                                                                                         \

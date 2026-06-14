@@ -30,8 +30,8 @@ enum KM_Constants {
     KM_AUTH_TOKEN_MAC_LENGTH = 32u,
 };
 
-#define __KM_TAG_TYPE_MASK(tag) ((tag) & 0xF0000000)
-#define __KM_TAG_MASK(tag) ((tag) & 0x0FFFFFFF)
+#define __KM_TAG_TYPE_MASK(tag) ((tag) & UINT32_C(0xF0000000))
+#define __KM_TAG_MASK(tag) ((tag) & UINT32_C(0x0FFFFFFF))
 
 enum KM_TagType {
     /**
@@ -394,7 +394,7 @@ typedef struct KM_ROOT_OF_TRUST {
     ASN1_ENUMERATED *verifiedBootState;
     ASN1_OCTET_STRING *verifiedBootHash;
 } KM_ROOT_OF_TRUST;
-DECLARE_ASN1_FUNCTIONS(KM_ROOT_OF_TRUST);
+DECLARE_ASN1_FUNCTIONS(KM_ROOT_OF_TRUST)
 
 #define ASN1_ROOT_OF_TRUST KM_ROOT_OF_TRUST
 #define ASN1_SET_OF_INTEGER STACK_OF(ASN1_INTEGER)
@@ -433,7 +433,7 @@ typedef struct KM_KEY_DESC {
     KM_PARAM_LIST *softwareEnforced;
     KM_PARAM_LIST *hardwareEnforced;
 } KM_KEY_DESC;
-DECLARE_ASN1_FUNCTIONS(KM_KEY_DESC);
+DECLARE_ASN1_FUNCTIONS(KM_KEY_DESC)
 
 typedef const char * (*KM_enum_toString_proc_t)(uint32_t);
 

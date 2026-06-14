@@ -400,13 +400,18 @@ struct kmhal_arg_parse_desc {
  *
  * @param n_out_args The number of members of the @in_args array.
  *
+ * @param out_aidl_svc_specific_error_code For AIDL HALs, an optional output
+ *  pointer for an error code returned with the EX_SERVICE_SPECIFIC exception.
+ *  Ignored for HIDL HALs.
+ *
  * @return OK on success, anything else on failure.
  *  See `enum kmhal_android_status`.
  */
 enum kmhal_android_status
 kmhal_call(struct kmhal_sp *hal, u32 cmd,
            const struct kmhal_arg_write_desc *in_args, u32 n_in_args,
-           struct kmhal_arg_parse_desc *out_args, u32 n_out_args);
+           struct kmhal_arg_parse_desc *out_args, u32 n_out_args,
+           u32 *out_aidl_svc_specific_error_code);
 
 /** Some useful universal functions
  * for serializing/deserializing common types of data **/
@@ -535,7 +540,7 @@ static inline void kmhal_sp_deleter(struct kmhal_sp *hal)
 }
 
 template<typename T> static inline struct kmhal_arg_write_desc
-init_write(const char *name, T val, kmhal_arg_write_primitive_proc_t proc)
+init_write_p(const char *name, T val, kmhal_arg_write_primitive_proc_t proc)
 {
     static_assert(sizeof(T) <= sizeof(u64), "Too large for primitive type");
     struct kmhal_arg_write_desc ret;
@@ -550,7 +555,7 @@ init_write(const char *name, T val, kmhal_arg_write_primitive_proc_t proc)
 }
 
 template<typename T> static inline struct kmhal_arg_parse_desc
-init_parse(const char *name, T *out, kmhal_arg_parse_primitive_proc_t proc)
+init_parse_p(const char *name, T *out, kmhal_arg_parse_primitive_proc_t proc)
 {
     static_assert(sizeof(T) <= sizeof(u64), "Too large for primitive type");
     struct kmhal_arg_parse_desc ret;
@@ -565,8 +570,8 @@ init_parse(const char *name, T *out, kmhal_arg_parse_primitive_proc_t proc)
 }
 
 template<typename T> static inline struct kmhal_arg_write_desc
-init_write(const char *name, const T *data,
-           kmhal_arg_write_buffer_obj_proc_t proc)
+init_write_b(const char *name, const T *data,
+             kmhal_arg_write_buffer_obj_proc_t proc)
 {
     struct kmhal_arg_write_desc ret;
 
@@ -580,8 +585,8 @@ init_write(const char *name, const T *data,
 }
 
 template<typename T> static inline struct kmhal_arg_parse_desc
-init_parse(const char *name, const T **out_p,
-           kmhal_arg_parse_buffer_obj_proc_t proc)
+init_parse_b(const char *name, const T **out_p,
+             kmhal_arg_parse_buffer_obj_proc_t proc)
 {
     struct kmhal_arg_parse_desc ret;
 

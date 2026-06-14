@@ -103,7 +103,7 @@ kmhal_hidl_manager_get(struct kmhal_binder_ctx *binder,
      * before writing the FREE_BUFFER command */
     kmhal_parcel_pack(*txn_p, parcel, MGR_BINDER_HANDLE, MGR_CMD_GET, true);
     ret = kmhal_util_transact_and_unpack(binder, txn_p,
-            &parcel, &reply, false, false);
+            &parcel, &reply, false, false, NULL);
     if (ret != OK)
         goto err;
 
@@ -159,7 +159,7 @@ enum kmhal_android_status kmhal_hidl_manager_list(
 
     kmhal_parcel_pack(*txn_p, parcel, MGR_BINDER_HANDLE, MGR_CMD_LIST, true);
     ret = kmhal_util_transact_and_unpack(binder, txn_p,
-            &parcel, NULL, true, false);
+            &parcel, NULL, true, false, NULL);
     if (ret != OK)
         goto err;
 
@@ -218,7 +218,7 @@ enum kmhal_android_status kmhal_hidl_manager_list_by_interface(
             MGR_CMD_LIST_BY_INTERFACE, true);
 
     ret = kmhal_util_transact_and_unpack(binder, txn_p,
-            &parcel, NULL, true, false);
+            &parcel, NULL, true, false, NULL);
     if (ret != OK)
         goto err;
 

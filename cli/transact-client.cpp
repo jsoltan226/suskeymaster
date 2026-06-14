@@ -43,6 +43,12 @@ int generate_and_attest_wrapping_key(SusKMHal& hal,
             { Tag::PADDING, { PaddingMode::RSA_OAEP } },
             { Tag::NO_AUTH_REQUIRED, true }
         });
+        if (hal.getVersion() >= 0x100) {
+            kmhal::util::init_default_params(params, {
+                { Tag::CERTIFICATE_NOT_BEFORE, UINT64_C(0) },
+                { Tag::CERTIFICATE_NOT_AFTER, UINT64_C(253402300799000) }
+            });
+        }
     }
 
     /* Generate the wrapping RSA-2048 key */

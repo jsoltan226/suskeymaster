@@ -90,7 +90,7 @@ kmhal_hidl_base_get_descriptor(struct kmhal_binder_ctx *binder,
             HIDL_GET_DESCRIPTOR_TRANSACTION, true);
 
     if ((ret = kmhal_util_transact_and_unpack(binder, txn_p,
-                &parcel, NULL, true, false)) != OK)
+                &parcel, NULL, true, false, NULL)) != OK)
     {
         ret = FAILED_TRANSACTION;
         goto_error("The binder trasaction failed");

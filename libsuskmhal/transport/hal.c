@@ -218,10 +218,13 @@ kmhal_get_aidl_interface_version(struct kmhal_sp *hal,
 enum kmhal_android_status
 kmhal_call(struct kmhal_sp *hal, u32 cmd,
            const struct kmhal_arg_write_desc *in_args, u32 n_in_args,
-           struct kmhal_arg_parse_desc *out_args, u32 n_out_args)
+           struct kmhal_arg_parse_desc *out_args, u32 n_out_args,
+           u32 *out_aidl_svc_specific_error_code)
 {
     u_check_params(hal != NULL);
     enum kmhal_android_status ret = UNKNOWN_ERROR;
+    if (out_aidl_svc_specific_error_code != NULL)
+        *out_aidl_svc_specific_error_code = 0;
 
     if ((ret = validate_arg_descs(in_args, n_in_args, out_args, n_out_args))
             != OK)
@@ -245,15 +248,21 @@ kmhal_call(struct kmhal_sp *hal, u32 cmd,
         switch (a->type) {
         case KMHAL_ARG_PRIMITIVE: {
             const struct kmhal_arg_write_primitive *const p = &a->arg.p;
+            s_log_trace("writing primitive arg %"PRIu32" (\"%s\"); "
+                    "val: 0x%"PRIx64", size: %zu", i, a->name, p->val, p->size);
             p->proc(parcel, p->val, p->size);
             break;
         }
         case KMHAL_ARG_BUFFER_OBJECT: {
             const struct kmhal_arg_write_buffer_obj *const b = &a->arg.b;
+            s_log_trace("writing buffer obj arg %"PRIu32" (\"%s\"); "
+                    "data: %p, size: %zu", i, a->name, b->data, b->size);
             b->proc(parcel, b->data, b->size);
             break;
         }
         case KMHAL_ARG_INLINE_DATA: {
+            s_log_trace("writing inline data arg %"PRIu32" (\"%s\"); data: %p",
+                    i, a->name, a->arg.i.data);
             const struct kmhal_arg_write_inline_data *const i = &a->arg.i;
             i->proc(parcel, i->data);
             break;
@@ -261,43 +270,49 @@ kmhal_call(struct kmhal_sp *hal, u32 cmd,
         default: s_log_fatal("Impossible outcome");
         }
     }
-    kmhal_parcel_pack(hal->txn, parcel, hal->handle, cmd, true);
+    kmhal_parcel_pack(hal->txn, parcel, hal->handle, cmd, hal->aidl ? 0 : 1);
 
     /* Transact */
     if ((ret = kmhal_util_transact_and_unpack(hal->binder, &hal->txn, &parcel,
-                NULL, true, false)) != OK)
-        goto_error("Binder HIDL transaction failed");
+                NULL, true, hal->aidl, out_aidl_svc_specific_error_code)) != OK)
+    {
+        if (out_aidl_svc_specific_error_code &&
+                *out_aidl_svc_specific_error_code != 0)
+        {
+            /* Got service specific code; let the caller handle this */
+            ret = OK;
+            goto err;
+        }
+
+        goto_error("Binder transaction failed");
+    }
 
     /* Deserialize the returned values */
     size_t off = KMHAL_PARCEL_DATA_START_OFFSET;
     for (u32 i = 0; i < n_out_args; i++) {
         const struct kmhal_arg_parse_desc *const a = &out_args[i];
 
-        /* AIDL parcelables all have headers,
-         * while HIDL objects are just written one after the other */
-        size_t aidl_start_off = 0;
-        i32 aidl_parcelable_size = 0;
-        if (hal->aidl && kmhal_aidl_parse_rx_parcelable_header(parcel, &off,
-                    &aidl_start_off, &aidl_parcelable_size))
-        {
-            ret = BAD_TYPE;
-            goto_error("Failed to read arg no %"PRIu32" \"%s\"'s "
-                    "AIDL parcelable header from the reply", i, a->name);
-        }
-
         int r = -1;
         switch (a->type) {
         case KMHAL_ARG_PRIMITIVE: {
             const struct kmhal_arg_parse_primitive *const p = &a->arg.p;
+            s_log_trace("Reading primitive arg %"PRIu32" (\"%s\"); off: %zu; "
+                    " out: %p, size: %zu", i, a->name, off, p->out, p->size);
             r = p->proc(parcel, &off, p->out, p->size);
             break;
         }
         case KMHAL_ARG_BUFFER_OBJECT: {
             const struct kmhal_arg_parse_buffer_obj *const b = &a->arg.b;
+            s_log_trace("Reading buffer obj arg %"PRIu32" (\"%s\"); off: %zu; "
+                    " out_p: %p, exp_out_size: %zu", i, a->name, off,
+                    b->out_p, b->exp_out_size);
             r = b->proc(parcel, &off, b->out_p, b->exp_out_size);
             break;
         }
         case KMHAL_ARG_INLINE_DATA: {
+            s_log_trace("Reading inline data arg %"PRIu32" (\"%s\"); off: %zu; "
+                    " out: %p, size: %zu", i, a->name, off,
+                    a->arg.i.out, a->arg.i.size);
             const struct kmhal_arg_parse_inline_data *const i = &a->arg.i;
             r = i->proc(parcel, &off, i->out, i->size);
             break;
@@ -308,13 +323,6 @@ kmhal_call(struct kmhal_sp *hal, u32 cmd,
             ret = BAD_VALUE;
             goto_error("Failed to parse arg no %u \"%s\" from the reply",
                     i, a->name);
-        }
-
-        /* If AIDL, validate that previously parsed parcelable header */
-        if (hal->aidl && off - aidl_start_off != (size_t)aidl_parcelable_size) {
-            ret = BAD_TYPE;
-            goto_error("AIDL parcelable size mismatch in arg no "
-                    "%"PRIu32" (\"%s\")", i, a->name);
         }
     }
 

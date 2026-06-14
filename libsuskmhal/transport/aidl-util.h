@@ -72,9 +72,14 @@ void kmhal_aidl_write_tx_header(struct kmhal_parcel *parcel,
                                 enum kmhal_aidl_tx_header_type type,
                                 const char16_t *iface_token);
 
+#define KMHAL_AIDL_NULL_FLAG INT32_C(0)
+#define KMHAL_AIDL_PRESENT_FLAG INT32_C(1)
+
+#define KMHAL_AIDL_NULL_FLAG_SIZE sizeof(i32)
+#define KMHAL_AIDL_PRESENT_FLAG_SIZE sizeof(i32)
+
 /**
- * Parse the header of a parcelable sent in a parcel
- * from the server to the client.
+ * Parse the header of a parcelable sent in a parcel.
  *
  * @param p The parcel to read from.
  *
@@ -85,10 +90,15 @@ void kmhal_aidl_write_tx_header(struct kmhal_parcel *parcel,
  *  Used later when validating @out_parcelable_size.
  *  May be NULL.
  *
+ * @param nullable Whether it is accepted that the parcel has a nullopt
+ *  value (@Nullable AIDL annotation).
+ *
  * @param out_parcelable_size Output pointer for the parcelable size,
  *  as written in the header. Later, after deserializing the whole parcel,
- *  it should be validated using the following condition:
- *      `off > start_off && off - start_off == parcelable_size`
+ *  it should be validated using `kmhal_aidl_validate_parcelable_size`.
+ *  If @nullable was set and the read value is a nullopt,
+ *  *out_union_field_id will contain the value `UINT32_MAX`.
+ *  This output pointer must not be NULL.
  *
  *  Where `off` is pointing past the end of the parsed parcelable,
  *  while `start_off` and `parcelable_size` are the respective
@@ -96,9 +106,85 @@ void kmhal_aidl_write_tx_header(struct kmhal_parcel *parcel,
  *
  * @return 0 on success and non-zero on failure.
  */
-int kmhal_aidl_parse_rx_parcelable_header(struct kmhal_parcel *p, size_t *off_p,
-                                          size_t *out_start_off,
-                                          i32 *out_parcelable_size);
+int kmhal_aidl_parse_parcelable_header(const struct kmhal_parcel *p,
+                                       size_t *off_p,
+                                       size_t *out_start_off, bool nullable,
+                                       i32 *out_parcelable_size);
+
+/**
+ * Validate previously parsed parcelable size
+ *  (see `kmhal_aidl_parse_parcelable_header`).
+ *
+ * @param start The @out_start_off returned by
+ *  `kmhal_aidl_parse_parcelable_header`.
+ *
+ * @param cur The current value of `*off_p`.
+ *
+ * @param parcelable_size The @out_parcelable_size returned by
+ *  `kmhal_aidl_parse_parcelable_header`.
+ *
+ * @return 0 If the the parcelable size is valid, non-zero otherwise.
+ */
+int kmhal_aidl_validate_parcelable_size(size_t start, size_t cur,
+                                        i32 parcelable_size);
+
+/**
+ * Parse the header of a union sent in a parcel.
+ *
+ * @param p The parcel to read from.
+ *
+ * @param off_p Offset pointer which on successful read
+ *  will be increment to point past the read header.
+ *
+ * @param nullable Whether it is accepted that the parcel has a nullopt
+ *  value (@Nullable AIDL annotation).
+ *
+ * @param out_union_field_id Output pointer for the union field ID.
+ *  This ID represents which of the union's fields is actually used.
+ *  If @nullable was set and the read value is a nullopt,
+ *  *out_union_field_id will contain the value `UINT32_MAX`.
+ *  This output pointer must not be NULL.
+ *
+ * Here's an explanation of the meaning of @out_union_field_id:
+ *
+ *  E.g. it's known that in the IntegerParams union,
+ *  the enum KM_Digest `digest` member (ID 4) takes 4 bytes,
+ *  while `longInteger` (ID 12) takes 8 bytes.
+ *
+ *  This is done to save space (i guess?) while serializing a union,
+ *  like in this situation:
+ *      union {
+ *          u32 value; // ID 0
+ *          u8 veryLargeBuffer[1024]; // ID 1
+ *      }
+ *  If we only use the `value` member,
+ *  only 4 bytes will be written for it + the 4 bytes for its ID `0`.
+ *
+ *  Obviously, every union has its own list of IDs and the caller
+ *  should interpret it accordingly.
+ *
+ * @return 0 on success and non-zero on failure.
+ */
+int kmhal_aidl_parse_union_header(const struct kmhal_parcel *p, size_t *off_p,
+                                  bool nullable, u32 *out_union_field_id);
+
+/**
+ * Parse the headers of an array sent in a parcel.
+ *
+ * @param p The parcel to read from.
+ *
+ * @param off_p Offset pointer which on successful read
+ *  will be increment to point past the read header.
+ *
+ * @param out_array_size Output pointer for the number of elements in the array.
+ *  If @nullable was set and the read value is a nullopt,
+ *  `*out_array_size` will contain the value `-1`.
+ *  Must not be NULL.
+ *
+ * @return 0 on success and non-zero on failure.
+ */
+int kmhal_aidl_parse_array_header(const struct kmhal_parcel *p, size_t *off_p,
+                                  i32 *out_array_size);
 
 /**
  * Writes the INCREFS and ACQUIRE commands for the servicemanager handle.
@@ -282,6 +368,50 @@ kmhal_aidl_get_interface_version(struct kmhal_binder_ctx *binder,
                                  u32 in_handle,
 
                                  i32 *out_interface_version);
+
+/** Serialization/Deserialization primitives for common AIDL types
+ * (see `hal.h`) **/
+
+/**
+ * See `kmhal_parcel_write_aidl_string16`.
+ *
+ * @param data The `const char16_t *` u'\0'-terminated UTF-16 string to write.
+ */
+void kmhal_aidl_write_string16(struct kmhal_parcel *parcel, const void *data);
+
+/**
+ * See `kmhal_parcel_write_convert_aidl_string16`.
+ *
+ * @param data The `const char *` '\0'-terminated C string
+ *  to convert to `char16_t *` and then write.
+ */
+void kmhal_aidl_write_convert_string16(struct kmhal_parcel *parcel,
+                                       const void *data);
+
+/**
+ * See `kmhal_parcel_read_aidl_string16`.
+ *
+ * @param out a char_16 **out_str16p; after successful conversion,
+ *  a new malloc'd string (char16_t *) will be written there.
+ *  The user should later free it.
+ *
+ * @param out_size sizeof(char16_t *).
+ */
+int kmhal_aidl_parse_string16(const struct kmhal_parcel *parcel, size_t *off_p,
+                              void *out, size_t out_size);
+
+/**
+ * See `kmhal_parcel_read_convert_aidl_string16`.
+ *
+ * @param out a char **out_str8; after successful conversion,
+ *  a new malloc'd string (char *) will be written there.
+ *  The user should later free it.
+ *
+ * @param out_size sizeof(char *).
+ */
+int kmhal_aidl_parse_convert_string16(const struct kmhal_parcel *parcel,
+                                      size_t *off_p,
+                                      void *out, size_t out_size);
 
 #ifdef __cplusplus
 } /* extern "C" */
