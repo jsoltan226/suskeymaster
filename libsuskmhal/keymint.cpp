@@ -2,6 +2,7 @@
 
 #ifndef SUSKEYMASTER_BUILD_HOST
 #include "suskmhal.hpp"
+#include "hal-version.hpp"
 #include "keymaster-types-c.h"
 #include "keymaster-types-cpp.hpp"
 #include "transport/hal.h"
@@ -25,7 +26,7 @@ enum KeyMintCmd : u32 {
     BEGIN = 10,
     DEVICE_LOCKED = 11,
     EARLY_BOOT_ENDED = 12,
-    CONVERT_STORAGE_KEY_TO_EPHEMERALE = 13,
+    CONVERT_STORAGE_KEY_TO_EPHEMERAL = 13,
     GET_KEY_CHARACTERISTICS = 14,
     GET_ROOT_OF_TRUST_CHALLENGE = 15,
     GET_ROOT_OF_TRUST = 16,
@@ -90,9 +91,15 @@ bool SusAidlKeyMint::isHALOk(void) const
         kmhal_ping(this->hal_.get()) == OK;
 }
 
-u32 SusAidlKeyMint::getVersion(void) const
+hal_version SusAidlKeyMint::getVersion(void) const
 {
-    return this->keymint_version > 0 ? this->keymint_version * 0x100 : -1;
+    switch (this->keymint_version) {
+    case 1: return HAL_KEYMINT_1_0;
+    case 2: return HAL_KEYMINT_2_0;
+    case 3: return HAL_KEYMINT_3_0;
+    case 4: return HAL_KEYMINT_4_0;
+    default: return HAL_NONE;
+    }
 }
 
 void SusAidlKeyMint::getHardwareInfo(SecurityLevel& out_securityLevel,

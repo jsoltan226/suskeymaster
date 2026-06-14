@@ -1,6 +1,7 @@
 #ifndef SUSKEYMASTER_SUSKMHAL_HPP_
 #define SUSKEYMASTER_SUSKMHAL_HPP_
 
+#include "hal-version.hpp"
 #include "keymaster-types-cpp.hpp"
 #include <core/int.h>
 #include <memory>
@@ -26,7 +27,7 @@ public:
 
     virtual bool isHALOk(void) const { return false; };
 
-    virtual u32 getVersion(void) const { return -1; };
+    virtual hal_version getVersion(void) const { return HAL_NONE; };
 
     virtual void getHardwareInfo(SecurityLevel& out_securityLevel,
             std::string& out_keymasterName, std::string& out_keymasterAuthorName)
@@ -239,13 +240,14 @@ private:
 class SusHidlKeymaster3_0 : public SusHidlKeymasterHALCommon {
 public:
     SusHidlKeymaster3_0(void);
-    u32 getVersion(void) const override;
 
 #ifndef SUSKEYMASTER_BUILD_HOST
 protected:
     u32 getVersionSpecificCmdID(enum KM_common_cmd common_cmd) override;
 
 public:
+    hal_version getVersion(void) const override { return HAL_KEYMASTER_3_0; };
+
     /* For Keymaster 3.0, this is a wrapper around the older `getHardwareFeatures` method */
     void getHardwareInfo(SecurityLevel& out_securityLevel,
             std::string& out_keymasterName, std::string& out_keymasterAuthorName) override;
@@ -285,7 +287,6 @@ public:
 class SusHidlKeymaster4_0 : public SusHidlKeymasterHALCommon {
 public:
     SusHidlKeymaster4_0(void);
-    u32 getVersion(void) const override;
 
 protected:
     /* c++ sucks */
@@ -296,6 +297,8 @@ protected:
     u32 getVersionSpecificCmdID(enum KM_common_cmd common_cmd) override;
 
 public:
+    hal_version getVersion(void) const override { return HAL_KEYMASTER_4_0; };
+
     void getHardwareInfo(SecurityLevel& out_securityLevel,
             std::string& out_keymasterName, std::string& out_keymasterAuthorName) override;
 
@@ -338,7 +341,9 @@ public:
 class SusHidlKeymaster4_1 : public SusHidlKeymaster4_0 {
 public:
     SusHidlKeymaster4_1(void);
-    u32 getVersion(void) const override;
+#ifndef SUSKEYMASTER_BUILD_HOST
+    hal_version getVersion(void) const override { return HAL_KEYMASTER_4_1; };
+#endif /* SUSKEYMASTER_BUILD_HOST */
 };
 
 #endif /* SUSKEYMASTER_HAL_DISABLE_4_1 */
@@ -357,7 +362,7 @@ public:
     struct kmhal_sp * getHalSp(void) const override;
     bool isHALOk(void) const override;
 
-    u32 getVersion(void) const override;
+    hal_version getVersion(void) const override;
 
     void getHardwareInfo(SecurityLevel& out_securityLevel,
             std::string& out_keymasterName, std::string& out_keymasterAuthorName) override;

@@ -125,7 +125,6 @@ kmhal_hidl_manager_get(struct kmhal_binder_ctx *binder,
     kmhal_binder_write_free_reply(*txn_p, reply.data_buf);
 
     if (out_handle != NULL) *out_handle = handle;
-    kmhal_parcel_destroy(&parcel);
     ret = OK;
 
 err:
@@ -135,6 +134,8 @@ err:
                 ret, kmhal_android_status_toString(ret)
         );
         kmhal_util_destroy_txn_tmps(txn_p, &parcel);
+    } else {
+        kmhal_parcel_destroy(&parcel);
     }
 
     return ret;

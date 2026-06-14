@@ -3,6 +3,7 @@
 #include <core/log.h>
 #include <libsuscertmod/certmod.h>
 #include <libsuskmhal/suskmhal.hpp>
+#include <libsuskmhal/hal-version.hpp>
 #include <libsuskmhal/keymaster-types-cpp.hpp>
 #include <libsuskmhal/util/km-params.hpp>
 #include <libsuskmhal/transport/hal.h>
@@ -25,40 +26,14 @@
 #include <system_error>
 #include <unordered_map>
 
-using namespace suskeymaster;
-using namespace suskeymaster::kmhal::generic;
-
 static const char *g_argv0 = NULL;
 
 namespace suskeymaster {
 
-static std::unique_ptr<kmhal::SusKMHal> g_hal = nullptr;
+using namespace kmhal;
+using namespace kmhal::generic;
 
-enum hal_version : uint16_t {
-    HAL_NOT_NEEDED = 0x00,
-    HAL_NONE = 0x00,
-
-    HAL_NEEDED_3_0 = 0x30,
-    HAL_3_0 = 0x30,
-
-    HAL_NEEDED_4_0 = 0x40,
-    HAL_4_0 = 0x40,
-
-    HAL_NEEDED_4_1 = 0x41,
-    HAL_4_1 = 0x41,
-
-    HAL_NEEDED_KEYMINT = 0x100,
-    HAL_KEYMINT = 0x100
-};
-static constexpr int hal_version_major(hal_version ver) {
-    if (ver >= HAL_KEYMINT)
-        return (static_cast<u16>(ver) & 0xFF00) >> 8;
-    else
-        return (static_cast<u16>(ver) & 0x00F0) >> 4;
-}
-static constexpr int hal_version_minor(hal_version ver) {
-    return (static_cast<uint16_t>(ver) & 0x000F);
-}
+static std::unique_ptr<SusKMHal> g_hal = nullptr;
 
 enum cli_arg_type {
     INPUT_FILE,
@@ -215,7 +190,7 @@ static const std::vector<cli_command> cmds = {
     {
         "Print the characteristics (properties) of <key_blob>.",
     },
-    HAL_NEEDED_3_0,
+    HAL_ANY,
     {
         { "key_blob", INPUT_FILE, ARG_MANDATORY,
             "The key blob whose characteristics are to be read"
@@ -238,7 +213,7 @@ static const std::vector<cli_command> cmds = {
         "Generate a new key in KeyMaster using <params> "
         "and save the resulting key blob to <out_key_blob>"
     },
-    HAL_NEEDED_3_0,
+    HAL_ANY,
     {
         { "params", KEY_PARAMETERS, ARG_MANDATORY,
             "Key generation parameters, such as ALGORITHM and PURPOSE"
@@ -259,7 +234,7 @@ static const std::vector<cli_command> cmds = {
         "   and attest it (optionally using [attest_params]),",
         "   also optionally saving it to [out_attestation].",
     },
-    HAL_NEEDED_3_0,
+    HAL_ANY,
     {
         { "generate_params", KEY_PARAMETERS, ARG_OPTIONAL,
             "A space-separated list of key parameters used to generate the ephemeral attested key"
@@ -279,7 +254,7 @@ static const std::vector<cli_command> cmds = {
          * because many vendors implement their keymaster in such a way that
          * attesting a key with no purpose generates a certificate
          * with an empty KeyUsage extension, which OpenSSL rejects as "invalid certificate". */
-        kmhal::util::init_default_params(params,
+        util::init_default_params(params,
                 { { Tag::PURPOSE, { KeyPurpose::SIGN, KeyPurpose::VERIFY }}});
 
         if (cli::hal_ops::generate_key(*g_hal, params, keyblob)) {
@@ -305,7 +280,7 @@ static const std::vector<cli_command> cmds = {
         "   optionally saving the resulting serialized attestation cert chain "
             "to [out_attestation]"
     },
-    HAL_NEEDED_3_0,
+    UNTIL_KEYMASTER_4_1,
     {
         { "keyblob", INPUT_FILE, ARG_MANDATORY,
             "The KeyMaster key blob to attest"
@@ -338,7 +313,7 @@ static const std::vector<cli_command> cmds = {
         "Imports the private key <in_private_key>",
         "   into the device's KeyMaster, writing the resulting key blob to <out_key_blob>."
     },
-    HAL_NEEDED_3_0,
+    HAL_ANY,
     {
         { "in_private_key", INPUT_FILE, ARG_MANDATORY,
             "The private key to import - "
@@ -364,7 +339,7 @@ static const std::vector<cli_command> cmds = {
             "the public part of the key is exported",
         "while for other algorithms raw bytes are written."
     },
-    HAL_NEEDED_3_0,
+    UNTIL_KEYMASTER_4_1,
     {
         { "in_keyblob", INPUT_FILE, ARG_MANDATORY,
             "The key blob whose public key is to be exported"
@@ -389,7 +364,7 @@ static const std::vector<cli_command> cmds = {
         "Upgrades a key blob generated on a system with older security patch levels, ",
         "enabling its usage on the current system."
     },
-    HAL_NEEDED_3_0,
+    HAL_ANY,
     {
         { "in_keyblob_to_upgrade", INPUT_FILE, ARG_MANDATORY,
             "The key blob to be upgraded"
@@ -419,7 +394,7 @@ static const std::vector<cli_command> cmds = {
         "Encrypts <in_plaintext> with <in_key_blob>, optionally using [params], "
             "saving the ciphertext to <out_ciphertext>"
     },
-    HAL_NEEDED_3_0,
+    HAL_ANY,
     {
         { "in_key_blob", INPUT_FILE, ARG_MANDATORY,
             "The encryption key blob"
@@ -460,7 +435,7 @@ static const std::vector<cli_command> cmds = {
         "Decrypts <in_ciphertext> with <in_key_blob>, optionally using [params], "
             "saving the plaintext to <out_plaintext>"
     },
-    HAL_NEEDED_3_0,
+    HAL_ANY,
     {
         { "in_key_blob", INPUT_FILE, ARG_MANDATORY,
             "The decryption key blob"
@@ -487,7 +462,7 @@ static const std::vector<cli_command> cmds = {
         "Signs <in_message> with <in_key_blob>, optionally using [params], "
             "saving the signature to <out_signature>"
     },
-    HAL_NEEDED_3_0,
+    HAL_ANY,
     {
         { "in_key_blob", INPUT_FILE, ARG_MANDATORY,
             "The signing key blob"
@@ -514,7 +489,7 @@ static const std::vector<cli_command> cmds = {
         "Verifies <in_signature> (generated over <in_message>) with <in_key_blob>, "
             "optionally using [params]"
     },
-    HAL_NEEDED_3_0,
+    HAL_ANY,
     {
         { "in_key_blob", INPUT_FILE, ARG_MANDATORY,
             "The key blob with which the signature was generated"
@@ -639,7 +614,7 @@ static const std::vector<cli_command> cmds = {
         "Optionally an attestation for the wrapping key may be generated and written to "
             "[out_attestation]."
     },
-    HAL_NEEDED_4_0,
+    SINCE_KEYMASTER_4_0,
     {
         {
             "out_keyblob", OUTPUT_FILE, ARG_MANDATORY,
@@ -759,7 +734,7 @@ static const std::vector<cli_command> cmds = {
         "Additionally, [unwrapping_params] may contain a space-separated list of key parameters "
             "that will be passed as the `unwrappingParams` to the `importWrappedKey` call."
     },
-    HAL_NEEDED_4_0,
+    SINCE_KEYMASTER_4_0,
     {
         {
             "in_wrapped_data", INPUT_FILE, ARG_MANDATORY,
@@ -844,7 +819,7 @@ static const std::vector<cli_command> cmds = {
         "Decrypts the <in_vold_encrypted_key> using <in_keyblob> and <in_secdiscardable>.",
         "Examples include: /data/unencrypted/key/*, /metadata/vold/metadata_encryption/key/*"
     },
-    HAL_NEEDED_3_0,
+    HAL_ANY,
     {
         {
             "in_vold_encrypted_key", INPUT_FILE, ARG_MANDATORY,
@@ -890,7 +865,7 @@ static const std::vector<cli_command> cmds = {
     {
         "Verify a password (or other) user credential using Gatekeeper."
     },
-    HAL_NEEDED_3_0,
+    HAL_ANY,
     {
         { "user_id", INPUT_STRING, ARG_MANDATORY,
             "ID of the user who owns the given credentials" },
@@ -916,7 +891,7 @@ static const std::vector<cli_command> cmds = {
         std::vector<uint8_t> credential(0);
         if (a["credential"].in_string().size() > 0) {
             std::vector<uint8_t> tmp;
-            if (kmhal::util::b64decode(a["credential"].in_string(), tmp)) {
+            if (util::b64decode(a["credential"].in_string(), tmp)) {
                 std::cerr << "Failed to decode credential base64" << std::endl;
                 return EXIT_FAILURE;
             }
@@ -971,7 +946,7 @@ static const std::vector<cli_command> cmds = {
         "",
         "Replace <out_file> and <protector_id_hex> with the correct values.",
     },
-    HAL_NEEDED_3_0,
+    HAL_ANY,
     {
         { "user_id", INPUT_STRING, ARG_MANDATORY,
             "ID of the user who owns the given credentials" },
@@ -1008,7 +983,7 @@ static const std::vector<cli_command> cmds = {
         std::vector<uint8_t> credential(0);
         if (a["credential"].in_string().size() > 0) {
             std::vector<uint8_t> tmp;
-            if (kmhal::util::b64decode(a["credential"].in_string(), tmp)) {
+            if (util::b64decode(a["credential"].in_string(), tmp)) {
                 std::cerr << "Failed to decode credential base64" << std::endl;
                 return EXIT_FAILURE;
             }
@@ -1051,7 +1026,7 @@ static const std::vector<cli_command> cmds = {
         "without involving any user authentication.",
         "Used for users who don't have any lockscreen set."
     },
-    HAL_NEEDED_3_0,
+    HAL_ANY,
     {
         { "in_keystore_key_blob", INPUT_FILE, ARG_MANDATORY,
             "Wrapping keystore key blob. See `gatekeeper unwrap-sp-blob`." },
@@ -1255,7 +1230,7 @@ static const std::vector<cli_command> cmds = {
         "   [key]: BASE64 - a parameter containing a key blob processed by the command",
         "   [par]: KEY PARAMETERS - a quoted list of key parameters for the command"
     },
-    HAL_NEEDED_3_0,
+    HAL_ANY,
     {
         { "cmdline", INPUT_STRING, ARG_MANDATORY, nullptr }
     },
@@ -1294,7 +1269,7 @@ static const std::vector<cli_command> cmds = {
     HAL_NOT_NEEDED,
     {},
     [] (arg_map_t&) {
-        kmhal::SusAidlKeyMint hal;
+        SusAidlKeyMint hal;
         if (!hal.isHALOk()) {
             std::cerr << "KeyMint HAL init failed" << std::endl;
             return EXIT_FAILURE;
@@ -1490,81 +1465,180 @@ static __attribute__((unused)) void print_inithal_ok_msg(hal_version hal_ver)
     std::string km_name;
     std::string km_author_name;
     g_hal->getHardwareInfo(slvl, km_name, km_author_name);
-    std::cout << "Using " << toString(slvl) << " " <<
-        (hal_ver >= HAL_KEYMINT ? "KeyMint" : "Keymaster") << " " <<
-        hal_version_major(hal_ver) << "." << hal_version_minor(hal_ver) <<
+
+    std::cout << "Using " << toString(slvl) << " " << toString(hal_ver) <<
         " HAL \"" << km_name.c_str() <<
         "\" (by \"" << km_author_name.c_str() << "\") " << std::endl;
 }
+
+static bool is_consecutive_range(hal_version in,
+                                 hal_version& out_min, hal_version& out_max)
+{
+    hal_version min = HAL_NONE, max = HAL_NONE;
+    bool already_reached_end_of_range = false;
+    for (const hal_version v : ordered_hal_versions) {
+        if (v & in) {
+            if (already_reached_end_of_range) {
+                return false;
+            }
+
+            if (min == HAL_NONE) min = v;
+            max = v;
+        } else {
+            if (max != HAL_NONE)
+                already_reached_end_of_range = true;
+        }
+    }
+
+    out_min = min;
+    out_max = max;
+    return true;
+}
+
+static std::string version_list_toString(hal_version v)
+{
+    std::stringstream ss;
+
+    if (v & HAL_KEYMINT_ANY) {
+        ss << "KeyMint ";
+        bool first = true;
+        if (v & HAL_KEYMINT_4_0) {
+            ss << (first ? "" : ", ");
+            first = false;
+            ss << "4.0";
+        }
+        if (v & HAL_KEYMINT_3_0) {
+            ss << (first ? "" : ", ");
+            first = false;
+            ss << "3.0";
+        }
+        if (v & HAL_KEYMINT_2_0) {
+            ss << (first ? "" : ", ");
+            first = false;
+            ss << "2.0";
+        }
+        if (v & HAL_KEYMINT_1_0) {
+            ss << (first ? "" : ", ");
+            first = false;
+            ss << "1.0";
+        }
+    }
+
+    if (v & HAL_KEYMASTER_ANY) {
+        if (v & HAL_KEYMINT_ANY) ss << ", ";
+        ss << "Keymaster ";
+        bool first = true;
+        if (v & HAL_KEYMASTER_4_1) {
+            ss << (first ? "" : ", ");
+            first = false;
+            ss << "4.1";
+        }
+        if (v & HAL_KEYMASTER_4_0) {
+            ss << (first ? "" : ", ");
+            first = false;
+            ss << "4.0";
+        }
+        if (v & HAL_KEYMASTER_3_0) {
+            ss << (first ? "" : ", ");
+            first = false;
+            ss << "3.0";
+        }
+    }
+
+    return ss.str();
+}
+
 static __attribute__((unused)) void print_inithal_fail_msg(hal_version hal_ver)
 {
-    std::cerr << "Couldn't initialize a keymaster " <<
-        hal_version_major(hal_ver) << "." << hal_version_minor(hal_ver) <<
-        " HAL instance" << std::endl;
+    if (hal_ver == HAL_NONE) {
+        std::cerr << "No valid HAL version selected" << std::endl;
+        return;
+    }
+
+    hal_version min, max;
+    if (!is_consecutive_range(hal_ver, min, max)) {
+        std::cerr << "Couldn't initialize any of the following HAL instances: "
+            << version_list_toString(hal_ver) << std::endl;
+        return;
+    }
+
+    if (min == max) {
+        std::cerr << "Couldn't initialize a " << toString(hal_ver)
+            << " HAL instance" << std::endl;
+        return;
+    }
+
+    std::cerr << "Couldn't initialize a [" << toString(min)
+            << " through " << toString(max) << "] HAL instance" << std::endl;
 }
-static int init_g_hal(hal_version min_ver)
+
+static int init_g_hal(hal_version versions)
 {
-    if (min_ver == HAL_NONE)
-        return EXIT_SUCCESS;
-
     const char *km_ver_env = std::getenv("SUSKEYMASTER_HAL_VERSION");
-    (void) km_ver_env;
+    if (km_ver_env)
+        versions = fromString(std::string(km_ver_env));
 
-#ifndef SUSKEYMASTER_HAL_DISABLE_KEYMINT
-    if ((min_ver <= HAL_KEYMINT && !km_ver_env) || !strcmp(km_ver_env ? km_ver_env : "", "100")) {
-        g_hal = std::make_unique<kmhal::SusAidlKeyMint>();
-        if (g_hal->isHALOk()) {
-            print_inithal_ok_msg(static_cast<hal_version>(g_hal->getVersion()));
+    if (versions == HAL_NOT_NEEDED)
+        return EXIT_SUCCESS;
+    else if (versions == HAL_NONE)
+        return EXIT_FAILURE;
+
+    bool keymint_already_checked_and_failed = false;
+    for (int i = u_arr_size(ordered_hal_versions) - 1; i >= 0; i--) {
+        const hal_version ver = ordered_hal_versions[i];
+
+        if (!(versions & ver))
+            continue; /* not allowed */
+
+        SusKMHal tmp;
+        switch (ver) {
+            case HAL_KEYMASTER_3_0:
+                tmp = SusHidlKeymaster3_0();
+                break;
+            case HAL_KEYMASTER_4_0:
+                tmp = SusHidlKeymaster4_0();
+                break;
+            case HAL_KEYMASTER_4_1:
+                tmp = SusHidlKeymaster4_1();
+                break;
+            case HAL_KEYMINT_1_0:
+            case HAL_KEYMINT_2_0:
+            case HAL_KEYMINT_3_0:
+            case HAL_KEYMINT_4_0:
+                /* special case for keymint; we can't really specify
+                 * a version we want during init,
+                 * so we have to first let it initialize and then check
+                 * which version it is and whether it's allowed */
+
+                if (keymint_already_checked_and_failed)
+                    break;
+
+                tmp = SusAidlKeyMint();
+                if (!tmp.isHALOk()) {
+                    /* HAL initialization failed, it's not going to magically succeed
+                     * if we try it 4 times over */
+                    keymint_already_checked_and_failed = true;
+                }
+
+                if (!(versions & g_hal->getVersion())) {
+                    /* The running KeyMint version is not allowed at all.
+                     * Re-initializing the HAL won't change it lol */
+                    keymint_already_checked_and_failed = true;
+                }
+
+                break;
+
+            default: break;
+        }
+
+        if (tmp.isHALOk()) {
+            g_hal.reset(&tmp);
+            print_inithal_ok_msg(g_hal->getVersion());
             return EXIT_SUCCESS;
-        } else if (km_ver_env && !strcmp(km_ver_env, "100")) {
-            print_inithal_fail_msg(HAL_KEYMINT);
-            return EXIT_FAILURE;
         }
     }
-#endif /* SUSKEYMASTER_HAL_DISABLE_KEYMINT */
 
-#ifndef SUSKEYMASTER_HAL_DISABLE_4_1
-    if ((min_ver <= HAL_4_1 && !km_ver_env) || !strcmp(km_ver_env ? km_ver_env : "", "4.1")) {
-        g_hal = std::make_unique<kmhal::SusHidlKeymaster4_1>();
-        if (g_hal->isHALOk()) {
-            print_inithal_ok_msg(HAL_4_1);
-            return EXIT_SUCCESS;
-        } else if (km_ver_env && !strcmp(km_ver_env, "4.1")) {
-            print_inithal_fail_msg(HAL_4_1);
-            return EXIT_FAILURE;
-        }
-    }
-#endif /* SUSKEYMASTER_HAL_DISABLE_4_1 */
-
-#ifndef SUSKEYMASTER_HAL_DISABLE_4_0
-    if ((min_ver <= HAL_4_0 && !km_ver_env) || !strcmp(km_ver_env ? km_ver_env : "", "4.0")) {
-        g_hal = std::make_unique<kmhal::SusHidlKeymaster4_0>();
-        if (g_hal->isHALOk()) {
-            print_inithal_ok_msg(HAL_4_0);
-            return EXIT_SUCCESS;
-        } else if (km_ver_env && !strcmp(km_ver_env, "4.0")) {
-            print_inithal_fail_msg(HAL_4_0);
-            return EXIT_FAILURE;
-        }
-    }
-#endif /* SUSKEYMASTER_HAL_DISABLE_4_0 */
-
-#ifndef SUSKEYMASTER_HAL_DISABLE_3_0
-    if ((min_ver <= HAL_3_0 && !km_ver_env) || !strcmp(km_ver_env ? km_ver_env : "", "3.0")) {
-        g_hal = std::make_unique<kmhal::SusHidlKeymaster3_0>();
-        if (g_hal->isHALOk()) {
-            print_inithal_ok_msg(HAL_3_0);
-            return EXIT_SUCCESS;
-        } else if (km_ver_env && !strcmp(km_ver_env, "3.0")) {
-            print_inithal_fail_msg(HAL_3_0);
-            return EXIT_FAILURE;
-        }
-    }
-#endif /* SUSKEYMASTER_HAL_DISABLE_3_0 */
-
-    std::cerr << "Couldn't initialize a keymaster >= " <<
-        hal_version_major(min_ver) << "." << hal_version_minor(min_ver) <<
-        " HAL instance" << std::endl;
+    print_inithal_fail_msg(versions);
     return EXIT_FAILURE;
 }
 
@@ -1977,15 +2051,32 @@ static void print_generic_usage(void)
         }
 
 #ifdef SUSKEYMASTER_BUILD_HOST
-        if (c.required_hal_version > HAL_NONE)
+        if (c.required_hal_version != HAL_NOT_NEEDED)
             continue;
 #endif /* SUSKEYMASTER_BUILD_HOST */
 
         std::cout << "    ";
 
-        if (c.required_hal_version > HAL_3_0) {
-            std::cout << "(since Keymaster " << hal_version_major(c.required_hal_version)
-                << "." << hal_version_minor(c.required_hal_version) << ") ";
+        if (c.required_hal_version != HAL_ANY &&
+            c.required_hal_version != HAL_NOT_NEEDED)
+        {
+            hal_version min, max;
+            if (!is_consecutive_range(c.required_hal_version, min, max) ||
+                    min == max)
+            {
+                std::cout << "(available in: " <<
+                    version_list_toString(c.required_hal_version)
+                    << ") ";
+            } else {
+                if (min == HAL_MIN) {
+                    std::cout << "(until " << toString(max) << ") ";
+                } else if (max == HAL_MAX) {
+                    std::cout << "(since " << toString(min) << ") ";
+                } else {
+                    std::cout << "(since " << toString(min)
+                        << ", until " << toString(max) << ") ";
+                }
+            }
         }
 
         for (const char *s : c.argv_match)
@@ -2186,7 +2277,7 @@ static int match_and_run_handler(int argc, const char **argv)
     }
 
     /* Init HAL if needed */
-    if (matched_cmd->required_hal_version > HAL_NONE) {
+    if (matched_cmd->required_hal_version & HAL_ANY) {
         const s_log_level old = s_get_log_level();
         s_configure_log_level(S_LOG_WARNING);
         if (init_g_hal(matched_cmd->required_hal_version)) {

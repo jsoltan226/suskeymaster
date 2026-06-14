@@ -1,6 +1,7 @@
 #ifndef SUSKEYMASTER_HAL_DISABLE_3_0
 
 #include "suskmhal.hpp"
+#include "hal-version.hpp"
 
 #ifndef SUSKEYMASTER_BUILD_HOST
 #include "keymaster-types-cpp.hpp"
@@ -40,8 +41,6 @@ SusHidlKeymaster3_0::SusHidlKeymaster3_0(void) :
         return;
     }
 }
-
-u32 SusHidlKeymaster3_0::getVersion(void) const { return 0x30; };
 
 enum KM_3_0_cmd : u32 {
     KM_3_0_GET_HARDWARE_FEATURES = 1,

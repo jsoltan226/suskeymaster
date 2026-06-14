@@ -27,13 +27,11 @@ SusHidlKeymaster4_0::SusHidlKeymaster4_0(void) :
 {
 }
 
-u32 SusHidlKeymaster4_0::getVersion(void) const { return 0x40; };
-
 SusHidlKeymaster4_0::SusHidlKeymaster4_0(const char *fqname, const char *instname) :
     SusHidlKeymasterHALCommon(kmhal_hidl_sp_new_get(fqname, instname, nullptr, false))
 {
     if (!this->getHal()) {
-        /* std::cerr << "Failed to get a handle to the keymaster HAL service" << std::endl; */
+        /* std::cerr << "Failed to get a handle to the keymaster 4.X HAL service" << std::endl;  */
     }
 }
 
@@ -46,8 +44,6 @@ SusHidlKeymaster4_1::SusHidlKeymaster4_1(void) :
      * (4.1 extends 4.0) */
     kmhal_set_fqname(this->getHal(), "android.hardware.keymaster@4.0::IKeymasterDevice");
 }
-
-u32 SusHidlKeymaster4_1::getVersion(void) const { return 0x41; };
 
 enum KM_4_0_cmd : u32 {
     KM_4_0_GET_HARDWARE_INFO = 1,

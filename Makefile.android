@@ -28,7 +28,9 @@ DEPFLAGS ?= -MMD -MP
 
 ASAN_FLAGS := -fsanitize=address
 
-LDFLAGS ?= -fvisibility=hidden
+DEBUG_FLAGS := -O0 -ggdb -fno-omit-frame-pointer
+
+LDFLAGS := -fvisibility=hidden -Wl,-build-id
 ifeq ($(PLATFORM), windows)
 LDFLAGS += -mconsole
 endif
@@ -123,23 +125,23 @@ EXEARGS :=
 .NOTPARALLEL: all trace release br bdr build-tests build-tests-release install
 
 # Build targets
-all: CFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
-all: CXXFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
+all: CFLAGS = $(DEBUG_FLAGS) -Wall $(ASAN_FLAGS)
+all: CXXFLAGS = $(DEBUG_FLAGS) -Wall $(ASAN_FLAGS)
 all: LDFLAGS += $(ASAN_FLAGS)
 all: cli lib
 
-cli: CFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
-cli: CXXFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
+cli: CFLAGS = $(DEBUG_FLAGS) -Wall $(ASAN_FLAGS)
+cli: CXXFLAGS = $(DEBUG_FLAGS) -Wall $(ASAN_FLAGS)
 cli: LDFLAGS += $(ASAN_FLAGS)
 cli: $(OBJDIR) $(BINDIR) $(EXE)
 
-lib: CFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
-lib: CXXFLAGS = -g -O0 -Wall $(ASAN_FLAGS)
+lib: CFLAGS = $(DEBUG_FLAGS) -Wall $(ASAN_FLAGS)
+lib: CXXFLAGS = $(DEBUG_FLAGS) -Wall $(ASAN_FLAGS)
 lib: LDFLAGS += $(ASAN_FLAGS) -Wl,--version-script=libsuskeymaster/libsuskeymaster.map
 lib: $(OBJDIR) $(BINDIR) $(SO_LIB)
 
-trace: CFLAGS = -g -O0 -Wall -DCGD_ENABLE_TRACE $(ASAN_FLAGS)
-trace: CXXFLAGS = -g -O0 -Wall -DCGD_ENABLE_TRACE $(ASAN_FLAGS)
+trace: CFLAGS = $(DEBUG_FLAGS) -Wall -DCGD_ENABLE_TRACE $(ASAN_FLAGS)
+trace: CXXFLAGS = $(DEBUG_FLAGS) -Wall -DCGD_ENABLE_TRACE $(ASAN_FLAGS)
 trace: LDFLAGS += $(ASAN_FLAGS)
 trace: $(OBJDIR) $(BINDIR) $(EXE) $(SO_LIB)
 

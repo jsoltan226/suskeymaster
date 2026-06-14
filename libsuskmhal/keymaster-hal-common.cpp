@@ -21,8 +21,10 @@ using hidl::fromHidl;
 
 bool SusHidlKeymasterHALCommon::isHALOk(void) const
 {
-    if (!this->getHal())
+    if (!this->getHal()) {
+        /* std::cout << __func__ << ": false" << std::endl; */
         return false;
+    }
 
     return kmhal_ping(this->getHal()) == OK;
 }
