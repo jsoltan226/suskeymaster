@@ -22,7 +22,6 @@
 #include <ostream>
 #include <iostream>
 #include <charconv>
-#include <cinttypes>
 #include <system_error>
 #include <unordered_map>
 
@@ -1286,56 +1285,6 @@ static const std::vector<cli_command> cmds = {
     }
 },
 #endif /* SUSKEYMASTER_ENABLE_SEND_INDATA */
-#ifndef SUSKEYMASTER_BUILD_HOST
-{
-    { "aidltest" },
-    { "aidltest" },
-    HAL_NOT_NEEDED,
-    {},
-    [] (arg_map_t&) {
-        SusAidlKeyMint hal;
-        if (!hal.isHALOk()) {
-            std::cerr << "KeyMint HAL init failed" << std::endl;
-            return EXIT_FAILURE;
-        }
-
-        auto s = kmhal_ping(hal.getHalSp());
-        std::cout << "ping result: " << static_cast<int>(s)
-            << " (" << kmhal_android_status_toString(s) << ")" << std::endl;
-
-        printf("KeyMint version: 0x%" PRIx16 "\n", hal.getVersion());
-
-        SecurityLevel slvl;
-        std::string name, authorName;
-        hal.getHardwareInfo(slvl, name, authorName);
-        std::cout << "SecurityLevel: " << toString(slvl) << std::endl;
-        std::cout << "keymasterName: " << name.c_str() << std::endl;
-        std::cout << "keymasterAuthorName: " << authorName.c_str() << std::endl;
-
-        std::vector<u8> sus(0);
-        ErrorCode e = hal.addRngEntropy(sus);
-        std::cout << "addRngEntropy result: " << toString(e) << std::endl;;
-
-        std::vector<KeyParameter> par(4);
-        par[0].tag = Tag::ALGORITHM;
-        par[0].f.algorithm = Algorithm::EC;
-        par[1].tag = Tag::EC_CURVE;
-        par[1].f.ecCurve = EcCurve::P_256;
-        par[2].tag = Tag::CERTIFICATE_NOT_BEFORE;
-        par[2].f.dateTime = 0;
-        par[3].tag = Tag::CERTIFICATE_NOT_AFTER;
-        par[3].f.dateTime = UINT64_C(253402300799000);
-        std::vector<u8> keyblob;
-        KeyCharacteristics kc; std::vector<std::vector<u8>> cert_chain;
-        e = hal.generateKey(par, keyblob, kc, cert_chain);
-        std::cout << "generateKey result: " << toString(e) << std::endl;;
-        std::cout << toString(toHidlView(kc)) << std::endl;
-
-        std::cout << "OK" << std::endl;
-        return EXIT_SUCCESS;
-    }
-}
-#endif /* SUSKEYMASTER_BUILD_HOST */
 };
 
 struct cli_cmd_example_cmdline {
@@ -1368,7 +1317,7 @@ static const std::vector<cli_cmd_example> cmd_examples = {
     },
     {
         "generate an RSA key with the ability to use it for encryption and decryption",
-        "generate \"ALGORITHM=RSA PURPOSE=ENCRYPT PURPOSE=DECRYPT\" keyblob-ec.bin"
+        "generate \"ALGORITHM=RSA PURPOSE=ENCRYPT PURPOSE=DECRYPT\" keyblob-rsa.bin"
     },
     {
         "export the public part of an EC key",
