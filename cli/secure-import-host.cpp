@@ -60,8 +60,8 @@ IMPLEMENT_ASN1_FUNCTIONS(IWK_SECURE_KEY_WRAPPER)
 
 namespace suskeymaster {
 namespace cli {
-namespace transact {
-namespace server {
+namespace secureimport {
+namespace host {
 
 using namespace kmhal::generic;
 
@@ -272,7 +272,7 @@ int wrap_key(std::vector<u8> const& in_private_key,
     }
 
     IWK_KEY_DESC_free(iwk_key_desc);
-    std::cout << "Successfully wrapped private key for transact" << std::endl;
+    std::cout << "Successfully wrapped private key for secure import" << std::endl;
     return 0;
 }
 
@@ -517,7 +517,6 @@ static EVP_PKEY * extract_x509_public_key(std::vector<u8> const& x509_der)
 
     EVP_PKEY *ret = NULL;
     const RSA *rsa = NULL;
-    int bits = 0;
     bool ok = false;
 
     p = x509_der.data();
@@ -531,12 +530,7 @@ static EVP_PKEY * extract_x509_public_key(std::vector<u8> const& x509_der)
         std::cerr << "The key is not an RSA key" << std::endl;
         goto err;
     }
-
-    bits = RSA_bits(rsa);
-    if (bits != 2048) {
-        std::cerr << "Invalid RSA key size (" << bits << " - expected 2048)" << std::endl;
-        goto err;
-    }
+    rsa = NULL;
 
     ok = true;
 
@@ -812,6 +806,9 @@ static int encode_iwk_key_desc_der(std::vector<u8>& out_der,
         std::cerr << "Failed to convert key parameter vec to param list" << std::endl;
         return 1;
     }
+    /*
+    KM_dump_param_list(pr_info, nullptr, key_desc->keyParams, 0, true);
+    */
 
     if ((der_len = i2d_IWK_KEY_DESC(key_desc, NULL)) <= 0) {
         std::cerr << "Failed to measure the importWrappedKey KeyDescription DER length"
@@ -856,6 +853,14 @@ static int encode_iwk_secure_key_wrapper_der(std::vector<u8>& out_der,
     skw = IWK_SECURE_KEY_WRAPPER_new();
     if (skw == NULL) {
         std::cerr << "Failed to allocate a new SecureKeyWrapper ASN.1 object" << std::endl;
+        goto err;
+    }
+
+    if ((skw->version == NULL && (skw->version = ASN1_INTEGER_new()) == NULL) ||
+            !ASN1_INTEGER_set(skw->version, 0L))
+    {
+        std::cerr << "Failed to allocate and set (to `0`) the SecureKeyWrapper version INTEGEr"
+            << std::endl;
         goto err;
     }
 
@@ -937,7 +942,7 @@ err:
 }
 
 
-} /* namespace server */
-} /* namespace transact */
+} /* namespace host */
+} /* namespace secureimport */
 } /* namespace cli */
 } /* namespace suskeymaster */

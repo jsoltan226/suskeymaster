@@ -454,7 +454,7 @@ struct KeyParameter final {
          */
         bool boolValue;
         uint32_t integer;
-        uint64_t longInteger;
+        uint64_t longInteger = UINT64_C(0);
         uint64_t dateTime;
     };
 
@@ -464,9 +464,9 @@ struct KeyParameter final {
      * The blob cannot be placed in the union, but only
      * one of "f" and "blob" may ever be used at a time.
      */
-    Tag tag;
+    Tag tag = Tag::INVALID;
     KeyParameter::IntegerParams f;
-    std::vector<u8> blob;
+    std::vector<u8> blob = {};
 };
 const hidl::KeyParameter toHidlView(const KeyParameter& kp);
 const hidl_vec<hidl::KeyParameter> toHidlView(const std::vector<KeyParameter>&);

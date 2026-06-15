@@ -128,7 +128,7 @@ int attest_key(SusKMHal& hal,
     std::cout << "Successfully generated KeyMaster key attestation" << std::endl;
     out_cert_chain = cert_chain;
 
-    return transact::server::verify_attestation(cert_chain);
+    return secureimport::host::verify_attestation(cert_chain);
 }
 
 int import_key(SusKMHal& hal,

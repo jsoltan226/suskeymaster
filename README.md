@@ -23,7 +23,7 @@ A shared library injected into the KeyMaster/KeyMint HAL process. Hooks the atte
 
 ### `cli` - `suskeymaster` binary
 Standalone command-line tool exposing KeyMaster/KeyMint operations and keybox utilities. Some commands require an on-device HAL connection; others (keybox manipulation, cert wrapping, attestation verification) run on a host Linux/Windows build.
-The CLI, apart from strictly Keymaster/KeyMint operations, also includes utilities for decrypting Android userdata encryption keys (DE and CE). Only Gatekeeper authentication is supported for now, but Weaver support is coming soon. Note that this feature is only really tested on older devices running Keymaster (Android 9, Samsung's Android 14) - it might not fully work yet on newer devices with KeyMint.
+The CLI, apart from strictly Keymaster/KeyMint operations, also includes utilities for decrypting Android userdata encryption keys (DE and CE), as well as some other tools. Only Gatekeeper authentication is supported for now, but Weaver support is coming soon. Note that this feature is only really tested on older devices running Keymaster (Android 9, Samsung's Android 14) - it might not fully work yet on newer devices with KeyMint.
 
 ---
 
@@ -130,9 +130,9 @@ Installation is manual and device-specific. The high-level process:
    patchelf --add-needed libsuskeymaster.so <hal_binary>
    ```
 
-4. **Patch the attestation callback branch** in the HAL binary. Find the call site that invokes the HIDL user callback after attestation and redirect it to `sus_attest_cb` (exported by `libsuskeymaster.so`). This requires disassembly of the HAL binary and manual instruction patching - the exact location is vendor- and version-specific. Also, for now it's only supported/working on my own device configuration - Samsung SKeymaster4device HIDL HAL on Android 14. Integration on other devices and HAL versions is definetly possible but probably requires the `libsuskeymaster/handler.cpp` hook. The rest of the code is generic and works on any version (apart from `libsuskeymaster/key-desc`, that needs a little bit of work to support newer KeyMint attestations).
+4. **Patch the attestation callback branch** in the HAL binary. Find the call site that invokes the HIDL user callback after attestation and redirect it to `sus_attest_cb` (exported by `libsuskeymaster.so`). This requires disassembly of the HAL binary and manual instruction patching - the exact location is vendor- and version-specific. Also, for now it's only supported/working on my own device configuration - Samsung SKeymaster4device HIDL HAL on Android 14. Integration on other systems and HAL versions is definetly possible but probably requires modifications to the `libsuskeymaster/handler.cpp` hook. The rest of the code is generic and works on any modern device configuration.
 
-5. **Place a keybox** at the path expected by `libsuskeymaster` (`/data/vendor/suskeybox.bin`) and restart the HAL, preferably by rebooting. A "fallback" keybox may also be built into the `libsuskeymaster` library directly, by placing a C hexdump of the binary keybox (`xxd -i`) into `libsuskeymaster/builtin-keybox.c`.
+5. **Place a keybox** at the path expected by `libsuskeymaster` (`/data/vendor/suskeybox.bin`) and restart the HAL, preferably by rebooting. A "fallback" keybox may also be built into the `libsuskeymaster` library directly, by placing a C hexdump of the binary keybox (`xxd -i`) in `libsuskeymaster/builtin-keybox.c`.
 
 `sus_attest_cb` has the same signature as the original HIDL callback and calls the original after modifying the cert chain, so non-attestation operations are unaffected.
 
@@ -179,10 +179,10 @@ suskeymaster upgrade <in_keyblob_to_upgrade> <out_upgraded_keyblob> [upgrade_par
 ### Attestation (on-device)
 
 ```sh
-# Generate an ephemeral key and attest it (not working yet on KeyMint :( )
+# Generate an ephemeral key and attest it
 suskeymaster attest generated [generate_params] [attest_params] [attestation]
 
-# Attest an existing key blob - KeyMaster <= 4.1 only
+# Attest an existing key blob - KeyMaster only
 suskeymaster attest file <keyblob> [attest_params] [attestation]
 ```
 
@@ -201,15 +201,15 @@ A two-party protocol for importing a key without it ever appearing in the clear 
 
 ```sh
 # Client (on-device): generate wrapping key
-suskeymaster transact client generate <out_keyblob> <out_pubkey> [key_params] [out_attestation]
+suskeymaster secure-import target generate <out_keyblob> <out_pubkey> [key_params] [out_attestation]
 
 # Server (host): verify attestation, wrap the key to import
-suskeymaster transact server verify <attestation>
-suskeymaster transact server wrap <in_private_key> <in_wrapping_pubkey> \
+suskeymaster secure-import host verify <attestation>
+suskeymaster secure-import host wrap <in_private_key> <in_wrapping_pubkey> \
     <out_wrapped_data> <out_masking_key> [key_params]
 
 # Client (on-device): finalize the import
-suskeymaster transact client import <in_wrapped_data> <in_masking_key> \
+suskeymaster secure-import target import-wrapped-key <in_wrapped_data> <in_masking_key> \
     <in_wrapping_keyblob> <out_keyblob> [unwrapping_params]
 ```
 
@@ -230,7 +230,7 @@ suskeymaster vold gen-appid <in_secdiscardable> [out_appid] [in_auth_secret]
 suskeymaster vold decrypt-de-key <in_vold_encrypted_key> <in_keyblob> \
     <in_secdiscardable> <out_decrypted_key>
 
-# Decrypt a Credential Encrypted (CE) key from a synthetic password
+# Decrypt a Credential Encrypted (CE) key from an unwrapped synthetic password blob (See `gatekeeper unwrap-sp-blob`)
 suskeymaster vold decrypt-ce-key <in_synthetic_password> <sp_blob_ver> \
     <in_encrypted_key> <out_decrypted_key> [in_secdiscardable]
 
@@ -276,13 +276,12 @@ suskeymaster samsung ekey del-tags  <in_keyblob> <out_keyblob> <tags>
 | Keymaster 3.0 | HIDL | Yes |
 | Keymaster 4.0 | HIDL | Yes |
 | Keymaster 4.1 | HIDL | Yes |
-| KeyMint 1.0 | AIDL | Yes* |
-| KeyMint 2.0 | AIDL | Yes* |
-| KeyMint 3.0 | AIDL | Yes* |
-| KeyMint 4.0 | AIDL | Yes* |
+| KeyMint 1.0 | AIDL | Yes |
+| KeyMint 2.0 | AIDL | Yes |
+| KeyMint 3.0 | AIDL | Yes |
+| KeyMint 4.0 | AIDL | Yes |
 
-* Some features (attestation parsing/verification) are not yet supported on KeyMint.
-Furthermore, some CLI commands are restricted by HAL version (e.g. `export` and `attest file` are KeyMaster <= 4.1 only; `transact` (`importWrappedKey`) requires KeyMaster >= 4.0).
+Note: Some CLI commands are restricted by HAL version (e.g. `export` and `attest file` don't exist on KeyMint; `secure-import` (`importWrappedKey`) requires KeyMint or KeyMaster >= 4.0).
 
 StrongBox support is coming soon.
 

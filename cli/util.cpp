@@ -117,7 +117,7 @@ Algorithm determine_algorithm_from_params_and_pkey(std::vector<KeyParameter> con
         if (ret == static_cast<Algorithm>(-1)) {
             std::cerr << "The key blob is not a valid EC or RSA PKCS#8 private key"
                 << std::endl;
-            std::cerr << "Can't guess which algorithm is wanted from just raw bytes" << std::endl;
+            std::cerr << "Can't guess the desired algorithm from just raw bytes" << std::endl;
             return ret;
         }
     }

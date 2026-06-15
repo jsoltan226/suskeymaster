@@ -54,7 +54,7 @@ using transport::AidlVecOfU8View,
 
 SusAidlKeyMint::SusAidlKeyMint() :
     hal_(kmhal_aidl_sp_new_get(
-                "android.hardware.security.keymint.IKeyMintDevice", "strongbox",
+                "android.hardware.security.keymint.IKeyMintDevice", "default",
                 nullptr, false), &transport::kmhal_sp_deleter)
 {
     if (this->hal_.get() == nullptr) {
@@ -289,7 +289,7 @@ ErrorCode SusAidlKeyMint::importWrappedKey(std::vector<u8> const& wrappedKeyData
     };
     const size_t n_out_args = u_arr_size(out_args);
 
-    if (kmhal_call(this->hal_.get(), KeyMintCmd::GENERATE_KEY,
+    if (kmhal_call(this->hal_.get(), KeyMintCmd::IMPORT_WRAPPED_KEY,
                 in_args, n_in_args, out_args, n_out_args, reinterpret_cast<u32 *>(&err)))
     {
         std::cerr << __func__ << ": AIDL call failed" << std::endl;

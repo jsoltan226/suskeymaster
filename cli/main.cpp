@@ -287,7 +287,7 @@ static const std::vector<cli_command> cmds = {
                     cert_chain))
                 return EXIT_FAILURE;
         } else {
-            if (cli::transact::server::verify_attestation(cert_chain))
+            if (cli::secureimport::host::verify_attestation(cert_chain))
                 return EXIT_FAILURE;
         }
 
@@ -629,7 +629,7 @@ static const std::vector<cli_command> cmds = {
 },
 #ifndef SUSKEYMASTER_BUILD_HOST
 {
-    { "transact", "client", "generate" },
+    { "secure-import", "target", "generate" },
     {
         "Generates (optionally using [key_params]) the wrapping key "
             "for a secure import transaction.",
@@ -666,7 +666,7 @@ static const std::vector<cli_command> cmds = {
             std::vector<std::vector<uint8_t>> *const cert_chain_p =
                 gen_att ? &cert_chain : nullptr;
 
-            int r = cli::transact::client::generate_and_attest_wrapping_key(*g_hal,
+            int r = cli::secureimport::target::generate_and_attest_wrapping_key(*g_hal,
                     a["out_keyblob"].out_bytes(), a["out_pubkey"].out_bytes(),
                     cert_chain_p, a["key_params"].in_key_params());
             if (r)
@@ -686,7 +686,7 @@ static const std::vector<cli_command> cmds = {
 },
 #endif /* SUSKEYMASTER_BUILD_HOST */
 {
-    { "transact", "server", "verify" },
+    { "secure-import", "host", "verify" },
     {
         "Verifies the KeyMaster attestation certificate chain <attestation>"
     },
@@ -704,11 +704,11 @@ static const std::vector<cli_command> cmds = {
             return EXIT_FAILURE;
         }
 
-        return cli::transact::server::verify_attestation(cert_chain);
+        return cli::secureimport::host::verify_attestation(cert_chain);
     }
 },
 {
-    { "transact", "server", "wrap" },
+    { "secure-import", "host", "wrap" },
     {
         "Wraps the private key <in_private_key> using <in_wrapping_pubkey> for a secure import.",
         "For RSA and EC keys, <in_private_key> should contain a DER-encoded PKCS#8 private key,",
@@ -739,7 +739,7 @@ static const std::vector<cli_command> cmds = {
         }
     },
     [](arg_map_t& a) {
-        return cli::transact::server::wrap_key(
+        return cli::secureimport::host::wrap_key(
                 a["in_private_key"].in_bytes(),
                 a["in_wrapping_pubkey"].in_bytes(),
                 a["key_params"].in_key_params(),
@@ -750,7 +750,7 @@ static const std::vector<cli_command> cmds = {
 },
 #ifndef SUSKEYMASTER_BUILD_HOST
 {
-    { "transact", "client", "import" },
+    { "secure-import", "target", "import-wrapped-key" },
     {
         "Performs the secure import of <in_wrapped_data> (masked with <in_masking_key>) "
             "using <in_wrapping_keyblob>.",
@@ -782,7 +782,7 @@ static const std::vector<cli_command> cmds = {
         }
     },
     [](arg_map_t& a) {
-        return cli::transact::client::import_wrapped_key(*g_hal,
+        return cli::secureimport::target::import_wrapped_key(*g_hal,
                 a["in_wrapped_data"].in_bytes(),
                 a["in_masking_key"].in_bytes(),
                 a["in_wrapping_keyblob"].in_bytes(),
@@ -1394,29 +1394,29 @@ static const std::vector<cli_cmd_example> cmd_examples = {
     },
 #ifndef SUSKEYMASTER_BUILD_HOST
     {
-        "securely import an EC key (`private-ec.der`) from a remote server "
-            "to the KeyMaster of the client device (`keyblob-ec.bin`)",
+        "securely provision an EC key (`private-ec.der`) from a host "
+            "to the Keymaster/KeyMint of a target device (`keyblob-ec.bin`)",
         {
-            { "transact client generate wrapping-key.bin wrapping-pub.x509 ' ' attestation.bin",
+            { "secure-import target generate wrapping-key.bin wrapping-pub.x509 ' ' attestation.bin",
                 "(client) $ ", true },
-            { "    >>> (upload `wrapping-pub.x509` to the server)", "", false },
-            { "transact server verify attestation.bin   # Optional", "(server) $ ", true },
-            { "transact server wrap "
+            { "    >>> (upload `wrapping-pub.x509` to the host)", "", false },
+            { "secure-import host verify attestation.bin   # Optional", "(server) $ ", true },
+            { "secure-import host wrap "
                 "private-ec.der wrapping-pub.x509 wrapped-data.bin masking-key.bin",
                 "(server) $ ", true },
-            { "    <<< (send `wrapped-data.bin` and `masking-key.bin` to the client)",
+            { "    <<< (send `wrapped-data.bin` and `masking-key.bin` to the target device)",
                 "", false },
-            { "transact client import "
+            { "secure-import target import-wrapped-key "
                 "wrapped-data.bin masking-key.bin wrapping-key.bin keyblob-ec.bin",
                 "(client) $ ", true },
         }
     }
 #else
     {
-        "prepare an EC key (`private-ec.der`) for a secure import on a client device",
+        "prepare an EC key (`private-ec.der`) for a secure import on a target device",
         {
-            { "transact server verify attestation.bin   # Optional", "$ ", true },
-            { "transact server wrap private-ec.der wrapping-pub.x509 "
+            { "secure-import host verify attestation.bin   # Optional", "$ ", true },
+            { "secure-import host wrap private-ec.der wrapping-pub.x509 "
                     "wrapped-data.bin masking-key.bin", "$ ", true },
         }
     }

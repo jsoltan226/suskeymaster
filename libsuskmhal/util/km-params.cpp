@@ -583,37 +583,37 @@ KM_PARAM_LIST * key_params_2_param_list(std::vector<KeyParameter> const& params)
 
     for (auto const& kp : params) {
 
-#define try_assign_SET_OF_INTEGER(field_) do {                                      \
-    if (push_int(&ret->field_, kp.f.longInteger)) {                                 \
-        std::cerr << "Failed to push a repeatable INTEGER tag \""                   \
-            << toString(kp.tag) << "\" value " << kp.f.longInteger << std::endl;    \
-        goto err;                                                                   \
-    }                                                                               \
+#define try_assign_SET_OF_INTEGER(field_) do {                                          \
+    if (push_int(&ret->field_, is_long_integer ? kp.f.longInteger : kp.f.integer)) {    \
+        std::cerr << "Failed to push a repeatable INTEGER tag \""                       \
+            << toString(kp.tag) << "\" value " << kp.f.longInteger << std::endl;        \
+        goto err;                                                                       \
+    }                                                                                   \
 } while (0)
 
-#define try_assign_INTEGER(field_) do {                                             \
-    if (assign_int(&ret->field_, kp.f.longInteger)) {                               \
-        std::cerr << "Failed to assign an INTEGER tag \""                           \
-            << toString(kp.tag) << "\" value " << kp.f.longInteger << std::endl;    \
-        goto err;                                                                   \
-    }                                                                               \
+#define try_assign_INTEGER(field_) do {                                                 \
+    if (assign_int(&ret->field_, is_long_integer ? kp.f.longInteger : kp.f.integer)) {  \
+        std::cerr << "Failed to assign an INTEGER tag \""                               \
+            << toString(kp.tag) << "\" value " << kp.f.longInteger << std::endl;        \
+        goto err;                                                                       \
+    }                                                                                   \
 } while (0)
 
-#define try_assign_OCTET_STRING(field_) do {                                        \
-    if (assign_octet_string(&ret->field_, kp.blob)) {                               \
-        std::cerr << "Failed to assign an OCTET_STRING tag \""                      \
-            << toString(kp.tag) << "\" value " << std::endl;                        \
-        goto err;                                                                   \
-    }                                                                               \
+#define try_assign_OCTET_STRING(field_) do {                                            \
+    if (assign_octet_string(&ret->field_, kp.blob)) {                                   \
+        std::cerr << "Failed to assign an OCTET_STRING tag \""                          \
+            << toString(kp.tag) << "\" value " << std::endl;                            \
+        goto err;                                                                       \
+    }                                                                                   \
 } while (0)
 
-#define try_assign_NULL(field_) do {                                                \
-    /* only create ASN1_NULL boolean values if `true` */                            \
-    if (kp.f.boolValue && assign_bool(&ret->field_)) {                              \
-        std::cerr << "Failed to assign a BOOLEAN tag \""                            \
-            << toString(kp.tag) << "\" value" << std::endl;                         \
-        goto err;                                                                   \
-    }                                                                               \
+#define try_assign_NULL(field_) do {                                                    \
+    /* only create ASN1_NULL boolean values if `true` */                                \
+    if (kp.f.boolValue && assign_bool(&ret->field_)) {                                  \
+        std::cerr << "Failed to assign a BOOLEAN tag \""                                \
+            << toString(kp.tag) << "\" value" << std::endl;                             \
+        goto err;                                                                       \
+    }                                                                                   \
 } while (0)
 
         if (kp.tag == Tag::ROOT_OF_TRUST) {
@@ -633,6 +633,16 @@ KM_PARAM_LIST * key_params_2_param_list(std::vector<KeyParameter> const& params)
                 std::cerr << "Failed to deserialize ROOT_OF_TRUST DER" << std::endl;
                 goto err;
             }
+        }
+
+        bool is_long_integer = false;
+        switch (static_cast<TagType>(__KM_TAG_TYPE_MASK(static_cast<u32>(kp.tag)))) {
+            default: break;
+            case TagType::ULONG:
+            case TagType::ULONG_REP:
+            case TagType::DATE:
+                is_long_integer = true;
+                break;
         }
 
 #define try_assign_ROOT_OF_TRUST(field_) do { (void)ret->field_; } while (0)

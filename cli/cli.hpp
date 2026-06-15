@@ -87,8 +87,8 @@ namespace keybox {
 
 } /* namespace keybox */
 
-namespace transact {
-    namespace client {
+namespace secureimport {
+    namespace target {
         int generate_and_attest_wrapping_key(SusKMHal& hal,
             std::vector<u8>& out_wrapping_blob, std::vector<u8>& out_wrapping_pubkey,
             std::vector<std::vector<u8>> * out_opt_cert_chain,
@@ -96,7 +96,7 @@ namespace transact {
         );
     }
 
-    namespace server {
+    namespace host {
         int verify_attestation(std::vector<std::vector<u8>> const& cert_chain);
 
         int wrap_key(std::vector<u8> const& in_private_key,
@@ -104,14 +104,14 @@ namespace transact {
             std::vector<u8>& out_wrapped_data, std::vector<u8>& out_masking_key);
     }
 
-    namespace client {
+    namespace target {
         int import_wrapped_key(SusKMHal& hal, std::vector<u8> const& in_wrapped_data,
             std::vector<u8> const& in_masking_key, std::vector<u8> const& in_wrapping_blob,
             std::vector<KeyParameter> const& in_unwrapping_params,
             std::vector<u8>& out_key_blob);
     };
 
-} /* namespace transact */
+} /* namespace secureimport */
 
 namespace vold {
     int generate_app_id(std::vector<u8> const& in_secdiscardable,
