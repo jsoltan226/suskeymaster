@@ -189,6 +189,27 @@
     KM_DECL_TAG(INCLUDE_UNIQUE_ID, BOOL, 202, includeUniqueId, NULL, NULL, _)                           \
                                                                                                         \
     /**                                                                                                 \
+     * Added in KeyMint.                                                                                \
+     *                                                                                                  \
+     * Tag::RSA_OAEP_MGF_DIGEST specifies the MGF1 digest algorithms that may be used with RSA          \
+     * encryption/decryption with OAEP padding.  Possible values are defined by the Digest enum.        \
+     *                                                                                                  \
+     * This tag is repeatable for key generation/import.                                                \
+     *                                                                                                  \
+     * If the caller specifies an MGF1 digest in the params argument of begin(), that digest must be    \
+     * present as an RSA_OAEP_MGF_DIGEST value in the key characteristics (or the begin() operation     \
+     * must fail with ErrorCode::INCOMPATIBLE_MGF_DIGEST).                                              \
+     *                                                                                                  \
+     * If the caller does not specify an MGF1 digest in the params argument of begin(), a default       \
+     * MGF1 digest of SHA1 is used.  If the key characteristics have any explicitly specified values    \
+     * for RSA_OAEP_MGF_DIGEST, then SHA1 must be included (or the begin() operation must fail with     \
+     * ErrorCode::INCOMPATIBLE_MGF_DIGEST).                                                             \
+     *                                                                                                  \
+     * Must be hardware-enforced.                                                                       \
+     */                                                                                                 \
+    KM_DECL_TAG(RSA_OAEP_MGF_DIGEST, ENUM_REP, 203, rsaOaepMgfDigest, Digest, INTEGER, _SET_OF_)        \
+                                                                                                        \
+    /**                                                                                                 \
      * Tag::BLOB_USAGE_REQUIREMENTS specifies the necessary system environment conditions for the       \
      * generated key to be used.  Possible values are defined by the KeyBlobUsageRequirements enum.     \
      *                                                                                                  \
@@ -863,7 +884,7 @@
      *                                                                                                  \
      * Must never appear in KeyCharacteristics.                                                         \
      */                                                                                                 \
-    KM_DECL_TAG(MODULE_HASH, BYTES, 724, moduleHash, NULL, INTEGER, _)                                  \
+    KM_DECL_TAG(MODULE_HASH, BYTES, 724, moduleHash, NULL, OCTET_STRING, _)                             \
                                                                                                         \
     /* Internal Samsung tag: used to validate datetime requirements in begin(). */                      \
     KM_DECL_TAG(INTERNAL_CURRENT_DATETIME, DATE, 800, internalCurrentDateTime, NULL, INTEGER, _)        \

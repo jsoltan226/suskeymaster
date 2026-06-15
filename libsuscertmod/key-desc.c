@@ -190,8 +190,14 @@ static i32 validate_km_desc(const KM_KEY_DESC *desc)
 {
     static const i64 supported_versions[][2] = {
         /* attestation, keymaster */
-        { 3, 4 },
-        { 2, 3 }
+        { 400, 400 },   /* KeyMint 4.0 */
+        { 300, 300 },   /* KeyMint 3.0 */
+        { 200, 200 },   /* KeyMint 2.0 */
+        { 100, 100 },   /* KeyMint 1.0 */
+        { 4, 41 },      /* Keymaster 4.1 */
+        { 3, 4 },       /* Keymaster 4.0 */
+        { 2, 3 },       /* Keymaster 3.0 */
+        /* { 1, 2 }        Keymaster 2.0 not supported */
     };
     i64 att_ver = 0, km_ver = 0;
 
@@ -220,6 +226,11 @@ static i32 validate_km_desc(const KM_KEY_DESC *desc)
     case KM_SECURITY_LEVEL_TRUSTED_ENVIRONMENT:
     case KM_SECURITY_LEVEL_STRONGBOX:
         break;
+    case KM_SECURITY_LEVEL_KEYSTORE:
+        /* only exists from KeyMint 1.0 onwards */
+        if (km_ver >= 100)
+            break;
+
     default:
         s_log_error("Invalid attestation security level: %lld",
                 (long long int)i);

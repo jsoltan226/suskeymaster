@@ -54,7 +54,7 @@ using transport::AidlVecOfU8View,
 
 SusAidlKeyMint::SusAidlKeyMint() :
     hal_(kmhal_aidl_sp_new_get(
-                "android.hardware.security.keymint.IKeyMintDevice", "default",
+                "android.hardware.security.keymint.IKeyMintDevice", "strongbox",
                 nullptr, false), &transport::kmhal_sp_deleter)
 {
     if (this->hal_.get() == nullptr) {

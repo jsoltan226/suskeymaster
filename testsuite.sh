@@ -43,9 +43,8 @@ echo
 echo
 echo
 echo '>>> attest generated'
-echo '(skip for now)'
 echo
-#run '"$SUSKEYMASTER" attest generated "ALGORITHM=EC PURPOSE=SIGN APPLICATION_ID=$(getb64 "application-id")" "APPLICATION_ID=$(getb64 "application-id")"' || exit 1
+run '"$SUSKEYMASTER" attest generated "ALGORITHM=RSA PURPOSE=SIGN APPLICATION_ID=$(getb64 "application-id")" "APPLICATION_ID=$(getb64 "application-id")"' || exit 1
 
 # import
 echo
@@ -96,14 +95,14 @@ echo
 echo
 echo '>>> crypto sign & verify'
 echo
-run '"$SUSKEYMASTER" generate "ALGORITHM=HMAC PURPOSE=SIGN PURPOSE=VERIFY DIGEST=SHA_2_256" hmac-keyblob.bin' || exit 1
+run '"$SUSKEYMASTER" generate "ALGORITHM=EC PURPOSE=SIGN PURPOSE=VERIFY DIGEST=SHA_2_256" ec-keyblob.bin' || exit 1
 echo
-run '"$SUSKEYMASTER" crypto sign hmac-keyblob.bin message.txt signature.bin "DIGEST=SHA_2_256"' || exit 1
+run '"$SUSKEYMASTER" crypto sign ec-keyblob.bin message.txt signature.bin "DIGEST=SHA_2_256"' || exit 1
 echo
-run '"$SUSKEYMASTER" crypto verify hmac-keyblob.bin message.txt signature.bin "DIGEST=SHA_2_256"' || exit 1
+run '"$SUSKEYMASTER" crypto verify ec-keyblob.bin message.txt signature.bin "DIGEST=SHA_2_256"' || exit 1
 
 run rm message.txt signature.bin
-run rm hmac-keyblob.bin
+run rm ec-keyblob.bin
 
 
 echo

@@ -132,9 +132,6 @@ void init_default_params_for_alg_and_purposes(std::vector<KeyParameter>& params,
 {
     bool sign_verify = false, enc_dec = false, wrap_key = false;
     bool private_ops = false;
-    if (purposes.size() && is_generate_key) {
-        std::cerr << "WARNING: Generating key with no purpose" << std::endl;
-    }
 
     for (KeyPurpose p : purposes) {
         if (p == KeyPurpose::SIGN || p == KeyPurpose::VERIFY)

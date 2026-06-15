@@ -90,6 +90,9 @@ int generate_key(SusKMHal& hal,
             util::find_rep_tag<KeyPurpose>(Tag::PURPOSE, params),
             true, hal.getVersion() >= 0x100);
 
+    if (util::find_rep_tag<KeyPurpose>(Tag::PURPOSE, params).empty())
+        std::cerr << "WARNING: Gerating key with no purpose" << std::endl;
+
     KeyCharacteristics dummy;
     ErrorCode e = hal.generateKey(params, out_key_blob, dummy, out_cert_chain);
     if (e != ErrorCode::OK) {

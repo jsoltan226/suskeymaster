@@ -126,6 +126,19 @@ int sign(SusKMHal& hal, std::vector<u8> const& message,
 
     std::cout << "Signing operation OK" << std::endl;
 
+    bool found_purpose_verify = false;
+    for (const auto& kp : kc.hardwareEnforced) {
+        if (kp.tag == Tag::PURPOSE && kp.f.purpose == KeyPurpose::VERIFY) {
+            found_purpose_verify = true;
+            break;
+        }
+    }
+    if (!found_purpose_verify) {
+        std::cerr << "WARNING: The key doesn't have KeyPurpose::VERIFY; "
+            "skipping sanity signature verification" << std::endl;
+        return 0;
+    }
+
     if (do_generic_operation_cycle(hal, KeyPurpose::VERIFY, key, message,
                 verify_params, auth_token, &out_signature, nullptr, nullptr) != ErrorCode::OK)
     {
