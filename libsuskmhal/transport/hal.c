@@ -408,6 +408,12 @@ int kmhal_arg_parse_u64(const struct kmhal_parcel *p, size_t *off_p,
     return kmhal_parcel_read_u64(p, off_p, out);
 }
 
+bool kmhal_get_is_aidl(const struct kmhal_sp *hal)
+{
+    u_check_params(hal != NULL && atomic_load(&hal->initialized_));
+    return hal->aidl;
+}
+
 struct kmhal_binder_ctx *
 kmhal_get_binder(struct kmhal_sp *hal,
                           bool *opt_out_owns_binder)

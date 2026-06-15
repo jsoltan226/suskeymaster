@@ -6,8 +6,11 @@
 #include <libsuskmhal/suskmhal.hpp>
 #include <libsuskmhal/transport/parcel.h>
 #include <libsuskmhal/transport/hal.h>
+#include <libsuskmhal/transport/aidl-util.h>
 #include <libsuskmhal/transport/hidl-base.h>
 #include <libsuskmhal/transport/hidl-types.h>
+#include <libsuskmhal/transport/aidl2generic.hpp>
+#include <libsuskmhal/transport/keymint-types-aidl.h>
 #include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #endif /* SUSKEYMASTER_BUILD_HOST */
 #include <libsuskmhal/keymaster-types-cpp.hpp>
@@ -55,11 +58,21 @@ static int decrypt_v2_v3_blob(SusKMHal& hal, HardwareAuthToken const& auth_token
 /** See "hardware/interfaces/gatekeeper/1.0/types.hal"
  ** and "hardware/interfaces/gatekeeper/1.0/IGatekeeper.hal" **/
 
-enum class GK_HAL_CMD : u32 {
+enum class GK_HIDL_HAL_CMD : u32 {
     ENROLL = 1,
     VERIFY = 2,
     DELETE_USER = 3,
     DELETE_ALL_USERS = 4
+};
+
+/** See "hardware/interfaces/gatekeeper/aidl/android/hardware/gatekeeper/IGatekeeper.aidl"
+ ** and "hardware/interfaces/gatekeeper/aidl/android/hardware/gatekeeper/GatekeeperVerifyResponse.aidl" **/
+
+enum class GK_AIDL_HAL_CMD : u32 {
+    DELETE_ALL_USERS = 1,
+    DELETE_USER = 2,
+    ENROLL = 3,
+    VERIFY = 4
 };
 
 /**
@@ -95,6 +108,12 @@ static_assert(offsetof(hidl_GatekeeperResponse, data) == 8, "wrong offset");
 static_assert(sizeof(hidl_GatekeeperResponse) == 24, "wrong size");
 static_assert(alignof(hidl_GatekeeperResponse) == 8, "wrong alignment");
 
+struct aidl_GatekeeperVerifyResponse {
+    GatekeeperStatusCode code;
+    u32 timeout_ms;
+    struct aidl_hardware_auth_token hardware_auth_token;
+};
+
 /* "system/gatekeeper/include/gatekeeper/password_handle.h" */
 #define HANDLE_FLAG_THROTTLE_SECURE 1;
 #define HANDLE_VERSION_THROTTLE 2;
@@ -116,11 +135,27 @@ struct __attribute__ ((__packed__)) password_handle_t {
 };
 
 #ifndef SUSKEYMASTER_BUILD_HOST
-static int read_gatekeeper_response(const struct kmhal_parcel *p,
-                                    size_t *off_p,
-                                    const void **out, size_t out_size);
 
-static constexpr const char *gatekeeper_fqname = "android.hardware.gatekeeper@1.0::IGatekeeper";
+static int do_hidl_verify_call(gk_hal& gk_hal, HardwareAuthToken& out,
+                               u32 uid, u64 challenge, std::vector<u8> const& cred,
+                               std::vector<u8> const& handle);
+
+static int do_aidl_verify_call(gk_hal& gk_hal, HardwareAuthToken& out,
+                               u32 uid, u64 challenge, std::vector<u8> const& cred,
+                               std::vector<u8> const& handle);
+
+static int read_hidl_gatekeeper_response(const struct kmhal_parcel *p, size_t *off_p,
+                                         const void **out, size_t out_size);
+
+static void destroy_aidl_gatekeeper_response(aidl_GatekeeperVerifyResponse *res);
+static int read_aidl_gatekeeper_response(const struct kmhal_parcel *p, size_t *off_p,
+                                         void *out, size_t out_size);
+
+static constexpr const char *gatekeeper_hidl_fqname =
+    "android.hardware.gatekeeper@1.0::IGatekeeper";
+static constexpr const char *gatekeeper_aidl_fqname =
+    "android.hardware.gatekeeper.IGatekeeper";
+
 static constexpr const char *gatekeeper_instname = "default";
 #endif /* SUSKEYMASTER_BUILD_HOST */
 
@@ -129,13 +164,22 @@ gk_hal::gk_hal() {
     this->hal_sp = nullptr;
 
 #ifndef SUSKEYMASTER_BUILD_HOST
-    this->hal_sp = kmhal_hidl_sp_new_get(gatekeeper_fqname, gatekeeper_instname, nullptr, false);
+
+    /* Try AIDL first */
+    this->hal_sp = kmhal_aidl_sp_new_get(gatekeeper_aidl_fqname, gatekeeper_instname,
+            nullptr, false);
     if (this->hal_sp == nullptr) {
-        std::cerr << "Couldn't obtain a handle to the Gatekeeper HAL" << std::endl;
-        return;
+        this->hal_sp = kmhal_hidl_sp_new_get(gatekeeper_hidl_fqname, gatekeeper_instname,
+                nullptr, false);
+        if (this->hal_sp == nullptr) {
+            std::cerr << "Couldn't obtain a handle to the Gatekeeper HAL" << std::endl;
+            return;
+        }
     }
 
-    std::cout << "Successfully initialized Gatekeeper HAL" << std::endl;
+
+    std::cout << "Successfully initialized Gatekeeper " <<
+        (kmhal_get_is_aidl(this->hal_sp) ? "AIDL" : "HIDL") << " HAL" << std::endl;
     this->owns = true;
 #else
     std::cerr << "Gatekeeper HAL not supported on host build" << std::endl;
@@ -155,14 +199,19 @@ gk_hal::gk_hal(SusKMHal& kmhal) {
         return;
     }
 
-    this->hal_sp = kmhal_hidl_sp_new_get(gatekeeper_fqname, gatekeeper_instname,
+    this->hal_sp = kmhal_aidl_sp_new_get(gatekeeper_aidl_fqname, gatekeeper_instname,
                                          kmhal_get_binder(kmhal_sp, nullptr), false);
     if (this->hal_sp == nullptr) {
-        std::cerr << "Couldn't obtain a handle to the Gatekeeper HAL" << std::endl;
-        return;
+        this->hal_sp = kmhal_hidl_sp_new_get(gatekeeper_hidl_fqname, gatekeeper_instname,
+                                             kmhal_get_binder(kmhal_sp, nullptr), false);
+        if (this->hal_sp == nullptr) {
+            std::cerr << "Couldn't obtain a handle to the Gatekeeper HAL" << std::endl;
+            return;
+        }
     }
 
-    std::cout << "Successfully initialized Gatekeeper HAL" << std::endl;
+    std::cout << "Successfully initialized Gatekeeper " <<
+        (kmhal_get_is_aidl(this->hal_sp) ? "AIDL" : "HIDL") << " HAL" << std::endl;
     this->owns = true;
 #else
     (void) kmhal;
@@ -187,85 +236,10 @@ int verify(SusKMHal& kmhal, u32 uid, u64 challenge, std::vector<u8> const& cred,
         return EXIT_FAILURE;
     }
 
-    hidl_GatekeeperResponse res;
-
-    {
-#ifndef SUSKEYMASTER_BUILD_HOST
-        hidl_vec<u8> pwd_handle = toHidlView(handle);
-        hidl_vec<u8> gk_password = toHidlView(cred);
-
-        const hidl_GatekeeperResponse *res_p = nullptr;
-
-        const struct kmhal_arg_write_desc in_args[] = {
-            kmhal::transport::init_write_p("uid", uid, kmhal_arg_write_u32),
-            kmhal::transport::init_write_p("challenge", challenge, kmhal_arg_write_u64),
-            kmhal::transport::init_write_b("enrolledPasswordHandle", &pwd_handle,
-                    kmhal_hidl_arg_write_vec_of_u8),
-            kmhal::transport::init_write_b("providedPassword", &gk_password,
-                    kmhal_hidl_arg_write_vec_of_u8)
-        };
-        struct kmhal_arg_parse_desc out_args[] = {
-            kmhal::transport::init_parse_b("response", &res_p, read_gatekeeper_response)
-        };
-
-        std::cout << "Calling IGatekeeper::Verify..." << std::endl;
-        if (kmhal_call(gk_hal.get_hal_sp(), static_cast<u32>(GK_HAL_CMD::VERIFY),
-                        in_args, u_arr_size(in_args), out_args, u_arr_size(out_args), nullptr))
-        {
-            std::cerr << "Gatekeeper HAL call failed" << std::endl;
-            return EXIT_FAILURE;
-        }
-
-        res = *res_p;
-#else
-        (void) uid;
-        (void) challenge;
-        (void) handle;
-        (void) cred;
-        std::cerr << "Gatekeeper HAL not supported on host build" << std::endl;
-        res.code = GatekeeperStatusCode::ERROR_NOT_IMPLEMENTED;
-#endif /* SUSKEYMASTER_BUILD_HOST */
-    }
-
-    i32 c = static_cast<i32>(res.code);
-    std::cout << "Gatekeeper call result status: " << c
-        << " (" << gatekeeper_status_toString(c) << ")" << std::endl;
-
-    if (res.code == GatekeeperStatusCode::STATUS_OK) {
-        constexpr size_t TOKEN_MAC_LENGTH = static_cast<size_t>(Constants::AUTH_TOKEN_MAC_LENGTH);
-
-        /* "hardware/libhardware/include_all/hardware/hw_auth_token.h" */
-        typedef struct __attribute__((__packed__)) {
-            uint8_t version;  // Current version is 0
-            uint64_t challenge;
-            uint64_t user_id;             // secure user ID, not Android user ID
-            uint64_t authenticator_id;    // secure authenticator ID
-            uint32_t authenticator_type;  // hw_authenticator_type_t, in network order
-            uint64_t timestamp;           // in network order
-            uint8_t hmac[TOKEN_MAC_LENGTH];
-        } hw_auth_token_t;
-        hw_auth_token_t auth_token;
-        if (res.data.size() != sizeof(auth_token)) {
-            std::cerr << "Received invalid AuthToken from Gatekeeper" << std::endl;
-            return EXIT_FAILURE;
-        }
-        memcpy(&auth_token, res.data.data(), sizeof(auth_token));
-        if (auth_token.version != 0) {
-            std::cerr << "WARNING: auth_token version "
-                "(" << auth_token.version << ") is not 0" << std::endl;
-        }
-
-        out.challenge = auth_token.challenge;
-        out.userId = auth_token.user_id;
-        out.authenticatorId = auth_token.authenticator_id;
-        out.authenticatorType = static_cast<HardwareAuthenticatorType>
-            (be32toh(auth_token.authenticator_type));
-        out.timestamp = be64toh(auth_token.timestamp);
-        out.mac = std::vector<u8>(TOKEN_MAC_LENGTH);
-        memcpy(out.mac.data(), auth_token.hmac, TOKEN_MAC_LENGTH);
-    }
-
-    return res.code == GatekeeperStatusCode::STATUS_OK ? EXIT_SUCCESS : EXIT_FAILURE;
+    if (kmhal_get_is_aidl(gk_hal.get_hal_sp()))
+        return do_aidl_verify_call(gk_hal, out, uid, challenge, cred, handle);
+    else
+        return do_hidl_verify_call(gk_hal, out, uid, challenge, cred, handle);
 }
 
 int read_pwd_data(std::vector<u8> const& pwd_data, sp_pwd_data& out, bool log)
@@ -301,14 +275,18 @@ int read_pwd_data(std::vector<u8> const& pwd_data, sp_pwd_data& out, bool log)
         std::printf("Scrypt R: %" PRIu8 " (0x%" PRIx8 ")\n", out.R, out.R);
         std::printf("Scrypt P: %" PRIu8 " (0x%" PRIx8 ")\n", out.P, out.P);
     }
-    if (out.N != sp_pwd_data::PASSWORD_SCRYPT_LOG_N)
-        std::cerr << "WARNING: Scrypt `N` parameter " << out.N << " not the AOSP default " <<
-            static_cast<int>(sp_pwd_data::PASSWORD_SCRYPT_LOG_N) << std::endl;
+    if (out.N != sp_pwd_data::PASSWORD_SCRYPT_LOG_N && out.N != sp_pwd_data::PASSWORD_SCRYPT_LOG_N_OLD)
+        std::cerr << "WARNING: Scrypt `N` parameter " << static_cast<int>(out.N)
+            << " not any of the AOSP defaults: " <<
+            static_cast<int>(sp_pwd_data::PASSWORD_SCRYPT_LOG_N) << " or " <<
+            static_cast<int>(sp_pwd_data::PASSWORD_SCRYPT_LOG_N_OLD) << std::endl;
     if (out.R != sp_pwd_data::PASSWORD_SCRYPT_LOG_R)
-        std::cerr << "WARNING: Scrypt `R` parameter " << out.N << " not the AOSP default " <<
+        std::cerr << "WARNING: Scrypt `R` parameter " << static_cast<int>(out.R)
+            << " not the AOSP default " <<
             static_cast<int>(sp_pwd_data::PASSWORD_SCRYPT_LOG_R) << std::endl;
     if (out.P != sp_pwd_data::PASSWORD_SCRYPT_LOG_P)
-        std::cerr << "WARNING: Scrypt `P` parameter " << out.N << " not the AOSP default " <<
+        std::cerr << "WARNING: Scrypt `P` parameter " << static_cast<int>(out.P) 
+            << " not the AOSP default " <<
             static_cast<int>(sp_pwd_data::PASSWORD_SCRYPT_LOG_P) << std::endl;
 
     /* Scrypt salt length */
@@ -348,10 +326,10 @@ int read_pwd_data(std::vector<u8> const& pwd_data, sp_pwd_data& out, bool log)
     handle_len = be32toh(handle_len);
     p += sizeof(u32);
     if (log)
-        std::printf("Handle length: %" PRIu32 " (0x%" PRIx32 ")\n",
+        std::printf("GK Handle length: %" PRIu32 " (0x%" PRIx32 ")\n",
                 handle_len, handle_len);
     if (handle_len > 10000) {
-        std::cerr << "Bogus handle length" << std::endl;
+        std::cerr << "Bogus Gatekeeper handle length" << std::endl;
         return 1;
     }
 
@@ -367,7 +345,7 @@ int read_pwd_data(std::vector<u8> const& pwd_data, sp_pwd_data& out, bool log)
     memcpy(out.handle.data(), p, handle_len);
     p += handle_len;
     if (log) {
-        std::printf("Handle: ");
+        std::printf("GK Handle: ");
         for (u8 b : out.handle) {
             std::printf("%02x", (unsigned)b);
         }
@@ -678,9 +656,8 @@ static const char * gatekeeper_status_toString(i32 s)
 }
 
 #ifndef SUSKEYMASTER_BUILD_HOST
-static int read_gatekeeper_response(const struct kmhal_parcel *p,
-                                    size_t *off_p,
-                                    const void **out, size_t out_size)
+static int read_hidl_gatekeeper_response(const struct kmhal_parcel *p, size_t *off_p,
+                                         const void **out, size_t out_size)
 {
     if (out == nullptr || out_size != sizeof(hidl_GatekeeperResponse)) {
         std::cerr << __func__ << ": Invalid parameters" << std::endl;
@@ -710,6 +687,179 @@ static int read_gatekeeper_response(const struct kmhal_parcel *p,
 
     return 0;
 }
+
+static void destroy_aidl_gatekeeper_response(aidl_GatekeeperVerifyResponse *res)
+{
+    if (res == nullptr)
+        return;
+
+    res->code = GatekeeperStatusCode::ERROR_GENERAL_FAILURE;
+    res->timeout_ms = 0;
+    destroy_aidl_hardware_auth_token(&res->hardware_auth_token);
+}
+
+static int read_aidl_gatekeeper_response(const struct kmhal_parcel *p, size_t *off_p,
+                                         void *out, size_t out_size)
+{
+    if (out == nullptr || out_size != sizeof(aidl_GatekeeperVerifyResponse)) {
+        std::cerr << __func__ << ": Invalid parameters" << std::endl;
+        return -1;
+    }
+
+    size_t start = 0;
+    i32 size = 0;
+    if (kmhal_aidl_parse_parcelable_header(p, off_p, &start, false, &size)) {
+        std::cerr << "Failed to read the GatekeeperVerifyResponse parcelable header" << std::endl;
+        return 1;
+    }
+
+    auto *const res = reinterpret_cast<aidl_GatekeeperVerifyResponse *>(out);
+
+    if (kmhal_parcel_read_u32(p, off_p, reinterpret_cast<u32 *>(&res->code))) {
+        std::cerr << "Failed to read the GatekeeperVerifyResponse code" << std::endl;
+        return 1;
+    }
+
+    if (kmhal_parcel_read_u32(p, off_p, &res->timeout_ms)) {
+        std::cerr << "Failed to read the GatekeeperVerifyResponse timeousMs field" << std::endl;
+        return 1;
+    }
+
+    if (parse_aidl_hardware_auth_token(p, off_p, &res->hardware_auth_token,
+                sizeof(aidl_hardware_auth_token)))
+    {
+        std::cerr << "Failed to parse the GatekeeperVerifyResponse hardwareAuthToken"
+            << std::endl;
+        return 1;
+    }
+
+    if (kmhal_aidl_validate_parcelable_size(start, *off_p, size)) {
+        std::cerr << "GatekeeperVerifyResponse parcelable size mismatch" << std::endl;
+        return 1;
+    }
+
+    return 0;
+}
+
+static int do_hidl_verify_call(gk_hal& gk_hal, HardwareAuthToken& out,
+                               u32 uid, u64 challenge, std::vector<u8> const& cred,
+                               std::vector<u8> const& handle)
+{
+    hidl_vec<u8> pwd_handle = toHidlView(handle);
+    hidl_vec<u8> gk_password = toHidlView(cred);
+
+    const hidl_GatekeeperResponse *res_p = nullptr;
+
+    const struct kmhal_arg_write_desc in_args[] = {
+        kmhal::transport::init_write_p("uid", uid, kmhal_arg_write_u32),
+        kmhal::transport::init_write_p("challenge", challenge, kmhal_arg_write_u64),
+        kmhal::transport::init_write_b("enrolledPasswordHandle", &pwd_handle,
+                kmhal_hidl_arg_write_vec_of_u8),
+        kmhal::transport::init_write_b("providedPassword", &gk_password,
+                kmhal_hidl_arg_write_vec_of_u8)
+    };
+    struct kmhal_arg_parse_desc out_args[] = {
+        kmhal::transport::init_parse_b("response", &res_p, read_hidl_gatekeeper_response)
+    };
+
+    std::cout << "Calling IGatekeeper::Verify..." << std::endl;
+    if (kmhal_call(gk_hal.get_hal_sp(), static_cast<u32>(GK_HIDL_HAL_CMD::VERIFY),
+                    in_args, u_arr_size(in_args), out_args, u_arr_size(out_args), nullptr))
+    {
+        std::cerr << "Gatekeeper HAL call failed" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+
+    i32 c = static_cast<i32>(res_p->code);
+    std::cout << "Gatekeeper call result status: " << c
+        << " (" << gatekeeper_status_toString(c) << ")" << std::endl;
+    if (c < 0)
+        return EXIT_FAILURE;
+
+    constexpr size_t TOKEN_MAC_LENGTH = static_cast<size_t>(Constants::AUTH_TOKEN_MAC_LENGTH);
+
+    /* "hardware/libhardware/include_all/hardware/hw_auth_token.h" */
+    typedef struct __attribute__((__packed__)) {
+        uint8_t version;  // Current version is 0
+        uint64_t challenge;
+        uint64_t user_id;             // secure user ID, not Android user ID
+        uint64_t authenticator_id;    // secure authenticator ID
+        uint32_t authenticator_type;  // hw_authenticator_type_t, in network order
+        uint64_t timestamp;           // in network order
+        uint8_t hmac[TOKEN_MAC_LENGTH];
+    } hw_auth_token_t;
+    hw_auth_token_t auth_token;
+    if (res_p->data.size() != sizeof(auth_token)) {
+        std::cerr << "Received invalid AuthToken from Gatekeeper" << std::endl;
+        return EXIT_FAILURE;
+    }
+    memcpy(&auth_token, res_p->data.data(), sizeof(auth_token));
+    if (auth_token.version != 0) {
+        std::cerr << "WARNING: auth_token version "
+            "(" << auth_token.version << ") is not 0" << std::endl;
+    }
+
+    /* fromHidl */
+    out.challenge = auth_token.challenge;
+    out.userId = auth_token.user_id;
+    out.authenticatorId = auth_token.authenticator_id;
+    out.authenticatorType = static_cast<HardwareAuthenticatorType>
+        (be32toh(auth_token.authenticator_type));
+    out.timestamp = be64toh(auth_token.timestamp);
+    out.mac = std::vector<u8>(TOKEN_MAC_LENGTH);
+    memcpy(out.mac.data(), auth_token.hmac, TOKEN_MAC_LENGTH);
+    return EXIT_SUCCESS;
+}
+
+static int do_aidl_verify_call(gk_hal& gk_hal, HardwareAuthToken& out,
+                               u32 uid, u64 challenge, std::vector<u8> const& cred,
+                               std::vector<u8> const& handle)
+{
+    kmhal::transport::AidlVecOfU8View aidl_enrolledPasswordHandle(handle);
+    kmhal::transport::AidlVecOfU8View aidl_providedPassword(cred);
+
+    const struct kmhal_arg_write_desc in_args[] = {
+        kmhal::transport::init_write_p("uid", uid, kmhal_arg_write_u32),
+        kmhal::transport::init_write_p("challenge", challenge, kmhal_arg_write_u64),
+        kmhal::transport::init_write_i("enrolledPasswordHandle",
+                aidl_enrolledPasswordHandle.get(), write_aidl_vec_of_u8),
+        kmhal::transport::init_write_i("providedPassword",
+                aidl_providedPassword.get(), write_aidl_vec_of_u8)
+    };
+    const size_t n_in_args = u_arr_size(in_args);
+
+    aidl_GatekeeperVerifyResponse res{};
+    struct kmhal_arg_parse_desc out_args[] = {
+        kmhal::transport::init_parse_i("GatekeeperVerifyResponse",
+                &res, read_aidl_gatekeeper_response)
+    };
+    const size_t n_out_args = u_arr_size(out_args);
+
+    GatekeeperStatusCode err = GatekeeperStatusCode::ERROR_GENERAL_FAILURE;
+    if (kmhal_call(gk_hal.get_hal_sp(), static_cast<u32>(GK_AIDL_HAL_CMD::VERIFY),
+                in_args, n_in_args, out_args, n_out_args, reinterpret_cast<u32 *>(&err)))
+    {
+        std::cerr << __func__ << ": AIDL call failed" << std::endl;
+        destroy_aidl_gatekeeper_response(&res);
+        return EXIT_FAILURE;
+    }
+
+    const i32 c = static_cast<i32>(err);
+    std::cout << "Gatekeeper call result status: " << c
+        << " (" << gatekeeper_status_toString(c) << ")" << std::endl;
+    if (c < 0) {
+        if (res.code == GatekeeperStatusCode::ERROR_RETRY_TIMEOUT && res.timeout_ms > 0)
+            std::cout << "Gatekeeper retry timeout: " << res.timeout_ms << " ms" << std::endl;
+        destroy_aidl_gatekeeper_response(&res);
+        return EXIT_FAILURE;
+    }
+
+    out = kmhal::transport::fromAidlDestroy(res.hardware_auth_token);
+    destroy_aidl_gatekeeper_response(&res);
+    return EXIT_SUCCESS;
+}
+
 #endif /* SUSKEYMASTER_BUILD_HOST */
 
 } /* namespace gatekeeper */

@@ -130,8 +130,9 @@ static void do_check_aidl_ex(const struct kmhal_parcel *p, i32 aidl_ex,
     if (aidl_ex == EX_NONE)
         return;
 
-    s_log_debug("aidl_ex: %"PRIi32" (%s)",
-            aidl_ex, kmhal_aidl_exception_toString(aidl_ex));
+    if (aidl_ex != EX_SERVICE_SPECIFIC)
+        s_log_debug("aidl_ex: %"PRIi32" (%s)",
+                aidl_ex, kmhal_aidl_exception_toString(aidl_ex));
 
     char *ex_msg = NULL;
     size_t off = KMHAL_PARCEL_DATA_START_OFFSET;

@@ -23,56 +23,7 @@ A shared library injected into the KeyMaster/KeyMint HAL process. Hooks the atte
 
 ### `cli` - `suskeymaster` binary
 Standalone command-line tool exposing KeyMaster/KeyMint operations and keybox utilities. Some commands require an on-device HAL connection; others (keybox manipulation, cert wrapping, attestation verification) run on a host Linux/Windows build.
-The CLI, apart from strictly Keymaster/KeyMint operations, also includes utilities for decrypting Android userdata encryption keys (DE and CE), as well as some other tools. Only Gatekeeper authentication is supported for now, but Weaver support is coming soon. Note that this feature is only really tested on older devices running Keymaster (Android 9, Samsung's Android 14) - it might not fully work yet on newer devices with KeyMint.
-
----
-
-## Architecture
-
-```
-                    ┌──────────────────────────────────────┐
-                    │        Keymaster HAL process         │
-                    │                                      │
-  attestation  ───► │ attestKey callback ──► sus_attest_cb │ (patched branch)
-  response          │                              │       │
-                    └──────────────────────────────┼───────┘
-                                                   │
-                                          libsuskeymaster.so
-                                                   │
-                                          libsuscertmod
-                                          (parse leaf, resign,
-                                           swap chain from keybox)
-                                                   │
-                                           modified cert chain
-                                           returned to caller
-```
-
-```
-  suskeymaster CLI
-        │
-        ├── libsuskmhal  (HIDL/AIDL transport, binder ioctls)
-        │       └── talks directly to /dev/hwbinder or /dev/binder
-        │
-        └── libsuscertmod  (keybox, cert ops - no HAL needed)
-```
-
----
-
-## Keybox
-
-A keybox is a binary file containing two signing key entries (EC and RSA), each paired with a certificate chain. The hook loads the active keybox at attestation time and uses it to sign the generated leaf cert and assemble the replacement chain.
-
-Keybox commands run on both host and device.
-
-```
-suskeymaster mkkeybox <out_keybox> \
-    "ec <n_certs> <cert_1.der> ... <cert_n.der> <ec_keyblob>" \
-    "rsa <n_certs> <cert_1.der> ... <cert_n.der> <rsa_keyblob>"
-
-suskeymaster dumpkeybox <in_keybox> <out_dir>
-```
-
-Key blobs referenced in the keybox are KeyMaster-wrapped blobs (output of `suskeymaster generate` or `suskeymaster import`).
+The CLI, apart from strictly Keymaster/KeyMint operations, also includes utilities for decrypting Android userdata encryption keys (DE and CE), as well as some other tools. Only Gatekeeper authentication is supported right now, but Weaver support is coming soon. Note that this feature is only really tested on older devices running Keymaster (Android 9, Samsung's Android 14) - it might not fully work yet on newer devices with KeyMint.
 
 ---
 
@@ -290,7 +241,7 @@ StrongBox support is coming soon.
 | HAL | Transport | Support |
 |:-----|-----------|---------|
 | Gatekeeper | HIDL | Yes |
-|            | AIDL | No |
+|            | AIDL | Yes (untested) |
 | Weaver | HIDL | No |
 |        | AIDL | No |
 

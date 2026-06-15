@@ -476,6 +476,15 @@ int kmhal_arg_parse_u64(const struct kmhal_parcel *p, size_t *off_p,
                         void *out, size_t size);
 
 /**
+ * Returns whether the HAL uses AIDL or HIDL.
+ *
+ * @param hal The hal strong pointer struct.
+ *
+ * @return `true` if @hal uses AIDL, `false` if HIDL.
+ */
+bool kmhal_get_is_aidl(const struct kmhal_sp *hal);
+
+/**
  * A getter for the currently used binder device context.
  *
  * @param hal The HAL strong pointer struct.

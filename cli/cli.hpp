@@ -181,7 +181,8 @@ namespace gatekeeper {
             }
         }
 
-        static constexpr u8 PASSWORD_SCRYPT_LOG_N = 11;
+        static constexpr u8 PASSWORD_SCRYPT_LOG_N_OLD = 11;
+        static constexpr u8 PASSWORD_SCRYPT_LOG_N = 9;
         static constexpr u8 PASSWORD_SCRYPT_LOG_R = 3;
         static constexpr u8 PASSWORD_SCRYPT_LOG_P = 1;
         u8 N = PASSWORD_SCRYPT_LOG_N,
