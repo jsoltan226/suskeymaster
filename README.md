@@ -4,6 +4,8 @@ A toolkit for interacting with and subverting Android KeyMaster/KeyMint HALs. Co
 
 > **Disclaimer:** This software is intended for security research, firmware development, and forensic/data recovery purposes on devices you own or have explicit authorization to modify. Spoofing hardware attestation may violate terms of service of applications that rely on it. Use responsibly.
 
+This project is licensed under the [Apache 2.0 license](LICENSE), except for files under libsuscertmod/external and any files explicitly stating a different license.
+
 ---
 
 ## Components
