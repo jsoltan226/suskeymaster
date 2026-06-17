@@ -376,6 +376,42 @@ int read_pwd_data(std::vector<u8> const& pwd_data, sp_pwd_data& out, bool log)
     return 0;
 }
 
+void write_pwd_data(const sp_pwd_data& pwd, std::vector<u8>& out)
+{
+    out.resize(0);
+
+    /* Credential type */
+    out.resize(out.size() + sizeof(u32));
+    memcpy(out.data() + out.size() - sizeof(u32), &pwd.type, sizeof(u32));
+
+    /* Scrypt N,R,P */
+    out.push_back(pwd.N);
+    out.push_back(pwd.R);
+    out.push_back(pwd.P);
+
+    /* Salt length */
+    out.resize(out.size() + sizeof(u32));
+    u32 tmp = pwd.salt.size();
+    memcpy(out.data() + out.size() - sizeof(u32), &tmp, sizeof(u32));
+
+    /* Salt */
+    out.resize(out.size() + pwd.salt.size());
+    memcpy(out.data() + out.size() - pwd.salt.size(), pwd.salt.data(), pwd.salt.size());
+
+    /* Handle length */
+    out.resize(out.size() + sizeof(u32));
+    tmp = pwd.handle.size();
+    memcpy(out.data() + out.size() - sizeof(u32), &tmp, sizeof(u32));
+
+    /* Handle */
+    out.resize(out.size() + pwd.handle.size());
+    memcpy(out.data() + out.size() - pwd.handle.size(), pwd.handle.data(), pwd.handle.size());
+
+    /* PIN length for autoconfirm */
+    out.resize(out.size() + sizeof(i32));
+    memcpy(out.data() + out.size() - sizeof(u32), &pwd.pin_length, sizeof(u32));
+}
+
 int stretch_lskf(std::vector<u8> const& credential, sp_pwd_data const& pwd,
                  std::vector<u8>& out, bool warn_if_default_password)
 {

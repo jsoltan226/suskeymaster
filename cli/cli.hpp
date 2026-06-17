@@ -200,6 +200,7 @@ namespace gatekeeper {
     };
 
     int read_pwd_data(std::vector<u8> const& pwd_data, sp_pwd_data& out, bool log);
+    void write_pwd_data(const sp_pwd_data& pwd, std::vector<u8>& out);
 
     constexpr const u8 DEFAULT_PASSWORD[] = "default-password";
     static constexpr u32 STRETCHED_LSKF_LENGTH = 32;

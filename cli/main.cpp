@@ -7,6 +7,9 @@
 #include <libsuskmhal/keymaster-types-cpp.hpp>
 #include <libsuskmhal/util/km-params.hpp>
 #include <libsuskmhal/transport/hal.h>
+#include <libsuskmhal/transport/aidl-util.h>
+#include <libsuskmhal/transport/aidl2generic.hpp>
+#include <libsuskmhal/transport/keymint-types-aidl.h>
 #include <strings.h>
 #include <cstdio>
 #include <string>
@@ -24,6 +27,7 @@
 #include <charconv>
 #include <system_error>
 #include <unordered_map>
+#include <openssl/rand.h>
 
 static const char *g_argv0 = NULL;
 
@@ -788,6 +792,64 @@ static const std::vector<cli_command> cmds = {
                 a["unwrapping_params"].in_key_params(),
                 a["out_keyblob"].out_bytes()
         );
+    }
+},
+{
+    { "secure-import", "local-auto" },
+    {
+        "Performs all of the other `secure-import` commands locally and automatically,",
+        "essentially doing a secure import as if it was a normal import."
+    },
+    SINCE_KEYMASTER_4_0,
+    {
+        { "in_private_key", INPUT_FILE, ARG_MANDATORY,
+            "The private key to import - "
+                "DER-encoded PKCS#8 for asymmetric keys and raw bytes otherwise"
+        },
+        { "out_key_blob", OUTPUT_FILE, ARG_MANDATORY,
+            "The file to which the imported key blob will be written"
+        },
+        { "params", KEY_PARAMETERS, ARG_OPTIONAL,
+            "A space-separated list of key parameters that the imported key blob should have"
+        },
+    },
+    [](arg_map_t& a) {
+        std::vector<u8> wrapping_blob;
+        std::vector<u8> wrapping_pub;
+        std::vector<std::vector<u8>> cert_chain;
+
+        std::vector<u8> wrapped_data;
+        std::vector<u8> masking_key;
+
+        if (cli::secureimport::target::generate_and_attest_wrapping_key(*g_hal,
+                wrapping_blob, wrapping_pub, &cert_chain, {}))
+        {
+            std::cerr << "Failed to generate the wrapping key pair" << std::endl;
+            return EXIT_FAILURE;
+        }
+        std::cout << "Wrapping key attestation:" << std::endl;
+        /* This is supposed to be a flexible wrapper
+         * for testing purposes, we're doing everything locally anyway */
+        /*
+        (void) cli::secureimport::host::verify_attestation(cert_chain);
+        */
+
+        if (cli::secureimport::host::wrap_key(a["in_private_key"].in_bytes(), wrapping_pub,
+                    a["params"].in_key_params(), wrapped_data, masking_key))
+        {
+            std::cerr << "Failed to wrap the private key" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        if (cli::secureimport::target::import_wrapped_key(*g_hal, wrapped_data, masking_key,
+                    wrapping_blob, {}, a["out_key_blob"].out_bytes()))
+        {
+            std::cerr << "Failed to import the wrapped key" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        std::cout << "importWrappedKey OK" << std::endl;
+        return EXIT_SUCCESS;
     }
 },
 #endif /* SUSKEYMASTER_BUILD_HOST */

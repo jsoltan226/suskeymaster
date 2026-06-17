@@ -559,9 +559,10 @@ static int do_aidl_hal_get_handle(struct kmhal_sp *hal)
     }
     hal->manager_acquired = true;
 
+    u32 handle = 0;
     enum kmhal_android_status s = kmhal_aidl_manager_get(hal->binder,
             &hal->txn, hal->aidl_tx_hdr_type, hal->fqname, hal->instname,
-            &hal->handle);
+            &handle);
     if (s != OK && s != PERMISSION_DENIED) {
         s_log_error("Failed to getService() a handle to the AIDL HAL");
         return 1;
@@ -573,6 +574,7 @@ static int do_aidl_hal_get_handle(struct kmhal_sp *hal)
         return 1;
     }
 
+    kmhal_set_handle(hal, handle, true);
     return 0;
 }
 
@@ -633,7 +635,7 @@ validate_arg_descs(const struct kmhal_arg_write_desc *in_args,
                 s_log_error("In primitive arg %u (\"%s\"): proc is NULL",
                         i, arg->name);
                 ret = UNEXPECTED_NULL;
-            }
+            };
             break;
         case KMHAL_ARG_BUFFER_OBJECT:
             if (arg->arg.b.proc == NULL) {
