@@ -1,5 +1,6 @@
 #define OPENSSL_API_COMPAT 0x10002000L
 #include "cli.hpp"
+#include "util.hpp"
 #include <libsuskmhal/suskmhal.hpp>
 #include <libsuskmhal/keymaster-types-cpp.hpp>
 #include <cstdio>

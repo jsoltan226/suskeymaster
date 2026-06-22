@@ -1,4 +1,5 @@
 #include "cli.hpp"
+#include "util.hpp"
 #include <core/int.h>
 #include <libsuscertmod/key-desc.h>
 #include <libsuscertmod/leaf-cert.h>
@@ -77,7 +78,7 @@ int get_print_key_characteristics(SusKMHal& hal,
 int generate_key(SusKMHal& hal,
                  std::vector<KeyParameter> const& in_gen_params,
                  std::vector<u8>& out_key_blob,
-                 std::vector<std::vector<u8>>& out_cert_chain)
+                 std::vector<std::vector<u8>> *out_opt_keymint_cert_chain)
 {
     Algorithm alg = util::find_algorithm(in_gen_params,
         { Algorithm::EC, Algorithm::RSA, Algorithm::AES, Algorithm::TRIPLE_DES, Algorithm::HMAC }
@@ -91,10 +92,10 @@ int generate_key(SusKMHal& hal,
             true, hal.getVersion() >= 0x100);
 
     if (util::find_rep_tag<KeyPurpose>(Tag::PURPOSE, params).empty())
-        std::cerr << "WARNING: Gerating key with no purpose" << std::endl;
+        std::cerr << "WARNING: Generating key with no purpose" << std::endl;
 
     KeyCharacteristics dummy;
-    ErrorCode e = hal.generateKey(params, out_key_blob, dummy, out_cert_chain);
+    ErrorCode e = hal.generateKey(params, out_key_blob, dummy, out_opt_keymint_cert_chain);
     if (e != ErrorCode::OK) {
         std::cerr << "generateKey operation failed: "
             << static_cast<i32>(e) << " (" << toString(e) << ")" << std::endl;
@@ -134,7 +135,8 @@ int attest_key(SusKMHal& hal,
 int import_key(SusKMHal& hal,
                std::vector<u8> const& in_private_key,
                std::vector<KeyParameter> const& in_import_params,
-               std::vector<u8>& out_key_blob)
+               std::vector<u8>& out_key_blob,
+               std::vector<std::vector<u8>> *out_opt_keymint_cert_chain)
 {
     Algorithm alg = util::determine_algorithm_from_params_and_pkey(in_import_params,
                                                                    in_private_key);
@@ -168,7 +170,8 @@ int import_key(SusKMHal& hal,
             false, hal.getVersion() >= 0x100);
 
     KeyCharacteristics c;
-    ErrorCode e = hal.importKey(params, format, in_private_key, out_key_blob, c);
+    ErrorCode e = hal.importKey(params, format, in_private_key, out_key_blob, c,
+            out_opt_keymint_cert_chain);
     if (e != ErrorCode::OK) {
         std::cerr << "importKey operation failed: "
             << static_cast<i32>(e) << " (" << toString(e) << ")" << std::endl;

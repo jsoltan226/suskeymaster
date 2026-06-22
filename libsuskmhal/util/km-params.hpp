@@ -51,6 +51,8 @@ void init_default_params(std::vector<KeyParameter>& params,
 
 KM_PARAM_LIST * key_params_2_param_list(std::vector<KeyParameter> const& params);
 
+void dump_params_as_param_list(std::vector<KeyParameter> const& params);
+
 int b64decode(std::string const& in, std::vector<uint8_t> &out);
 
 static inline std::vector<u8> get_attestation_challenge(void) {

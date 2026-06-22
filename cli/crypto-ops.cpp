@@ -1,4 +1,5 @@
 #include "cli.hpp"
+#include "util.hpp"
 #include <core/int.h>
 #include <libsuskmhal/suskmhal.hpp>
 #include <libsuskmhal/keymaster-types-cpp.hpp>
@@ -398,8 +399,13 @@ static void init_encrypt_params_from_user_and_characteristics(
 
         if (block_mode_found && block_mode == BlockMode::GCM) {
             if (mac_length_found) {
-                std::cout << "AES-GCM MAC (auth tag) length: "
-                    << mac_length << " bits" << std::endl;
+                if (mac_length != 8 * util::AES_GCM_TAG_SIZE) {
+                    std::cerr << "WARNING: non-standard AES-GCM MAC (auth tag) length: "
+                        << mac_length << " bits" << std::endl;
+                } else {
+                    std::cout << "AES-GCM MAC (auth tag) length: "
+                        << mac_length << " bits" << std::endl;
+                }
                 defaults.emplace_back(Tag::MAC_LENGTH, mac_length);
             } else {
                 std::cerr << "WARNING: AES-GCM encrypting without a MAC (auth tag) length "

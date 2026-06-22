@@ -629,6 +629,36 @@ struct VerificationToken final {
 };
 const hidl::VerificationToken toHidlView(const VerificationToken&);
 
+/**
+ * See "system/gatekeeper/include/gatekeeper/password_handle.h" in AOSP
+ * Gatekeeper password handle, used to reference a user and their enrolled credentials.
+ */
+struct __attribute__ ((__packed__)) password_handle_t {
+    using secure_id_t = u64;
+    using salt_t = u64;
+
+    static constexpr u8 HANDLE_VERSION = 2;
+    static constexpr u64 FLAG_THROTTLE_SECURE = 1 << 0;
+    static constexpr u64 FLAG_VERSION_THROTTLE = 1 << 1;
+
+public:
+    /* fields included in signature */
+    u8 version = HANDLE_VERSION;
+    secure_id_t user_id;
+
+    u64 flags;
+
+    /* fields not included in signature */
+    salt_t salt;
+    u8 signature[32];
+
+    bool hardware_backed;
+};
+
+/* Serialialize/deserialize to/from the structure `hw_auth_token_t`. */
+HardwareAuthToken deserialize_auth_token(const std::vector<u8>& data);
+std::vector<u8> serialize_auth_token(const HardwareAuthToken& at);
+
 } /* namespace generic */
 
 } /* namespace kmhal */

@@ -1,6 +1,7 @@
 #define OPENSSL_API_COMPAT 0x10002000L
-#include "cli.hpp"
+#include "util.hpp"
 #include "endian.h"
+#include <libsuskmhal/util/km-params.hpp>
 #include <cstdio>
 #include <vector>
 #include <cstring>
@@ -41,6 +42,22 @@ void extract_application_id_and_data(std::vector<KeyParameter> const& params,
         else if (kp.tag == Tag::APPLICATION_DATA)
             out_application_data = kp.blob;
     }
+}
+
+HardwareAuthToken extract_auth_token(std::vector<KeyParameter>& params)
+{
+    HardwareAuthToken ret{};
+    for (auto it = params.begin(); it != params.end();) {
+        if (it->tag != Tag::AUTH_TOKEN) {
+            ++it;
+            continue;
+        }
+
+        ret = deserialize_auth_token(it->blob);
+        it = params.erase(it);
+    }
+
+    return ret;
 }
 
 Algorithm find_algorithm(std::vector<KeyParameter> const& params,
@@ -188,11 +205,16 @@ void init_default_params_for_alg_and_purposes(std::vector<KeyParameter>& params,
     std::vector<BlockMode> block_modes;
     bool has_gcm = false, has_ctr_gcm = false, has_ecb_cbc = false;
 
+    bool is_auth_bound = tag_exists(Tag::USER_SECURE_ID, params) ||
+                         tag_exists(Tag::AUTH_TIMEOUT, params) ||
+                         tag_exists(Tag::USER_ID, params);
+
     /* Universal defaults for all algorithms */
     defaults = {
         { Tag::ALGORITHM, alg },
-        { Tag::NO_AUTH_REQUIRED, true }
     };
+    if (!is_auth_bound)
+        defaults.emplace_back(Tag::NO_AUTH_REQUIRED, true);
 
     /* KeyMint requires notAfter and notBefore tags for asymmetric keys */
     if (is_keymint && (alg == Algorithm::RSA || alg == Algorithm::EC)) {
@@ -389,7 +411,7 @@ int extract_gcm_data(std::vector<u8> const& blob,
     }
 
     /* IV || ciphertext || tag;
-     * we want separate IV and ciphertext || tag */
+     * we want to separate (IV) and (ciphertext || tag) */
 
     out_iv.resize(AES_GCM_IV_SIZE);
     memcpy(out_iv.data(), blob.data(), AES_GCM_IV_SIZE);
@@ -504,7 +526,7 @@ int aes256gcm_software_decrypt(std::vector<u8> const& key, std::vector<u8> const
         std::abort();
     }
 
-
+    std::cout << __func__ << ": OK" << std::endl;
     ok = true;
 
 err:

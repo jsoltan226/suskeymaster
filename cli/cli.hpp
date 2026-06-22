@@ -9,11 +9,6 @@
 #include <libsuscertmod/samsung-sus-indata.h>
 #include <vector>
 #include <string>
-#include <cstring>
-#include <cstdint>
-#include <openssl/evp.h>
-#include <openssl/asn1.h>
-#include <openssl/crypto.h>
 
 namespace suskeymaster {
 namespace cli {
@@ -30,7 +25,7 @@ int get_print_key_characteristics(SusKMHal& hal,
 int generate_key(SusKMHal& hal,
                  std::vector<KeyParameter> const& in_gen_params,
                  std::vector<u8>& out_wrapped_blob,
-                 std::vector<std::vector<u8>>& out_cert_chain);
+                 std::vector<std::vector<u8>> *out_opt_keymint_cert_chain = nullptr);
 
 int attest_key(SusKMHal& hal,
                std::vector<u8> const& key,
@@ -40,7 +35,8 @@ int attest_key(SusKMHal& hal,
 int import_key(SusKMHal& hal,
                std::vector<u8> const& priv_pkcs8,
                std::vector<KeyParameter> const& in_import_params,
-               std::vector<u8>& out_wrapped_blob);
+               std::vector<u8>& out_wrapped_blob,
+               std::vector<std::vector<u8>> *out_opt_keymint_cert_chain = nullptr);
 
 int export_key(SusKMHal& hal,
                std::vector<u8> const& key,
@@ -108,7 +104,8 @@ namespace secureimport {
         int import_wrapped_key(SusKMHal& hal, std::vector<u8> const& in_wrapped_data,
             std::vector<u8> const& in_masking_key, std::vector<u8> const& in_wrapping_blob,
             std::vector<KeyParameter> const& in_unwrapping_params,
-            std::vector<u8>& out_key_blob);
+            std::vector<u8>& out_key_blob,
+            std::vector<std::vector<u8>> *out_opt_keymint_cert_chain = nullptr);
     };
 
 } /* namespace secureimport */
@@ -128,99 +125,6 @@ namespace vold {
 
     int fscrypt_legacy_install_key(std::vector<u8> const& key);
 };
-
-namespace gatekeeper {
-    struct gk_hal {
-    private:
-        struct kmhal_sp *hal_sp;
-        bool owns;
-    public:
-
-        /* Implemented in `gatekeeper.cpp` */
-        gk_hal();
-        gk_hal(SusKMHal&);
-        ~gk_hal();
-
-        gk_hal(const gk_hal& other) {
-            this->hal_sp = other.hal_sp;
-            this->owns = false;
-        }
-        gk_hal& operator=(const gk_hal& other) {
-            this->hal_sp = other.hal_sp;
-            this->owns = false;
-            return *this;
-        }
-
-        bool is_ok() const { return this->hal_sp != nullptr; }
-
-        struct kmhal_sp * get_hal_sp() const { return this->hal_sp; }
-    };
-
-    int verify(SusKMHal& kmhal, u32 uid, u64 challenge, std::vector<uint8_t> const& cred,
-               std::vector<uint8_t> const& handle, HardwareAuthToken& out,
-               struct gk_hal *opt_gk_hal = nullptr);
-
-    /* See "frameworks/base/core/java/com/android/internal/widget/LockPatternUtils.java"
-     * and "frameworks/base/services/core/java/com/android/server/locksettings/SyntheticPasswordManager.java"*/
-    struct sp_pwd_data {
-        enum class credential_type : u32 {
-            NONE = static_cast<u32>(-1),
-            PATTERN = 1,
-            PASSWORD_OR_PIN = 2,
-            PIN = 3,
-            PASSWORD = 4
-        } type = credential_type::NONE;
-        static const char * credential_type_toString(u32 ct) {
-            switch (static_cast<credential_type>(ct)) {
-                case credential_type::NONE: return "CREDENTIAL_TYPE_NONE";
-                case credential_type::PATTERN: return "CREDENTIAL_TYPE_PATTERN";
-                case credential_type::PASSWORD_OR_PIN: return "CREDENTIAL_TYPE_PASSWORD_OR_PIN";
-                case credential_type::PIN: return "CREDENTIAL_TYPE_PIN";
-                case credential_type::PASSWORD: return "CREDENTIAL_TYPE_PASSWORD";
-                default: return "(unknown)";
-            }
-        }
-
-        static constexpr u8 PASSWORD_SCRYPT_LOG_N_OLD = 11;
-        static constexpr u8 PASSWORD_SCRYPT_LOG_N = 9;
-        static constexpr u8 PASSWORD_SCRYPT_LOG_R = 3;
-        static constexpr u8 PASSWORD_SCRYPT_LOG_P = 1;
-        u8 N = PASSWORD_SCRYPT_LOG_N,
-           R = PASSWORD_SCRYPT_LOG_R,
-           P = PASSWORD_SCRYPT_LOG_P;
-
-        static constexpr u8 PASSWORD_SALT_LENGTH = 16;
-        std::vector<u8> salt = std::vector<u8>(PASSWORD_SALT_LENGTH);
-
-        std::vector<u8> handle;
-
-        static constexpr i32 PIN_LENGTH_UNAVAILABLE = -1;
-        static constexpr i32 MIN_AUTO_PIN_REQUIREMENT_LENGTH = 6;
-        i32 pin_length = PIN_LENGTH_UNAVAILABLE;
-    };
-
-    int read_pwd_data(std::vector<u8> const& pwd_data, sp_pwd_data& out, bool log);
-    void write_pwd_data(const sp_pwd_data& pwd, std::vector<u8>& out);
-
-    constexpr const u8 DEFAULT_PASSWORD[] = "default-password";
-    static constexpr u32 STRETCHED_LSKF_LENGTH = 32;
-    int stretch_lskf(std::vector<u8> const& credential, sp_pwd_data const& pwd,
-                     std::vector<u8>& out, bool warn_if_default_password = true);
-
-    int unwrap_sp_blob(SusKMHal& kmhal, u32 uid, std::vector<u8> const& keystore_key_blob,
-                       std::vector<u8> const& stretched_cred,
-                       std::vector<u8> const& secdiscardable,
-                       std::vector<u8> const& sp_blob,
-                       std::vector<u8>& out, u8& out_blob_version,
-                       std::vector<u8> const& gk_pwd_handle = {});
-
-    int validate_synthetic_password(SusKMHal& kmhal, u32 uid,
-                                    std::vector<u8> const& synthetic_password, u8 sp_blob_ver,
-                                    std::vector<u8> const& null_pwd_handle);
-
-    int derive_synthetic_password_subkey(std::vector<u8> const& synthetic_password, u8 sp_blob_ver,
-                                         const char *personalization, std::vector<u8>& out);
-}; /* namespace gatekeeper */
 
 namespace samsung {
     namespace ekey {
@@ -244,92 +148,6 @@ namespace samsung {
 #endif /* SUSKEYMASTER_ENABLE_SAMSUNG_SEND_INDATA */
 } /* namespace samsung */
 
-namespace util {
-
-/* Key parameter utilities */
-
-void extract_application_id_and_data(std::vector<KeyParameter> const& params,
-                                     std::vector<u8>& out_application_id,
-                                     std::vector<u8>& out_application_data);
-
-Algorithm find_algorithm(std::vector<KeyParameter> const& params,
-                         const std::vector<Algorithm>& allowed_algs);
-
-const std::vector<u8> * find_blob_tag(Tag t, std::vector<KeyParameter> const& params);
-std::vector<std::vector<u8>> find_rep_blob_tag(Tag t, std::vector<KeyParameter> const& params);
-
-template<typename R>
-static inline std::vector<R>
-find_rep_tag(Tag t, std::vector<KeyParameter> const& params)
-{
-    std::vector<R> ret;
-
-    for (const auto& kp : params) {
-        if (kp.tag == t)
-            ret.push_back(static_cast<R>(kp.f.longInteger));
-    }
-
-    return ret;
-}
-
-template<typename R>
-static inline R find_tag(Tag t, std::vector<KeyParameter> const& params)
-{
-    for (const auto& kp : params) {
-        if (kp.tag == t)
-            return static_cast<R>(kp.f.longInteger);
-    }
-
-    return static_cast<R>(-1);
-}
-
-Algorithm determine_pkey_algorithm(std::vector<u8> const& priv_pkcs8);
-
-Algorithm determine_algorithm_from_params_and_pkey(std::vector<KeyParameter> const& params,
-                                                   std::vector<u8> const& pkey);
-
-void init_default_params_for_alg_and_purposes(std::vector<KeyParameter>& params,
-                                              Algorithm alg,
-                                              const std::vector<KeyPurpose>& purposes,
-                                              bool is_generate_key, bool is_keymint);
-
-/* Gatekeeper/vold crypto utilities */
-
-std::vector<u8> keystore_blob_to_km_blob(std::vector<u8> const& keystore_blob);
-
-std::vector<uint8_t> to_uppercase_hex_string(std::vector<uint8_t> const& data);
-
-int parse_hex_string(const std::vector<uint8_t>& hex, std::vector<uint8_t>& out);
-
-static constexpr u32 AES_GCM_KEY_SIZE = 32;
-static constexpr u32 AES_GCM_IV_SIZE = 12;
-static constexpr u32 AES_GCM_TAG_SIZE = 16;
-
-int extract_gcm_data(std::vector<u8> const& blob,
-                     std::vector<u8>& out_iv, std::vector<u8>& out_ciphertext_with_tag);
-
-int extract_gcm_data(std::vector<u8> const& blob,
-                     std::vector<u8>& out_iv,
-                     std::vector<u8>& out_ciphertext,
-                     std::vector<u8>& out_tag);
-
-int aes256gcm_software_decrypt(std::vector<u8> const& key, std::vector<u8> const& blob,
-                               std::vector<u8>& out_plaintext);
-
-int aes256gcm_software_decrypt(std::vector<u8> const& key, std::vector<u8> const& iv,
-                               std::vector<u8> const& ciphertext,
-                               std::vector<u8> const& tag,
-                               std::vector<u8>& out_plaintext);
-
-int personalized_hash(std::vector<uint8_t> const& in_data, const char *personalization,
-                      std::vector<uint8_t>& out_hash);
-
-int sp800_derive_with_context(std::vector<uint8_t> const& in_key,
-                              const char *label, size_t label_size,
-                              const char *context, size_t context_size,
-                              std::vector<uint8_t>& out);
-
-} /* namespace util */
 
 } /* namespace cli */
 } /* namespace suskeymaster */

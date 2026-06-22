@@ -1,5 +1,8 @@
 #include "keymaster-types-cpp.hpp"
+#include "keymaster-types-c.h"
+#include "util/endian.h"
 #include "transport/aosp-hidl-support.hpp"
+#include <cstring>
 
 using ::android::hardware::hidl_vec;
 using ::android::hardware::hidl_array;
@@ -89,6 +92,66 @@ const hidl::VerificationToken toHidlView(const VerificationToken& generic)
         generic.securityLevel,
         toHidlView(generic.mac)
     };
+}
+
+HardwareAuthToken deserialize_auth_token(const std::vector<u8>& data)
+{
+    if (data.size() != sizeof(hw_auth_token_t)) {
+        std::cerr << "Invalid serialized auth token data; not parsing" << std::endl;
+        return {};
+    }
+
+    hw_auth_token_t serialized;
+    memcpy(&serialized, data.data(), sizeof(hw_auth_token_t));
+
+    if (serialized.version != HW_AUTH_TOKEN_VERSION) {
+        std::cerr << "WARNING: Unexpected serialized auth token version: "
+            << static_cast<int>(serialized.version) << std::endl;
+    }
+
+    HardwareAuthToken ret;
+    ret.challenge = serialized.challenge;
+    ret.userId = serialized.user_id;
+    ret.authenticatorId = serialized.authenticator_id;
+    ret.authenticatorType = static_cast<HardwareAuthenticatorType>
+        (be32toh(serialized.authenticator_type));
+    ret.timestamp = be64toh(serialized.timestamp);
+
+    static constexpr size_t TOKEN_MAC_LENGTH =
+        static_cast<size_t>(Constants::AUTH_TOKEN_MAC_LENGTH);
+
+    ret.mac.resize(TOKEN_MAC_LENGTH);
+    memcpy(ret.mac.data(), serialized.hmac, TOKEN_MAC_LENGTH);
+
+    return ret;
+}
+
+std::vector<u8> serialize_auth_token(const HardwareAuthToken& at)
+{
+    if (at.empty())
+        return {};
+
+    static constexpr size_t TOKEN_MAC_LENGTH =
+        static_cast<size_t>(Constants::AUTH_TOKEN_MAC_LENGTH);
+    if (at.mac.size() != TOKEN_MAC_LENGTH) {
+        std::cerr << "Invalid HardwareAuthToken MAC length: " << at.mac.size() << std::endl;
+        return {};
+    }
+
+    hw_auth_token_t serialized = {
+        HW_AUTH_TOKEN_VERSION,
+        at.challenge,
+        at.userId,
+        at.authenticatorId,
+        htobe32(static_cast<u32>(at.authenticatorType)),
+        htobe64(at.timestamp),
+        {}
+    };
+    memcpy(serialized.hmac, at.mac.data(), TOKEN_MAC_LENGTH);
+
+    std::vector<u8> ret(sizeof(hw_auth_token_t));
+    memcpy(ret.data(), &serialized, sizeof(hw_auth_token_t));
+    return ret;
 }
 
 } /* namespace generic */

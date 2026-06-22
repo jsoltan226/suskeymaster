@@ -231,6 +231,8 @@ static i32 validate_km_desc(const KM_KEY_DESC *desc)
         if (km_ver >= 100)
             break;
 
+        /* fallthrough */
+
     default:
         s_log_error("Invalid attestation security level: %lld",
                 (long long int)i);

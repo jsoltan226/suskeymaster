@@ -52,9 +52,9 @@ using transport::AidlVecOfU8View,
       transport::AidlKeyParameterView, transport::AidlVecOfKeyParameterView,
       transport::AidlHardwareAuthTokenView;
 
-SusAidlKeyMint::SusAidlKeyMint() :
+SusAidlKeyMint::SusAidlKeyMint(const char *instname) :
     hal_(kmhal_aidl_sp_new_get(
-                "android.hardware.security.keymint.IKeyMintDevice", "default",
+                "android.hardware.security.keymint.IKeyMintDevice", instname,
                 nullptr, false), &transport::kmhal_sp_deleter)
 {
     if (this->hal_.get() == nullptr) {
@@ -178,7 +178,7 @@ ErrorCode SusAidlKeyMint::addRngEntropy(std::vector<u8> const& data)
 
 ErrorCode SusAidlKeyMint::generateKey(std::vector<KeyParameter> const& keyParams,
         std::vector<u8>& out_keyBlob, KeyCharacteristics& out_keyCharacteristics,
-        std::vector<std::vector<u8>>& out_certChain)
+        std::vector<std::vector<u8>> *out_opt_cert_chain)
 {
     ErrorCode err = ErrorCode::UNKNOWN_ERROR;
     AidlVecOfKeyParameterView aidl_keyParams(keyParams);
@@ -210,8 +210,9 @@ ErrorCode SusAidlKeyMint::generateKey(std::vector<KeyParameter> const& keyParams
         /* Convert the KeyCharacteristics */
         convertAndDestroyKeyCharacteristics(out_keyCharacteristics, res.key_characteristics);
 
-        /* Copy the cert chain */
-        out_certChain = fromAidlDestroy(res.certificate_chain);
+        /* Copy the cert chain if the user requested it */
+        if (out_opt_cert_chain)
+            *out_opt_cert_chain = fromAidlDestroy(res.certificate_chain);
     }
 
     destroy_aidl_key_creation_result(&res);
@@ -220,7 +221,8 @@ ErrorCode SusAidlKeyMint::generateKey(std::vector<KeyParameter> const& keyParams
 
 ErrorCode SusAidlKeyMint::importKey(std::vector<KeyParameter> const& keyParams,
         KeyFormat keyFormat, std::vector<u8> const& keyData,
-        std::vector<u8>& out_keyBlob, KeyCharacteristics& out_keyCharacteristics)
+        std::vector<u8>& out_keyBlob, KeyCharacteristics& out_keyCharacteristics,
+        std::vector<std::vector<u8>> *out_opt_cert_chain)
 {
     ErrorCode err = ErrorCode::UNKNOWN_ERROR;
     AidlVecOfKeyParameterView aidl_keyParams(keyParams);
@@ -254,6 +256,10 @@ ErrorCode SusAidlKeyMint::importKey(std::vector<KeyParameter> const& keyParams,
 
         /* Convert the KeyCharacteristics */
         convertAndDestroyKeyCharacteristics(out_keyCharacteristics, res.key_characteristics);
+
+        /* Copy/convert the cert chain if requested */
+        if (out_opt_cert_chain)
+            *out_opt_cert_chain = fromAidlDestroy(res.certificate_chain);
     }
 
     destroy_aidl_key_creation_result(&res);
@@ -264,7 +270,8 @@ ErrorCode SusAidlKeyMint::importWrappedKey(std::vector<u8> const& wrappedKeyData
         std::vector<u8> const& wrappingKeyBlob, std::vector<u8> const& maskingKey,
         std::vector<KeyParameter> const& unwrappingParams,
         uint64_t passwordSid, uint64_t biometricSid,
-        std::vector<u8>& out_keyBlob, KeyCharacteristics& out_keyCharacteristics)
+        std::vector<u8>& out_keyBlob, KeyCharacteristics& out_keyCharacteristics,
+        std::vector<std::vector<u8>> *out_opt_cert_chain)
 {
     ErrorCode err = ErrorCode::UNKNOWN_ERROR;
     AidlVecOfU8View aidl_wrappedKeyData(wrappedKeyData);
@@ -302,6 +309,10 @@ ErrorCode SusAidlKeyMint::importWrappedKey(std::vector<u8> const& wrappedKeyData
 
         /* Convert the KeyCharacteristics */
         convertAndDestroyKeyCharacteristics(out_keyCharacteristics, res.key_characteristics);
+
+        /* Copy/convert the cert chain if requested */
+        if (out_opt_cert_chain)
+            *out_opt_cert_chain = fromAidlDestroy(res.certificate_chain);
     }
 
     destroy_aidl_key_creation_result(&res);

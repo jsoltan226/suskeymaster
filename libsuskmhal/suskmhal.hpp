@@ -20,8 +20,8 @@ using namespace ::android::hardware;
 
 class SusKMHal {
 public:
-    SusKMHal(void) = default;
-    virtual ~SusKMHal(void) = default;
+    SusKMHal(const char *instname = "default") { (void) instname; };
+    virtual ~SusKMHal(void) {};
 
     virtual struct kmhal_sp * getHalSp(void) const { return nullptr; }
 
@@ -43,19 +43,21 @@ public:
 
     virtual ErrorCode generateKey(std::vector<KeyParameter> const& keyParams,
             std::vector<u8>& out_keyBlob, KeyCharacteristics& out_keyCharacteristics,
-            std::vector<std::vector<u8>>& out_certChain)
+            std::vector<std::vector<u8>> *out_opt_keymint_cert_chain = nullptr)
     {
         (void) keyParams; (void) out_keyBlob; (void) out_keyCharacteristics;
-        (void) out_certChain;
+        (void) out_opt_keymint_cert_chain;
         return ErrorCode::UNIMPLEMENTED;
     }
 
     virtual ErrorCode importKey(std::vector<KeyParameter> const& keyParams,
             KeyFormat keyFormat, std::vector<u8> const& keyData,
-            std::vector<u8>& out_keyBlob, KeyCharacteristics& out_keyCharacteristics)
+            std::vector<u8>& out_keyBlob, KeyCharacteristics& out_keyCharacteristics,
+            std::vector<std::vector<u8>> *out_opt_keymint_cert_chain = nullptr)
     {
         (void) keyParams; (void) keyFormat; (void) keyData;
         (void) out_keyBlob; (void) out_keyCharacteristics;
+        (void) out_opt_keymint_cert_chain;
         return ErrorCode::UNIMPLEMENTED;
     }
 
@@ -63,10 +65,12 @@ public:
             std::vector<u8> const& wrappingKeyBlob, std::vector<u8> const& maskingKey,
             std::vector<KeyParameter> const& unwrappingParams,
             u64 passwordSid, u64 biometricSid,
-            std::vector<u8>& out_keyBlob, KeyCharacteristics& out_keyCharacteristics)
+            std::vector<u8>& out_keyBlob, KeyCharacteristics& out_keyCharacteristics,
+            std::vector<std::vector<u8>>* out_opt_keymint_cert_chain = nullptr)
     {
         (void) wrappedKeyData; (void) wrappingKeyBlob; (void) maskingKey; (void) unwrappingParams;
         (void) passwordSid; (void) biometricSid; (void) out_keyBlob; (void) out_keyCharacteristics;
+        (void) out_opt_keymint_cert_chain;
         return ErrorCode::UNIMPLEMENTED;
     }
 
@@ -176,12 +180,13 @@ public:
     ErrorCode generateKey(std::vector<KeyParameter> const& keyParams,
             std::vector<u8>& out_keyBlob,
             KeyCharacteristics& out_keyCharacteristics,
-            std::vector<std::vector<u8>>& out_certChain) override;
+            std::vector<std::vector<u8>> * /* ignored on Keymaster */ = nullptr) override;
 
     ErrorCode importKey(std::vector<KeyParameter> const& keyParams,
             KeyFormat keyFormat, std::vector<u8> const& keyData,
             std::vector<u8>& out_keyBlob,
-            KeyCharacteristics& out_keyCharacteristics) override;
+            KeyCharacteristics& out_keyCharacteristics,
+            std::vector<std::vector<u8>>* /* ignored on Keymaster */ = nullptr) override;
 
     ErrorCode getKeyCharacteristics(std::vector<u8> const& keyBlob,
             std::vector<u8> const& applicationId, std::vector<u8> const& applicationData,
@@ -242,7 +247,7 @@ private:
 
 class SusHidlKeymaster3_0 : public SusHidlKeymasterHALCommon {
 public:
-    SusHidlKeymaster3_0(void);
+    SusHidlKeymaster3_0(const char *instname = "default");
 
 #ifndef SUSKEYMASTER_BUILD_HOST
 protected:
@@ -289,7 +294,7 @@ public:
 
 class SusHidlKeymaster4_0 : public SusHidlKeymasterHALCommon {
 public:
-    SusHidlKeymaster4_0(void);
+    SusHidlKeymaster4_0(const char *instname = "default");
 
 protected:
     /* c++ sucks */
@@ -310,7 +315,8 @@ public:
             std::vector<KeyParameter> const& unwrappingParams,
             u64 passwordSid, u64 biometricSid,
             std::vector<u8>& out_keyBlob,
-            KeyCharacteristics& out_keyCharacteristics) override;
+            KeyCharacteristics& out_keyCharacteristics,
+            std::vector<std::vector<u8>>* /* ignored on Keymaster */ = nullptr) override;
 
     ErrorCode begin(KeyPurpose purpose, std::vector<u8> const& keyBlob,
             std::vector<KeyParameter> const& inParams, HardwareAuthToken const& authToken,
@@ -343,7 +349,7 @@ public:
  */
 class SusHidlKeymaster4_1 : public SusHidlKeymaster4_0 {
 public:
-    SusHidlKeymaster4_1(void);
+    SusHidlKeymaster4_1(const char *instname = "default");
 #ifndef SUSKEYMASTER_BUILD_HOST
     hal_version getVersion(void) const override { return HAL_KEYMASTER_4_1; };
 #endif /* SUSKEYMASTER_BUILD_HOST */
@@ -354,7 +360,7 @@ public:
 #ifndef SUSKEYMASTER_HAL_DISABLE_KEYMINT
 class SusAidlKeyMint : public SusKMHal {
 public:
-    SusAidlKeyMint();
+    SusAidlKeyMint(const char *instname = "default");
 
 #ifndef SUSKEYMASTER_BUILD_HOST
     ~SusAidlKeyMint();
@@ -386,19 +392,21 @@ public:
     ErrorCode generateKey(std::vector<KeyParameter> const& keyParams,
             std::vector<u8>& out_keyBlob,
             KeyCharacteristics& out_keyCharacteristics,
-            std::vector<std::vector<u8>>& out_certChain) override;
+            std::vector<std::vector<u8>> *out_opt_cert_chain = nullptr) override;
 
     ErrorCode importKey(std::vector<KeyParameter> const& keyParams,
             KeyFormat keyFormat, std::vector<u8> const& keyData,
             std::vector<u8>& out_keyBlob,
-            KeyCharacteristics& out_keyCharacteristics) override;
+            KeyCharacteristics& out_keyCharacteristics,
+            std::vector<std::vector<u8>> *out_opt_cert_chain = nullptr) override;
 
     ErrorCode importWrappedKey(std::vector<u8> const& wrappedKeyData,
             std::vector<u8> const& wrappingKeyBlob, std::vector<u8> const& maskingKey,
             std::vector<KeyParameter> const& unwrappingParams,
             u64 passwordSid, u64 biometricSid,
             std::vector<u8>& out_keyBlob,
-            KeyCharacteristics& out_keyCharacteristics) override;
+            KeyCharacteristics& out_keyCharacteristics,
+            std::vector<std::vector<u8>> *out_opt_cert_chain = nullptr) override;
 
     ErrorCode getKeyCharacteristics(std::vector<u8> const& keyBlob,
             std::vector<u8> const& applicationId, std::vector<u8> const& applicationData,

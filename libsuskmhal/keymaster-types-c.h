@@ -437,6 +437,21 @@ DECLARE_ASN1_FUNCTIONS(KM_KEY_DESC)
 
 typedef const char * (*KM_enum_toString_proc_t)(uint32_t);
 
+/**
+ * Serialized Gatekeeper auth token.
+ * See "hardware/libhardware/include_all/hardware/hw_auth_token.h".
+ */
+typedef struct __attribute__((__packed__)) hw_auth_token {
+#define HW_AUTH_TOKEN_VERSION UINT8_C(0)
+    uint8_t version;  // Current version is 0
+    uint64_t challenge;
+    uint64_t user_id;             // secure user ID, not Android user ID
+    uint64_t authenticator_id;    // secure authenticator ID
+    uint32_t authenticator_type;  // hw_authenticator_type_t, in network order
+    uint64_t timestamp;           // in network order
+    uint8_t hmac[KM_AUTH_TOKEN_MAC_LENGTH];
+} hw_auth_token_t;
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif /* __cplusplus */

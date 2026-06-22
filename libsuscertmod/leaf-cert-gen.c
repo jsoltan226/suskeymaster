@@ -385,6 +385,12 @@ static i32 set_keyusage(X509 *x509, const KM_KEY_DESC *desc)
             case KM_PURPOSE_WRAP_KEY:
                 val |= KU_KEY_ENCIPHERMENT;
                 break;
+            case KM_PURPOSE_AGREE_KEY:
+                val |= KU_KEY_AGREEMENT;
+                break;
+            case KM_PURPOSE_ATTEST_KEY:
+                val |= KU_KEY_CERT_SIGN;
+                break;
             }
         }
     }

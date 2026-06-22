@@ -1,5 +1,6 @@
 #define OPENSSL_API_COMPAT 0x10002000L
 #include "cli.hpp"
+#include "util.hpp"
 #include "google-root.h"
 #include <core/int.h>
 #include <core/vector.h>

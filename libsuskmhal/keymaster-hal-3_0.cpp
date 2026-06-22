@@ -26,12 +26,12 @@ using hidl::fromHidl;
 #ifndef SUSKEYMASTER_BUILD_HOST
 
 static void handle_auth_token_compat(hidl_vec<hidl::KeyParameter>& par,
-                                     hidl::HardwareAuthToken const& at,
+                                     HardwareAuthToken const& at,
                                      const char *func);
 
-SusHidlKeymaster3_0::SusHidlKeymaster3_0(void) :
+SusHidlKeymaster3_0::SusHidlKeymaster3_0(const char *instname) :
     SusHidlKeymasterHALCommon(
-        kmhal_hidl_sp_new_get("android.hardware.keymaster@3.0::IKeymasterDevice", "default",
+        kmhal_hidl_sp_new_get("android.hardware.keymaster@3.0::IKeymasterDevice", instname,
                               nullptr, false)
     )
 {
@@ -130,14 +130,18 @@ fail:
     }
 
     out_securityLevel = isSecure ? SecurityLevel::TRUSTED_ENVIRONMENT : SecurityLevel::SOFTWARE;
-    std::cout << "Keymaster 3.0: supportsEllipticCurve: "
-            << supportsEllipticCurve << std::endl;
-    std::cout << "Keymaster 3.0: supportsSymmetricCryptography: "
-            << supportsSymmetricCryptography << std::endl;
-    std::cout << "Keymaster 3.0: supportsAttestation: "
-            << supportsAttestation << std::endl;
-    std::cout << "Keymaster 3.0: supportsAllDigests: "
-            << supportsAllDigests << std::endl;
+    if (!supportsEllipticCurve)
+        std::cout << "Keymaster 3.0: supportsEllipticCurve: "
+                << supportsEllipticCurve << std::endl;
+    if (!supportsSymmetricCryptography)
+        std::cout << "Keymaster 3.0: supportsSymmetricCryptography: "
+                << supportsSymmetricCryptography << std::endl;
+    if (!supportsAttestation)
+        std::cout << "Keymaster 3.0: supportsAttestation: "
+                << supportsAttestation << std::endl;
+    if (!supportsAllDigests)
+        std::cout << "Keymaster 3.0: supportsAllDigests: "
+                << supportsAllDigests << std::endl;
 
     out_keymasterName = std::string(keymasterName->buffer, keymasterName->length);
     out_keymasterAuthorName =
@@ -156,10 +160,9 @@ ErrorCode SusHidlKeymaster3_0::begin(KeyPurpose purpose,
     const hidl_vec<hidl::KeyParameter> *outParams = nullptr;
 
     const hidl_vec<u8> hidl_keyBlob = toHidlView(keyBlob);
-    const hidl::HardwareAuthToken hidl_authToken = toHidlView(authToken);
     hidl_vec<hidl::KeyParameter> hidl_inParams = toHidlView(inParams);
 
-    handle_auth_token_compat(hidl_inParams, hidl_authToken, "begin");
+    handle_auth_token_compat(hidl_inParams, authToken, "begin");
 
     struct kmhal_arg_write_desc in_args[] = {
         init_write_p("purpose", purpose, kmhal_arg_write_u32),
@@ -202,7 +205,7 @@ ErrorCode SusHidlKeymaster3_0::update(OpaqueOpHandle& operationHandle,
     hidl_vec<hidl::KeyParameter> hidl_inParams = toHidlView(inParams);
     const hidl_vec<u8> hidl_input = toHidlView(input);
 
-    handle_auth_token_compat(hidl_inParams, toHidlView(authToken), "update");
+    handle_auth_token_compat(hidl_inParams, authToken, "update");
 
     const u64 ophandle_val = reinterpret_cast<u64>(operationHandle);
     struct kmhal_arg_write_desc in_args[] = {
@@ -250,7 +253,7 @@ ErrorCode SusHidlKeymaster3_0::finish(OpaqueOpHandle& operationHandle,
     const hidl_vec<u8> hidl_input = toHidlView(input);
     const hidl_vec<u8> hidl_signature = toHidlView(signature);
 
-    handle_auth_token_compat(hidl_inParams, toHidlView(authToken), "finish");
+    handle_auth_token_compat(hidl_inParams, authToken, "finish");
 
     const u64 ophandle_val = reinterpret_cast<u64>(operationHandle);
     struct kmhal_arg_write_desc in_args[] = {
@@ -282,44 +285,20 @@ ErrorCode SusHidlKeymaster3_0::finish(OpaqueOpHandle& operationHandle,
 }
 
 static void handle_auth_token_compat(hidl_vec<hidl::KeyParameter>& par,
-                                     hidl::HardwareAuthToken const& at,
+                                     HardwareAuthToken const& at,
                                      const char *func)
 {
     /* non-empty MAC means non-empty auth token */
     if (at.mac.size() > 0) {
-        if (at.mac.size() != static_cast<size_t>(Constants::AUTH_TOKEN_MAC_LENGTH)) {
-            std::cerr << "Invalid auth token MAC size: " << at.mac.size() << std::endl;
-            return;
-        }
-
-        /* "hardware/libhardware/include_all/hardware/hw_auth_token.h" */
-        typedef struct __attribute__((__packed__)) {
-            uint8_t version;  // Current version is 0
-            uint64_t challenge;
-            uint64_t user_id;             // secure user ID, not Android user ID
-            uint64_t authenticator_id;    // secure authenticator ID
-            uint32_t authenticator_type;  // hw_authenticator_type_t, in network order
-            uint64_t timestamp;           // in network order
-            uint8_t hmac[static_cast<size_t>(Constants::AUTH_TOKEN_MAC_LENGTH)];
-        } hw_auth_token_t;
-        hw_auth_token_t auth_token = {
-            /* .version = */ 0,
-            /* .challenge = */ at.challenge,
-            /* .user_id = */ at.userId,
-            /* .authenticator_id = */ at.authenticatorId,
-            /* .authenticator_type = */ htobe32(static_cast<u32>(at.authenticatorType)),
-            /* .timestamp = */ htobe64(at.timestamp),
-            /* .hmac = */ {}
-        };
-        memcpy(auth_token.hmac, at.mac.data(),
-                static_cast<size_t>(Constants::AUTH_TOKEN_MAC_LENGTH));
 
         par.resize(par.size() + 1);
         par[par.size() - 1].tag = Tag::AUTH_TOKEN;
-        par[par.size() - 1].blob = hidl_vec<u8>(reinterpret_cast<const u8 *>(&auth_token),
-                                reinterpret_cast<const u8 *>(&auth_token) + sizeof(auth_token));
+        par[par.size() - 1].blob = hidl_vec<u8>(serialize_auth_token(at));
+        /*
         std::cout << "Keymaster 3.0: " << func <<
             ": Converted authToken argument to Tag::AUTH_TOKEN key parameter" << std::endl;
+            */
+        (void) func;
     }
 }
 

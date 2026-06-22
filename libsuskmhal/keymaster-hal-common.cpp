@@ -67,7 +67,7 @@ ErrorCode SusHidlKeymasterHALCommon::generateKey(
         std::vector<KeyParameter> const& keyParams,
         std::vector<u8>& out_keyBlob,
         KeyCharacteristics& out_keyCharacteristics,
-        std::vector<std::vector<u8>>& out_certChain)
+        std::vector<std::vector<u8>>* /* ignored on Keymaster */)
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;
@@ -96,7 +96,6 @@ ErrorCode SusHidlKeymasterHALCommon::generateKey(
     if (ret == ErrorCode::OK) {
         out_keyBlob = fromHidl(*keyBlob);
         out_keyCharacteristics = fromHidl(*keyCharacteristics);
-        out_certChain.resize(0);
     }
 
     return ret;
@@ -106,7 +105,8 @@ ErrorCode SusHidlKeymasterHALCommon::importKey(
         std::vector<KeyParameter> const& keyParams,
         KeyFormat keyFormat, std::vector<u8> const& keyData,
         std::vector<u8>& out_keyBlob,
-        KeyCharacteristics& out_keyCharacteristics)
+        KeyCharacteristics& out_keyCharacteristics,
+        std::vector<std::vector<u8>> * /* ignored on Keymaster */)
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;

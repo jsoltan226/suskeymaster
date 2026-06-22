@@ -373,9 +373,8 @@
     KM_DECL_TAG(USAGE_COUNT_LIMIT, UINT, 405, usageCountLimit, NULL, INTEGER, _)                        \
                                                                                                         \
     /**                                                                                                 \
-     * All users may use the key (kind of like Tag::NO_AUTH_REQUIRED).                                  \
-     * Keymaster 3.0 declares it "reserved for future use",                                             \
-     * but no later Keymaster versions actually use it.                                                 \
+     * Legacy tag; "All users may use the key".                                                         \
+     * Deprecated in Keymaster 3.0 and later removed.                                                   \
      */                                                                                                 \
     KM_DECL_TAG(ALL_USERS, BOOL, 500, allUsers, NULL, NULL, _)                                          \
                                                                                                         \
@@ -884,7 +883,7 @@
      *                                                                                                  \
      * Must never appear in KeyCharacteristics.                                                         \
      */                                                                                                 \
-    KM_DECL_TAG(MODULE_HASH, BYTES, 724, moduleHash, NULL, OCTET_STRING, _)                             \
+    KM_DECL_TAG(MODULE_HASH, BYTES, 724, moduleHash, NULL, OCTET_STRING, _)                                  \
                                                                                                         \
     /* Internal Samsung tag: used to validate datetime requirements in begin(). */                      \
     KM_DECL_TAG(INTERNAL_CURRENT_DATETIME, DATE, 800, internalCurrentDateTime, NULL, INTEGER, _)        \

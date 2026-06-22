@@ -22,8 +22,8 @@ using hidl::fromHidl;
 
 #ifndef SUSKEYMASTER_BUILD_HOST
 
-SusHidlKeymaster4_0::SusHidlKeymaster4_0(void) :
-    SusHidlKeymaster4_0("android.hardware.keymaster@4.0::IKeymasterDevice", "default")
+SusHidlKeymaster4_0::SusHidlKeymaster4_0(const char *instname) :
+    SusHidlKeymaster4_0("android.hardware.keymaster@4.0::IKeymasterDevice", instname)
 {
 }
 
@@ -35,8 +35,8 @@ SusHidlKeymaster4_0::SusHidlKeymaster4_0(const char *fqname, const char *instnam
     }
 }
 
-SusHidlKeymaster4_1::SusHidlKeymaster4_1(void) :
-    SusHidlKeymaster4_0("android.hardware.keymaster@4.1::IKeymasterDevice", "default")
+SusHidlKeymaster4_1::SusHidlKeymaster4_1(const char *instname) :
+    SusHidlKeymaster4_0("android.hardware.keymaster@4.1::IKeymasterDevice", instname)
 {
     if (!this->getHal()) return;
 
@@ -145,7 +145,8 @@ ErrorCode SusHidlKeymaster4_0::importWrappedKey(
         std::vector<KeyParameter> const& unwrappingParams,
         u64 passwordSid, u64 biometricSid,
         std::vector<u8>& out_keyBlob,
-        KeyCharacteristics& out_keyCharacteristics)
+        KeyCharacteristics& out_keyCharacteristics,
+        std::vector<std::vector<u8>>* /* ignored on Keymaster */)
 {
     check_hal_ok();
     ErrorCode ret = ErrorCode::UNKNOWN_ERROR;

@@ -1,21 +1,26 @@
+#include "dump-utils.h"
 #define HIDL_DISABLE_INSTRUMENTATION
 #include "km-params.hpp"
 #include "../km-def.h"
 #include "../keymaster-types-c.h"
 #include "../keymaster-types-cpp.hpp"
 #include <string>
-#include <strings.h>
+#include <cstdio>
 #include <vector>
+#include <cstdarg>
 #include <sstream>
 #include <iostream>
 #include <charconv>
 #include <system_error>
 #include <unordered_map>
+#include <strings.h>
 #include <openssl/asn1.h>
 
 namespace suskeymaster {
 namespace kmhal {
 namespace util {
+
+static void pr_info(const char *fmt, ...);
 
 using namespace generic;
 
@@ -675,6 +680,22 @@ err:
     }
 
     return NULL;
+}
+
+void dump_params_as_param_list(std::vector<KeyParameter> const& params)
+{
+    KM_PARAM_LIST *ps = key_params_2_param_list(params);
+    KM_dump_param_list(pr_info, nullptr, ps, 0, true);
+    KM_PARAM_LIST_free(ps);
+}
+
+static void pr_info(const char *fmt, ...)
+{
+    va_list vlist;
+    va_start(vlist, fmt);
+    vfprintf(stdout, fmt, vlist);
+    putchar('\n');
+    va_end(vlist);
 }
 
 } /* namespace util */
