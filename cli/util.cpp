@@ -205,9 +205,7 @@ void init_default_params_for_alg_and_purposes(std::vector<KeyParameter>& params,
     std::vector<BlockMode> block_modes;
     bool has_gcm = false, has_ctr_gcm = false, has_ecb_cbc = false;
 
-    bool is_auth_bound = tag_exists(Tag::USER_SECURE_ID, params) ||
-                         tag_exists(Tag::AUTH_TIMEOUT, params) ||
-                         tag_exists(Tag::USER_ID, params);
+    const bool is_auth_bound = tag_exists(Tag::USER_SECURE_ID, params);
 
     /* Universal defaults for all algorithms */
     defaults = {
@@ -220,11 +218,14 @@ void init_default_params_for_alg_and_purposes(std::vector<KeyParameter>& params,
     if (is_keymint && (alg == Algorithm::RSA || alg == Algorithm::EC)) {
         /* The KeyMint spec recommends these values for importWrappedKey
          * (where there's now way to specify this otherwise),
-         * so let's just steal them and treat them as the "defaults" here */
+         * so let's just steal them and treat that as the "default" here */
 
         defaults.emplace_back(Tag::CERTIFICATE_NOT_BEFORE, UINT64_C(0));
         defaults.emplace_back(Tag::CERTIFICATE_NOT_AFTER, UINT64_C(253402300799000));
     }
+
+    if (is_auth_bound)
+        defaults.emplace_back(Tag::USER_AUTH_TYPE, HardwareAuthenticatorType::PASSWORD);
 
     switch (alg) {
     case Algorithm::RSA:
@@ -251,7 +252,7 @@ void init_default_params_for_alg_and_purposes(std::vector<KeyParameter>& params,
         /* Only P-256 EC keys are guaranteed to be supported
          * by both TEE and STRONGBOX devices */
         /* Don't initialize Tag::EC_CURVE if the user has already provided Tag::KEY_SIZE */
-        if (is_generate_key && find_tag<i64>(Tag::KEY_SIZE, params) == -1)
+        if (is_generate_key && !tag_exists(Tag::KEY_SIZE, params))
             defaults.emplace_back(Tag::EC_CURVE, EcCurve::P_256);
 
         if (sign_verify && private_ops)

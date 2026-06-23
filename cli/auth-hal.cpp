@@ -340,15 +340,100 @@ GatekeeperHAL::verify(u32 uid, u64 challenge,
 
 GatekeeperStatusCode GatekeeperHAL::deleteUser(u32 uid)
 {
-    (void) uid;
-    std::cerr << __func__ << ": Not implemented yet" << std::endl;
-    return GatekeeperStatusCode::ERROR_NOT_IMPLEMENTED;
+    if (!this->is_ok()) {
+        std::cerr << __func__ << ": HAL is not OK" << std::endl;
+        return GatekeeperStatusCode::ERROR_GENERAL_FAILURE;
+    }
+
+    using kmhal::transport::init_write_p, kmhal::transport::init_write_i,
+        kmhal::transport::init_write_b, kmhal::transport::init_parse_i,
+        kmhal::transport::init_parse_b;
+
+    if (kmhal_get_is_aidl(this->get_hal_sp())) {
+        const struct kmhal_arg_write_desc in_args[] = {
+            init_write_p("uid", uid, kmhal_arg_write_u32),
+        };
+        const size_t n_in_args = u_arr_size(in_args);
+
+        struct kmhal_arg_parse_desc *const out_args = nullptr;
+        const size_t n_out_args = 0;
+
+        GatekeeperStatusCode ret = GatekeeperStatusCode::ERROR_GENERAL_FAILURE;
+        if (kmhal_call(this->get_hal_sp(), static_cast<u32>(GK_AIDL_HAL_CMD::DELETE_USER),
+                    in_args, n_in_args, out_args, n_out_args,
+                    reinterpret_cast<u32 *>(&ret)))
+        {
+            std::cerr << __func__ << ": AIDL call failed" << std::endl;
+            return GatekeeperStatusCode::ERROR_GENERAL_FAILURE;
+        }
+
+        return ret;
+    } else {
+        const hidl_GatekeeperResponse *res_p = nullptr;
+
+        const struct kmhal_arg_write_desc in_args[] = {
+            init_write_p("uid", uid, kmhal_arg_write_u32),
+        };
+        const size_t n_in_args = u_arr_size(in_args);
+
+        struct kmhal_arg_parse_desc out_args[] = {
+            init_parse_b("response", &res_p, read_hidl_gatekeeper_response)
+        };
+        const size_t n_out_args = u_arr_size(out_args);
+
+        if (kmhal_call(this->get_hal_sp(), static_cast<u32>(GK_HIDL_HAL_CMD::DELETE_USER),
+                    in_args, n_in_args, out_args, n_out_args, nullptr))
+        {
+            std::cerr << __func__ << ": HIDL call failed" << std::endl;
+            return GatekeeperStatusCode::ERROR_GENERAL_FAILURE;
+        }
+
+        return res_p->code;
+    }
 }
 
 GatekeeperStatusCode GatekeeperHAL::deleteAllUsers(void)
 {
-    std::cerr << __func__ << ": Not implemented yet" << std::endl;
-    return GatekeeperStatusCode::ERROR_NOT_IMPLEMENTED;
+    if (!this->is_ok()) {
+        std::cerr << __func__ << ": HAL is not OK" << std::endl;
+        return GatekeeperStatusCode::ERROR_GENERAL_FAILURE;
+    }
+
+    using kmhal::transport::init_write_p, kmhal::transport::init_write_i,
+        kmhal::transport::init_write_b, kmhal::transport::init_parse_i,
+        kmhal::transport::init_parse_b;
+
+    if (kmhal_get_is_aidl(this->get_hal_sp())) {
+
+        GatekeeperStatusCode ret = GatekeeperStatusCode::ERROR_GENERAL_FAILURE;
+        if (kmhal_call(this->get_hal_sp(), static_cast<u32>(GK_AIDL_HAL_CMD::DELETE_ALL_USERS),
+                    nullptr, 0, nullptr, 0, reinterpret_cast<u32 *>(&ret)))
+        {
+            std::cerr << __func__ << ": AIDL call failed" << std::endl;
+            return GatekeeperStatusCode::ERROR_GENERAL_FAILURE;
+        }
+
+        return ret;
+    } else {
+        const hidl_GatekeeperResponse *res_p = nullptr;
+
+        const struct kmhal_arg_write_desc *const in_args = nullptr;
+        const size_t n_in_args = 0;
+
+        struct kmhal_arg_parse_desc out_args[] = {
+            init_parse_b("response", &res_p, read_hidl_gatekeeper_response)
+        };
+        const size_t n_out_args = u_arr_size(out_args);
+
+        if (kmhal_call(this->get_hal_sp(), static_cast<u32>(GK_HIDL_HAL_CMD::DELETE_ALL_USERS),
+                    in_args, n_in_args, out_args, n_out_args, nullptr))
+        {
+            std::cerr << __func__ << ": HIDL call failed" << std::endl;
+            return GatekeeperStatusCode::ERROR_GENERAL_FAILURE;
+        }
+
+        return res_p->code;
+    }
 }
 
 WeaverStatus WeaverHAL::getConfig(WeaverConfig& out_config)
