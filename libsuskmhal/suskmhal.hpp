@@ -29,6 +29,8 @@ public:
 
     virtual hal_version getVersion(void) const { return HAL_NONE; };
 
+    virtual u64 getOpHandleChallenge(const OpaqueOpHandle&) { return UINT64_C(0); };
+
     virtual void getHardwareInfo(SecurityLevel& out_securityLevel,
             std::string& out_keymasterName, std::string& out_keymasterAuthorName)
     {
@@ -166,10 +168,12 @@ public:
     SusHidlKeymasterHALCommon(SusHidlKeymasterHALCommon&&) = default;
     SusHidlKeymasterHALCommon& operator=(SusHidlKeymasterHALCommon&&) = default;
 
+#ifndef SUSKEYMASTER_BUILD_HOST
+
     struct kmhal_sp * getHalSp(void) const override;
     bool isHALOk(void) const override;
 
-#ifndef SUSKEYMASTER_BUILD_HOST
+    u64 getOpHandleChallenge(const OpaqueOpHandle&) override;
 
 public:
     /** All of the below methods are the exact same for all
@@ -367,10 +371,27 @@ public:
 private:
     std::unique_ptr<struct kmhal_sp, decltype(&transport::kmhal_sp_deleter)> hal_;
     i32 keymint_version = -1;
-    std::vector<struct kmhal_sp *> activeOperationHandles;
 
-    int get_op_handle(OpaqueOpHandle user_handle,
-                      size_t& out_idx, struct kmhal_sp *& out_handle);
+    struct op_handle {
+        struct kmhal_sp *sp = nullptr;
+        u64 challenge = UINT64_C(0);
+
+        explicit op_handle(struct kmhal_sp *, u32);
+        ~op_handle();
+
+        op_handle(const op_handle& other) = delete;
+        op_handle& operator=(const op_handle& other) = delete;
+
+        const op_handle * getView() { return this; };
+
+        op_handle(op_handle&& other) noexcept;
+        op_handle& operator=(op_handle&& other) noexcept;
+    };
+    std::vector<op_handle> activeOperationHandles;
+
+    /* if a dead operation handle is found, it is erased */
+    int find_op_handle(OpaqueOpHandle user_handle, const op_handle *& out_view,
+                       size_t *opt_out_idx = nullptr);
 
     /* Converts `Tag::ASSOCIATED_DATA` to `updateAad` calls in `update()` */
     ErrorCode handle_aad_compat(struct kmhal_sp *op,
@@ -383,6 +404,8 @@ public:
     bool isHALOk(void) const override;
 
     hal_version getVersion(void) const override;
+
+    u64 getOpHandleChallenge(const OpaqueOpHandle&) override;
 
     void getHardwareInfo(SecurityLevel& out_securityLevel,
             std::string& out_keymasterName, std::string& out_keymasterAuthorName) override;

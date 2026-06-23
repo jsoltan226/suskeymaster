@@ -43,10 +43,14 @@ using namespace kmhal::generic;
 static std::unique_ptr<SusKMHal> g_hal = nullptr;
 
 enum cli_arg_type {
-    INPUT_FILE,
-    OUTPUT_FILE,
+    INPUT_FILE_PATH,
+    OUTPUT_FILE_PATH,
     KEY_PARAMETERS,
     INPUT_STRING,
+    INPUT_BASE64,
+    INPUT_U32,
+    INPUT_CERT_CHAIN_PATH,
+    OUTPUT_CERT_CHAIN_PATH,
 };
 enum cli_arg_mandatory {
     ARG_OPTIONAL,
@@ -61,32 +65,45 @@ struct cli_arg {
 
 struct cli_arg_value {
 private:
-    std::vector<u8> bytes;
+    std::vector<u8> bytes; /* also used with `INPUT_BASE64` */
     std::vector<KeyParameter> key_params;
 
-    /* also used with cli_arg_type::OUTPUT_FILE as the output file path */
+    /* also used with OUTPUT_FILE_PATH and OUTPUT_CERT_CHAIN_PATH as the output file path */
     std::string str;
-    bool is_out_file_ = false;
+    bool is_out_file_ = false, is_cert_chain_ = false;
+
+    u32 u32_;
+
+    /* For INPUT_CERT_CHAIN_PATH and OUTPUT_CERT_CHAIN_PATH */
+    std::vector<std::vector<u8>> cert_chain;
 
 public:
 
     cli_arg_value() { }
 
-    /* For cli_arg_type::INPUT_FILE */
+    /* For cli_arg_type::INPUT_FILE_PATH */
     cli_arg_value(std::vector<u8>&& b) {
         bytes = std::move(b);
     }
 
-    /* For cli_arg_type::OUTPUT_FILE and cli_arg_type::INPUT_STRING */
-    cli_arg_value(std::string const& s, bool is_out_file) {
+    /* For cli_arg_type::OUTPUT_FILE_PATH and cli_arg_type::INPUT_STRING */
+    cli_arg_value(std::string const& s, bool is_out_file = false, bool is_cert_chain = false) {
         str = s;
-        this->is_out_file_ = is_out_file;
+        is_out_file_ = is_out_file;
+        is_cert_chain_ = is_cert_chain;
     }
 
     /* For cli_arg_type::KEY_PARAMETERS */
     cli_arg_value(std::vector<KeyParameter>&& kp) {
         key_params = std::move(kp);
     }
+
+    /* For cli_arg_type::INPUT_CERT_CHAIN_PATH */
+    cli_arg_value(std::vector<std::vector<u8>>&& cc) {
+        cert_chain = std::move(cc);
+    }
+
+    cli_arg_value(u32 u32_) : u32_(u32_) {}
 
     const std::vector<u8>& in_bytes(void) const {
         return bytes;
@@ -97,6 +114,12 @@ public:
     const std::string& in_string(void) const {
         return str;
     }
+    u32 in_u32(void) const {
+        return u32_;
+    };
+    const std::vector<std::vector<u8>>& in_cert_chain(void) const {
+        return cert_chain;
+    }
 
     std::vector<u8>& out_bytes(void) {
         return bytes;
@@ -104,9 +127,15 @@ public:
     const std::string& out_string(void) const {
         return str;
     }
+    std::vector<std::vector<u8>>& out_cert_chain(void) {
+        return cert_chain;
+    }
 
     bool is_out_file(void) const {
         return is_out_file_;
+    }
+    bool is_cert_chain(void) const {
+        return is_cert_chain_;
     }
     void disable_out_file(void) {
         this->is_out_file_ = false;
@@ -139,10 +168,8 @@ static int write_file(const std::string& path, const std::string& param_name,
 
 static int read_and_deserialize_cert_chain(const std::string& path,
         std::vector<std::vector<u8>>& cert_chain);
-#ifndef SUSKEYMASTER_BUILD_HOST
 static int serialize_and_write_cert_chain(const std::string& path,
         const std::vector<std::vector<u8>>& cert_chain);
-#endif /* SUSKEYMASTER_BUILD_HOST */
 
 static int scan_keybox_arg(const char *cmdline,
         std::vector<std::string>& out_cert_chain,
@@ -199,7 +226,7 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_ANY,
     {
-        { "key_blob", INPUT_FILE, ARG_MANDATORY,
+        { "key_blob", INPUT_FILE_PATH, ARG_MANDATORY,
             "The key blob whose characteristics are to be read"
         },
         { "deserialization_params", KEY_PARAMETERS, ARG_OPTIONAL,
@@ -225,10 +252,10 @@ static const std::vector<cli_command> cmds = {
         { "params", KEY_PARAMETERS, ARG_MANDATORY,
             "Key generation parameters, such as ALGORITHM and PURPOSE"
         },
-        { "out_key_blob", OUTPUT_FILE, ARG_MANDATORY,
+        { "out_key_blob", OUTPUT_FILE_PATH, ARG_MANDATORY,
             "The file to which the keymaster keyblob will be written"
         },
-        { "out_keymint_cert_chain", INPUT_STRING, ARG_OPTIONAL,
+        { "out_keymint_cert_chain", OUTPUT_CERT_CHAIN_PATH, ARG_OPTIONAL,
             "On KeyMint, the file to which the cert chain of the generated key will be written"
         }
     },
@@ -239,11 +266,8 @@ static const std::vector<cli_command> cmds = {
                 &keymint_cert_chain))
             return EXIT_FAILURE;
 
-        if (!a["out_keymint_cert_chain"].in_string().empty())
-            return serialize_and_write_cert_chain(a["out_keymint_cert_chain"].in_string(),
-                    keymint_cert_chain);
-        else
-            return EXIT_SUCCESS;
+        a["out_keymint_cert_chain"].out_cert_chain() = std::move(keymint_cert_chain);
+        return EXIT_SUCCESS;
     }
 },
 {
@@ -262,7 +286,7 @@ static const std::vector<cli_command> cmds = {
             "A space-separated list of key parameters "
                 "passed in as `attestParams` to the `attestKey` call"
         },
-        { "attestation", INPUT_STRING, ARG_OPTIONAL,
+        { "attestation", OUTPUT_CERT_CHAIN_PATH, ARG_OPTIONAL,
             "The file to which the serialized attestation certificate chain will be written"
         },
     },
@@ -293,6 +317,7 @@ static const std::vector<cli_command> cmds = {
         /* KeyMint provides the attestation during key generation */
 
         if (!is_keymint) {
+            /* does `cli::secureimport::host::verify_attestation` automatically */
             if (cli::hal_ops::attest_key(*g_hal, keyblob, a["attest_params"].in_key_params(),
                     cert_chain))
                 return EXIT_FAILURE;
@@ -301,10 +326,8 @@ static const std::vector<cli_command> cmds = {
                 return EXIT_FAILURE;
         }
 
-        if (!a["attestation"].in_string().empty())
-            return serialize_and_write_cert_chain(a["attestation"].in_string(), cert_chain);
-        else
-            return EXIT_SUCCESS;
+        a["attestation"].out_cert_chain() = std::move(cert_chain);
+        return EXIT_SUCCESS;
     }
 },
 {
@@ -316,14 +339,14 @@ static const std::vector<cli_command> cmds = {
     },
     UNTIL_KEYMASTER_4_1,
     {
-        { "keyblob", INPUT_FILE, ARG_MANDATORY,
+        { "keyblob", INPUT_FILE_PATH, ARG_MANDATORY,
             "The KeyMaster key blob to attest"
         },
         { "attest_params", KEY_PARAMETERS, ARG_OPTIONAL,
             "A space-separated list of key parameters "
                 "passed in as `attestParams` to the `attestKey` call"
         },
-        { "attestation", INPUT_STRING, ARG_OPTIONAL,
+        { "attestation", OUTPUT_CERT_CHAIN_PATH, ARG_OPTIONAL,
             "The file to which the serialized attestation certificate chain will be written"
         },
     },
@@ -335,10 +358,8 @@ static const std::vector<cli_command> cmds = {
         if (cli::hal_ops::attest_key(*g_hal, keyblob, params, cert_chain))
             return EXIT_FAILURE;
 
-        if (!a["attestation"].in_string().empty())
-            return serialize_and_write_cert_chain(a["attestation"].in_string(), cert_chain);
-        else
-            return EXIT_SUCCESS;
+        a["attestation"].out_cert_chain() = std::move(cert_chain);
+        return EXIT_SUCCESS;
     }
 },
 {
@@ -349,20 +370,24 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_ANY,
     {
-        { "in_private_key", INPUT_FILE, ARG_MANDATORY,
+        { "in_private_key", INPUT_FILE_PATH, ARG_MANDATORY,
             "The private key to import - "
                 "DER-encoded PKCS#8 for asymmetric keys and raw bytes otherwise"
         },
-        { "out_key_blob", OUTPUT_FILE, ARG_MANDATORY,
+        { "out_key_blob", OUTPUT_FILE_PATH, ARG_MANDATORY,
             "The file to which the imported key blob will be written"
         },
         { "params", KEY_PARAMETERS, ARG_OPTIONAL,
             "A space-separated list of key parameters that the imported key blob should have"
         },
+        { "out_keymint_cert_chain", OUTPUT_CERT_CHAIN_PATH, ARG_OPTIONAL,
+            "On KeyMint, the file to which the cert chain of the imported key will be written"
+        },
     },
     [](arg_map_t& a) {
         return cli::hal_ops::import_key(*g_hal, a["in_private_key"].in_bytes(),
-                a["params"].in_key_params(), a["out_key_blob"].out_bytes());
+                a["params"].in_key_params(), a["out_key_blob"].out_bytes(),
+                &a["out_keymint_cert_chain"].out_cert_chain());
     }
 },
 {
@@ -375,10 +400,10 @@ static const std::vector<cli_command> cmds = {
     },
     UNTIL_KEYMASTER_4_1,
     {
-        { "in_keyblob", INPUT_FILE, ARG_MANDATORY,
+        { "in_keyblob", INPUT_FILE_PATH, ARG_MANDATORY,
             "The key blob whose public key is to be exported"
         },
-        { "out_exported", OUTPUT_FILE, ARG_MANDATORY,
+        { "out_exported", OUTPUT_FILE_PATH, ARG_MANDATORY,
             "The file to which the exported key material will be written",
         },
         { "deserialization_params", KEY_PARAMETERS, ARG_OPTIONAL,
@@ -400,10 +425,10 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_ANY,
     {
-        { "in_keyblob_to_upgrade", INPUT_FILE, ARG_MANDATORY,
+        { "in_keyblob_to_upgrade", INPUT_FILE_PATH, ARG_MANDATORY,
             "The key blob to be upgraded"
         },
-        { "out_upgraded_keyblob", OUTPUT_FILE, ARG_MANDATORY,
+        { "out_upgraded_keyblob", OUTPUT_FILE_PATH, ARG_MANDATORY,
             "The file to which the new (upgraded) keyblob will be written"
         },
         { "upgrade_params", KEY_PARAMETERS, ARG_OPTIONAL,
@@ -430,33 +455,53 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_ANY,
     {
-        { "in_key_blob", INPUT_FILE, ARG_MANDATORY,
+        { "in_key_blob", INPUT_FILE_PATH, ARG_MANDATORY,
             "The encryption key blob"
         },
-        { "in_plaintext", INPUT_FILE, ARG_MANDATORY,
+        { "in_plaintext", INPUT_FILE_PATH, ARG_MANDATORY,
             "The data to be encrypted"
         },
-        { "out_ciphertext", OUTPUT_FILE, ARG_MANDATORY,
+        { "out_ciphertext", OUTPUT_FILE_PATH, ARG_MANDATORY,
             "The file to which the encrypted data will be written"
         },
         { "params", KEY_PARAMETERS, ARG_OPTIONAL,
-            "A space-separated list of key parameters used in the call to `begin`. "
+            "A space-separated list of key parameters used in the call to `begin()`. "
             "Note: If specified, any Tag::AUTH_TOKEN parameter will be converted to the "
                 "`authToken` begin() argument."
         },
-        { "out_aes_nonce", OUTPUT_FILE, ARG_OPTIONAL,
+        { "out_aes_nonce", OUTPUT_FILE_PATH, ARG_OPTIONAL,
             "If performing AES encryption in GCM or CTR mode without a custom IV, "
-                "the file to which the keymaster-generated IV will be written"
+                "the file to which the keymaster-generated IV will be written. "
+                "Pass in /dev/null if not applicable."
         },
+        { "user_id", INPUT_U32, ARG_OPTIONAL,
+            "ID of the Android user who owns `credential`, if applicable. See `credential`." },
+        { "credential", INPUT_BASE64, ARG_OPTIONAL,
+            "If the key is auth bound and doesn't have a Tag::AUTH_TIMEOUT, "
+                "it requires Gatekeeper authentication on the fly (after `begin()`). "
+            "Credentials provided here will be used for this authentication, if necessary."
+        },
+        { "pwd_blob", INPUT_FILE_PATH, ARG_OPTIONAL,
+            "The *.pwd file of the Android user who owns `credential`, if applicable. "
+                "See `credential`." },
     },
     [](arg_map_t& a) {
         std::vector<KeyParameter> params = a["params"].in_key_params();
-        HardwareAuthToken auth_token = cli::util::extract_auth_token(params);
+
+        cli::hal_ops::crypto::gk_auth_data auth_data = {
+            cli::util::extract_auth_token(params),
+            {
+                a["user_id"].in_u32(),
+                a["credential"].in_bytes(),
+                a["pwd_blob"].in_bytes(),
+                nullptr
+            }
+        };
 
         std::vector<u8> aes_iv;
         if (cli::hal_ops::crypto::encrypt(*g_hal,
                 a["in_plaintext"].in_bytes(), a["in_key_blob"].in_bytes(),
-                params, auth_token, a["out_ciphertext"].out_bytes(), aes_iv))
+                params, auth_data, a["out_ciphertext"].out_bytes(), aes_iv))
             return EXIT_FAILURE;
 
         if (aes_iv.size() == 0)
@@ -475,28 +520,47 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_ANY,
     {
-        { "in_key_blob", INPUT_FILE, ARG_MANDATORY,
+        { "in_key_blob", INPUT_FILE_PATH, ARG_MANDATORY,
             "The decryption key blob"
         },
-        { "in_ciphertext", INPUT_FILE, ARG_MANDATORY,
+        { "in_ciphertext", INPUT_FILE_PATH, ARG_MANDATORY,
             "The data to be decrypted"
         },
-        { "out_plaintext", OUTPUT_FILE, ARG_MANDATORY,
+        { "out_plaintext", OUTPUT_FILE_PATH, ARG_MANDATORY,
             "The file to which the decrypted data will be written"
         },
         { "params", KEY_PARAMETERS, ARG_OPTIONAL,
-            "A space-separated list of key parameters used in the call to `begin`. "
+            "A space-separated list of key parameters used in the call to `begin()`. "
             "Note: If specified, any Tag::AUTH_TOKEN parameter will be converted to the "
                 "`authToken` begin() argument."
         },
+        { "user_id", INPUT_U32, ARG_OPTIONAL,
+            "ID of the Android user who owns `credential`, if applicable. See `credential`." },
+        { "credential", INPUT_BASE64, ARG_OPTIONAL,
+            "If the key is auth bound and doesn't have a Tag::AUTH_TIMEOUT, "
+                "it requires Gatekeeper authentication on the fly (after `begin()`). "
+            "Credentials provided here will be used for this authentication, if necessary."
+        },
+        { "pwd_blob", INPUT_FILE_PATH, ARG_OPTIONAL,
+            "The *.pwd file of the Android user who owns `credential`, if applicable. "
+                "See `credential`." },
     },
     [](arg_map_t& a) {
         std::vector<KeyParameter> params = a["params"].in_key_params();
-        HardwareAuthToken auth_token = cli::util::extract_auth_token(params);
+
+        cli::hal_ops::crypto::gk_auth_data auth_data = {
+            cli::util::extract_auth_token(params),
+            {
+                a["user_id"].in_u32(),
+                a["credential"].in_bytes(),
+                a["pwd_blob"].in_bytes(),
+                nullptr
+            }
+        };
 
         return cli::hal_ops::crypto::decrypt(*g_hal,
                 a["in_ciphertext"].in_bytes(), a["in_key_blob"].in_bytes(),
-                params, auth_token, a["out_plaintext"].out_bytes());
+                params, auth_data, a["out_plaintext"].out_bytes());
     }
 },
 {
@@ -507,27 +571,46 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_ANY,
     {
-        { "in_key_blob", INPUT_FILE, ARG_MANDATORY,
+        { "in_key_blob", INPUT_FILE_PATH, ARG_MANDATORY,
             "The signing key blob"
         },
-        { "in_message", INPUT_FILE, ARG_MANDATORY,
+        { "in_message", INPUT_FILE_PATH, ARG_MANDATORY,
             "The data to be signed"
         },
-        { "out_signature", OUTPUT_FILE, ARG_MANDATORY,
+        { "out_signature", OUTPUT_FILE_PATH, ARG_MANDATORY,
             "The file to which the signature will be written"
         },
         { "params", KEY_PARAMETERS, ARG_OPTIONAL,
-            "A space-separated list of key parameters used in the call to `begin`. "
+            "A space-separated list of key parameters used in the call to `begin()`. "
             "Note: If specified, any Tag::AUTH_TOKEN parameter will be converted to the "
                 "`authToken` begin() argument."
         },
+        { "user_id", INPUT_U32, ARG_OPTIONAL,
+            "ID of the Android user who owns `credential`, if applicable. See `credential`." },
+        { "credential", INPUT_BASE64, ARG_OPTIONAL,
+            "If the key is auth bound and doesn't have a Tag::AUTH_TIMEOUT, "
+                "it requires Gatekeeper authentication on the fly (after `begin()`). "
+            "Credentials provided here will be used for this authentication, if necessary."
+        },
+        { "pwd_blob", INPUT_FILE_PATH, ARG_OPTIONAL,
+            "The *.pwd file of the Android user who owns `credential`, if applicable. "
+                "See `credential`." },
     },
     [](arg_map_t& a) {
         std::vector<KeyParameter> params = a["params"].in_key_params();
-        HardwareAuthToken auth_token = cli::util::extract_auth_token(params);
+
+        cli::hal_ops::crypto::gk_auth_data auth_data = {
+            cli::util::extract_auth_token(params),
+            {
+                a["user_id"].in_u32(),
+                a["credential"].in_bytes(),
+                a["pwd_blob"].in_bytes(),
+                nullptr
+            }
+        };
 
         return cli::hal_ops::crypto::sign(*g_hal, a["in_message"].in_bytes(),
-                a["in_key_blob"].in_bytes(), params, auth_token,
+                a["in_key_blob"].in_bytes(), params, auth_data,
                 a["out_signature"].out_bytes());
     }
 },
@@ -539,28 +622,47 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_ANY,
     {
-        { "in_key_blob", INPUT_FILE, ARG_MANDATORY,
+        { "in_key_blob", INPUT_FILE_PATH, ARG_MANDATORY,
             "The key blob with which the signature was generated"
         },
-        { "in_message", INPUT_FILE, ARG_MANDATORY,
+        { "in_message", INPUT_FILE_PATH, ARG_MANDATORY,
             "The data that the signature applies to"
         },
-        { "in_signature", INPUT_FILE, ARG_MANDATORY,
+        { "in_signature", INPUT_FILE_PATH, ARG_MANDATORY,
             "The signature to be verified"
         },
         { "params", KEY_PARAMETERS, ARG_OPTIONAL,
-            "A space-separated list of key parameters used in the call to `begin`. "
+            "A space-separated list of key parameters used in the call to `begin()`. "
             "Note: If specified, any Tag::AUTH_TOKEN parameter will be converted to the "
                 "`authToken` begin() argument."
         },
+        { "user_id", INPUT_U32, ARG_OPTIONAL,
+            "ID of the Android user who owns `credential`, if applicable. See `credential`." },
+        { "credential", INPUT_BASE64, ARG_OPTIONAL,
+            "If the key is auth bound and doesn't have a Tag::AUTH_TIMEOUT, "
+                "it requires Gatekeeper authentication on the fly (after `begin()`). "
+            "Credentials provided here will be used for this authentication, if necessary."
+        },
+        { "pwd_blob", INPUT_FILE_PATH, ARG_OPTIONAL,
+            "The *.pwd file of the Android user who owns `credential`, if applicable. "
+                "See `credential`." },
     },
     [](arg_map_t& a) {
         std::vector<KeyParameter> params = a["params"].in_key_params();
-        HardwareAuthToken auth_token = cli::util::extract_auth_token(params);
+
+        cli::hal_ops::crypto::gk_auth_data auth_data = {
+            cli::util::extract_auth_token(params),
+            {
+                a["user_id"].in_u32(),
+                a["credential"].in_bytes(),
+                a["pwd_blob"].in_bytes(),
+                nullptr
+            }
+        };
 
         return cli::hal_ops::crypto::verify(*g_hal,
                 a["in_message"].in_bytes(), a["in_signature"].in_bytes(),
-                a["in_key_blob"].in_bytes(), params, auth_token);
+                a["in_key_blob"].in_bytes(), params, auth_data);
     }
 },
 {
@@ -670,11 +772,11 @@ static const std::vector<cli_command> cmds = {
     SINCE_KEYMASTER_4_0,
     {
         {
-            "out_keyblob", OUTPUT_FILE, ARG_MANDATORY,
+            "out_keyblob", OUTPUT_FILE_PATH, ARG_MANDATORY,
             "The file to which the wrapping keyblob will be written"
         },
         {
-            "out_pubkey", OUTPUT_FILE, ARG_MANDATORY,
+            "out_pubkey", OUTPUT_FILE_PATH, ARG_MANDATORY,
             "The file to which the public part of the wrapping key will be written"
         },
         {
@@ -682,34 +784,15 @@ static const std::vector<cli_command> cmds = {
             "Optional key generation parameters for the wrapping keyblob"
         },
         {
-            "out_attestation", INPUT_STRING, ARG_OPTIONAL,
+            "out_attestation", OUTPUT_CERT_CHAIN_PATH, ARG_OPTIONAL,
             "The path to which the serialized attestation of the wrapping keyblob will be written"
         }
     },
     {
         [](arg_map_t& a) {
-            const std::string& out_attestation_path = a["out_attestation"].in_string();
-            std::vector<std::vector<u8>> cert_chain;
-
-            const bool gen_att = !out_attestation_path.empty();
-            std::vector<std::vector<u8>> *const cert_chain_p =
-                gen_att ? &cert_chain : nullptr;
-
-            int r = cli::secureimport::target::generate_and_attest_wrapping_key(*g_hal,
+            return cli::secureimport::target::generate_and_attest_wrapping_key(*g_hal,
                     a["out_keyblob"].out_bytes(), a["out_pubkey"].out_bytes(),
-                    cert_chain_p, a["key_params"].in_key_params());
-            if (r)
-                return EXIT_FAILURE;
-
-            if (gen_att) {
-                if (serialize_and_write_cert_chain(out_attestation_path, cert_chain)) {
-                    std::cerr << "Couldn't serialize and write the attestation cert chain"
-                        << std::endl;
-                    return EXIT_FAILURE;
-                }
-            }
-
-            return EXIT_SUCCESS;
+                    &a["out_attestation"].out_cert_chain(), a["key_params"].in_key_params());
         }
     }
 },
@@ -722,18 +805,12 @@ static const std::vector<cli_command> cmds = {
     HAL_NOT_NEEDED,
     {
         {
-            "attestation", INPUT_STRING, ARG_MANDATORY,
+            "attestation", INPUT_CERT_CHAIN_PATH, ARG_MANDATORY,
             "The serialized attestation certificate chain to be verified"
         }
     },
     [](arg_map_t& a) {
-        std::vector<std::vector<u8>> cert_chain;
-        if (read_and_deserialize_cert_chain(a["attestation"].in_string(), cert_chain)) {
-            std::cerr << "Couldn't read and deserialize the attestation cert chain" << std::endl;
-            return EXIT_FAILURE;
-        }
-
-        return cli::secureimport::host::verify_attestation(cert_chain);
+        return cli::secureimport::host::verify_attestation(a["attestation"].in_cert_chain());
     }
 },
 {
@@ -746,19 +823,19 @@ static const std::vector<cli_command> cmds = {
     HAL_NOT_NEEDED,
     {
         {
-            "in_private_key", INPUT_FILE, ARG_MANDATORY,
+            "in_private_key", INPUT_FILE_PATH, ARG_MANDATORY,
             "The private key to be wrapped for a secure import"
         },
         {
-            "in_wrapping_pubkey", INPUT_FILE, ARG_MANDATORY,
+            "in_wrapping_pubkey", INPUT_FILE_PATH, ARG_MANDATORY,
             "The DER-encoded X.509 certificate containing the public part of the wrapping key"
         },
         {
-            "out_wrapped_data", OUTPUT_FILE, ARG_MANDATORY,
+            "out_wrapped_data", OUTPUT_FILE_PATH, ARG_MANDATORY,
             "The path to which the wrapped key data will be written"
         },
         {
-            "out_masking_key", OUTPUT_FILE, ARG_MANDATORY,
+            "out_masking_key", OUTPUT_FILE_PATH, ARG_MANDATORY,
             "The path to which the masking key will be written"
         },
         {
@@ -790,19 +867,19 @@ static const std::vector<cli_command> cmds = {
     SINCE_KEYMASTER_4_0,
     {
         {
-            "in_wrapped_data", INPUT_FILE, ARG_MANDATORY,
+            "in_wrapped_data", INPUT_FILE_PATH, ARG_MANDATORY,
             "The wrapped key data to be imported"
         },
         {
-            "in_masking_key", INPUT_FILE, ARG_MANDATORY,
+            "in_masking_key", INPUT_FILE_PATH, ARG_MANDATORY,
             "The masking key generated during the wrapping process"
         },
         {
-            "in_wrapping_keyblob", INPUT_FILE, ARG_MANDATORY,
+            "in_wrapping_keyblob", INPUT_FILE_PATH, ARG_MANDATORY,
             "The wrapping key blob file"
         },
         {
-            "out_keyblob", OUTPUT_FILE, ARG_MANDATORY,
+            "out_keyblob", OUTPUT_FILE_PATH, ARG_MANDATORY,
             "The file to which the securely imported key blob will be written"
         },
         {
@@ -828,17 +905,17 @@ static const std::vector<cli_command> cmds = {
     },
     SINCE_KEYMASTER_4_0,
     {
-        { "in_private_key", INPUT_FILE, ARG_MANDATORY,
+        { "in_private_key", INPUT_FILE_PATH, ARG_MANDATORY,
             "The private key to import - "
                 "DER-encoded PKCS#8 for asymmetric keys and raw bytes otherwise"
         },
-        { "out_key_blob", OUTPUT_FILE, ARG_MANDATORY,
+        { "out_key_blob", OUTPUT_FILE_PATH, ARG_MANDATORY,
             "The file to which the imported key blob will be written"
         },
         { "params", KEY_PARAMETERS, ARG_OPTIONAL,
             "A space-separated list of key parameters that the imported key blob should have"
         },
-        { "out_attestation", INPUT_STRING, ARG_OPTIONAL,
+        { "out_attestation", OUTPUT_CERT_CHAIN_PATH, ARG_OPTIONAL,
             "An optional file to which an attestation of the *newly imported key* should be written"
         },
     },
@@ -943,8 +1020,8 @@ static const std::vector<cli_command> cmds = {
             return EXIT_FAILURE;
         }
 
-        return serialize_and_write_cert_chain(a["out_attestation"].in_string(),
-                imported_cert_chain);
+        a["out_attestation"].out_cert_chain() = std::move(imported_cert_chain);
+        return EXIT_SUCCESS;
     }
 },
 #endif /* SUSKEYMASTER_BUILD_HOST */
@@ -959,15 +1036,15 @@ static const std::vector<cli_command> cmds = {
     HAL_NOT_NEEDED,
     {
         {
-            "in_secdiscardable", INPUT_FILE, ARG_MANDATORY,
+            "in_secdiscardable", INPUT_FILE_PATH, ARG_MANDATORY,
             "The `secdiscardable` file in the given vold `key` directory"
         },
         {
-            "out_appid", OUTPUT_FILE, ARG_OPTIONAL,
+            "out_appid", OUTPUT_FILE_PATH, ARG_OPTIONAL,
             "The file to which the binary value of the generated APPLICATION_ID will be written"
         },
         {
-            "in_auth_secret", INPUT_FILE, ARG_OPTIONAL,
+            "in_auth_secret", INPUT_FILE_PATH, ARG_OPTIONAL,
             "Optional file containing a vold auth secret used to derive the app ID"
         }
     },
@@ -1002,19 +1079,19 @@ static const std::vector<cli_command> cmds = {
     HAL_ANY,
     {
         {
-            "in_vold_encrypted_key", INPUT_FILE, ARG_MANDATORY,
+            "in_vold_encrypted_key", INPUT_FILE_PATH, ARG_MANDATORY,
             "The vold DE key to decrypt"
         },
         {
-            "in_keyblob", INPUT_FILE, ARG_MANDATORY,
+            "in_keyblob", INPUT_FILE_PATH, ARG_MANDATORY,
             "The keystore/keymaster key used to encrypt <in_vold_encrypted_key>"
         },
         {
-            "in_secdiscardable", INPUT_FILE, ARG_MANDATORY,
+            "in_secdiscardable", INPUT_FILE_PATH, ARG_MANDATORY,
             "The secdiscardable file used to encrypt <in_vold_encrypted_key>"
         },
         {
-            "out_decrypted_key", OUTPUT_FILE, ARG_MANDATORY,
+            "out_decrypted_key", OUTPUT_FILE_PATH, ARG_MANDATORY,
             "The file to which the decrypted vold key will be written"
         }
     },
@@ -1033,7 +1110,7 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NOT_NEEDED,
     {
-        { "in_pwd_file", INPUT_FILE, ARG_MANDATORY, "The SP data file to dump" }
+        { "in_pwd_file", INPUT_FILE_PATH, ARG_MANDATORY, "The SP data file to dump" }
     },
     [](arg_map_t& a) {
         return cli::auth::pwd_blob(a["in_pwd_file"].in_bytes(), true).ok() ?
@@ -1047,7 +1124,7 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NOT_NEEDED,
     {
-        { "in_auth_token", INPUT_FILE, ARG_MANDATORY, "The auth token to dump" }
+        { "in_auth_token", INPUT_FILE_PATH, ARG_MANDATORY, "The auth token to dump" }
     },
     [](arg_map_t& a) {
         HardwareAuthToken at = deserialize_auth_token(a["in_auth_token"].in_bytes());
@@ -1088,48 +1165,36 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NOT_NEEDED,
     {
-        { "user_id", INPUT_STRING, ARG_MANDATORY,
+        { "user_id", INPUT_U32, ARG_MANDATORY,
             "ID of the user who owns the given credentials" },
-        { "in_pwd_file", INPUT_FILE, ARG_MANDATORY, "The SP data file" },
-        { "credential", INPUT_STRING, ARG_OPTIONAL,
+        { "in_pwd_file", INPUT_FILE_PATH, ARG_MANDATORY, "The SP data file" },
+        { "credential", INPUT_BASE64, ARG_OPTIONAL,
             "Lockscreen credentials to verify, in base64. "
                 "If not provided or empty, the string \"default-password\" is used instead."
         },
-        { "out_auth_token", OUTPUT_FILE, ARG_OPTIONAL,
+        { "out_auth_token", OUTPUT_FILE_PATH, ARG_OPTIONAL,
             "Optional output file to which the Gatekeeper auth token will be saved. "
             "Note that this token is only really useful for decrypting the SP blob."
         },
     },
     [](arg_map_t& a) {
-        u32 user_id = 0;
-        if (str_to_int<u32>(a["user_id"].in_string(), user_id)) {
-            std::cerr << "Invalid user_id value" << std::endl;
-            return EXIT_FAILURE;
-        }
-
-        std::vector<u8> credential(0);
-        if (a["credential"].in_string().size() > 0) {
-            if (util::b64decode(a["credential"].in_string(), credential)) {
-                std::cerr << "Failed to decode credential base64" << std::endl;
-                return EXIT_FAILURE;
-            }
-        }
-
         cli::auth::GatekeeperHAL gk_hal(g_hal.get());
         if (!gk_hal.is_ok()) {
             std::cerr << "Failed to initialize Gatekeeper HAL" << std::endl;
             return EXIT_FAILURE;
         }
 
-        HardwareAuthToken at{};
+        HardwareAuthToken auth_token{};
         if (cli::auth::spblob::user_gatekeeper_auth(gk_hal,
-                user_id, a["in_pwd_file"].in_bytes(), credential, at))
+                a["user_id"].in_u32(), UINT64_C(0), a["in_pwd_file"].in_bytes(),
+                a["credential"].in_bytes(),
+                auth_token))
         {
             std::cerr << "User GK authentication failed" << std::endl;
             return EXIT_FAILURE;
         }
 
-        a["out_auth_token"].out_bytes() = cli::util::serialize_auth_token(at);
+        a["out_auth_token"].out_bytes() = cli::util::serialize_auth_token(auth_token);
         return EXIT_SUCCESS;
     }
 },
@@ -1162,47 +1227,35 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_ANY,
     {
-        { "user_id", INPUT_STRING, ARG_MANDATORY,
+        { "user_id", INPUT_U32, ARG_MANDATORY,
             "ID of the user who owns the given credentials" },
-        { "in_keystore_key_blob", INPUT_FILE, ARG_MANDATORY,
+        { "in_keystore_key_blob", INPUT_FILE_PATH, ARG_MANDATORY,
             "Wrapping keystore key blob. See above." },
-        { "in_pwd_file", INPUT_FILE, ARG_MANDATORY, "The SP data (\"*.pwd\") file" },
-        { "in_secdiscardable", INPUT_FILE, ARG_MANDATORY,
+        { "in_pwd_file", INPUT_FILE_PATH, ARG_MANDATORY, "The SP data (\"*.pwd\") file" },
+        { "in_secdiscardable", INPUT_FILE_PATH, ARG_MANDATORY,
             "The secdiscardable (\"*.secdis\") file" },
-        { "in_spblob", INPUT_FILE, ARG_MANDATORY,
+        { "in_spblob", INPUT_FILE_PATH, ARG_MANDATORY,
             "The Synthetic Password blob (\"*.spblob\") to unwrap" },
-        { "in_null_handle", INPUT_FILE, ARG_MANDATORY,
+        { "in_null_handle", INPUT_FILE_PATH, ARG_MANDATORY,
             "The null handle file (0000000000000000.handle)" },
-        { "out_decrypted_blob", OUTPUT_FILE, ARG_MANDATORY,
+        { "out_decrypted_blob", OUTPUT_FILE_PATH, ARG_MANDATORY,
             "The output file in which to store the decrypted SP blob. "
                 "The content should be a 32- or 64-byte uppercase hex string." },
-        { "credential", INPUT_STRING, ARG_OPTIONAL,
+        { "credential", INPUT_BASE64, ARG_OPTIONAL,
             "Lockscreen credentials to verify, in base64. "
                 "If not provided or empty, the string \"default-password\" is used instead."
         },
     },
     [](arg_map_t& a) {
-        u32 user_id = 0;
-        if (str_to_int<u32>(a["user_id"].in_string(), user_id)) {
-            std::cerr << "Invalid user_id value" << std::endl;
-            return EXIT_FAILURE;
-        }
-
-        std::vector<u8> credential(0);
-        if (a["credential"].in_string().size() > 0) {
-            if (util::b64decode(a["credential"].in_string(), credential)) {
-                std::cerr << "Failed to decode credential base64" << std::endl;
-                return EXIT_FAILURE;
-            }
-        }
-
         cli::auth::GatekeeperHAL gk_hal(g_hal.get());
         if (!gk_hal.is_ok()) {
             std::cerr << "Failed to initialize Gatekeeper HAL" << std::endl;
             return EXIT_FAILURE;
         }
 
-        cli::auth::spblob sp(*g_hal, gk_hal, user_id, credential,
+        const u32 user_id = a["user_id"].in_u32();
+
+        cli::auth::spblob sp(*g_hal, gk_hal, user_id, a["credential"].in_bytes(),
                     a["in_pwd_file"].in_bytes(), a["in_secdiscardable"].in_bytes(),
                     a["in_keystore_key_blob"].in_bytes(), a["in_spblob"].in_bytes());
         if (!sp.is_ok()) {
@@ -1213,7 +1266,8 @@ static const std::vector<cli_command> cmds = {
         std::cout << std::endl << "Sanity synthetic password verification..." << std::endl;
         std::cout << "Authenticating with Gatekeeper using synthetic password..." << std::endl;
         kmhal::generic::HardwareAuthToken dummy;
-        if (sp.sp_gatekeeper_auth(gk_hal, user_id, a["in_null_handle"].in_bytes(), dummy))
+        if (sp.sp_gatekeeper_auth(gk_hal, user_id, UINT64_C(0), a["in_null_handle"].in_bytes(),
+                                  dummy))
         {
             std::cerr << "Synthetic password verification failed" << std::endl;
             return EXIT_FAILURE;
@@ -1233,13 +1287,13 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_ANY,
     {
-        { "in_keystore_key_blob", INPUT_FILE, ARG_MANDATORY,
+        { "in_keystore_key_blob", INPUT_FILE_PATH, ARG_MANDATORY,
             "Wrapping keystore key blob. See `gatekeeper unwrap-sp-blob`." },
-        { "in_secdiscardable", INPUT_FILE, ARG_MANDATORY,
+        { "in_secdiscardable", INPUT_FILE_PATH, ARG_MANDATORY,
             "The secdiscardable (\"*.secdis\") file" },
-        { "in_spblob", INPUT_FILE, ARG_MANDATORY,
+        { "in_spblob", INPUT_FILE_PATH, ARG_MANDATORY,
             "The Synthetic Password blob (\"*.spblob\") to unwrap" },
-        { "out_decrypted_blob", OUTPUT_FILE, ARG_MANDATORY,
+        { "out_decrypted_blob", OUTPUT_FILE_PATH, ARG_MANDATORY,
             "The output file in which to store the decrypted SP blob. "
                 "The content should be a 32- or 64-byte uppercase hex string." },
     },
@@ -1276,14 +1330,14 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NOT_NEEDED,
     {
-        { "in_synthetic_password", INPUT_FILE, ARG_MANDATORY,
+        { "in_synthetic_password", INPUT_FILE_PATH, ARG_MANDATORY,
             "File containing the decrypted synthetic password blob" },
         { "sp_blob_ver", INPUT_STRING, ARG_MANDATORY,
             "Synthetic password blob version, printed out by `unwrap-sp-blob`." },
-        { "in_encrypted_key", INPUT_FILE, ARG_MANDATORY, "File containing the encrypted CE key" },
-        { "out_decrypted_key", OUTPUT_FILE, ARG_MANDATORY,
+        { "in_encrypted_key", INPUT_FILE_PATH, ARG_MANDATORY, "File containing the encrypted CE key" },
+        { "out_decrypted_key", OUTPUT_FILE_PATH, ARG_MANDATORY,
             "Path to the file to which to write the decrypted CE key" },
-        { "in_secdiscardable", INPUT_FILE, ARG_OPTIONAL,
+        { "in_secdiscardable", INPUT_FILE_PATH, ARG_OPTIONAL,
             "File containing the secdiscardable file of the CE key" },
     },
     [](arg_map_t& a) {
@@ -1315,7 +1369,7 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_NOT_NEEDED,
     {
-        { "in_fscrypt_key", INPUT_FILE, ARG_MANDATORY, "The 64-byte raw fscrypt key to install" }
+        { "in_fscrypt_key", INPUT_FILE_PATH, ARG_MANDATORY, "The 64-byte raw fscrypt key to install" }
     },
     [](arg_map_t& a) {
         return cli::vold::fscrypt_legacy_install_key(a["in_fscrypt_key"].in_bytes());
@@ -1333,7 +1387,7 @@ static const std::vector<cli_command> cmds = {
     HAL_NOT_NEEDED,
     {
         {
-            "in_keyblob", INPUT_FILE, ARG_MANDATORY,
+            "in_keyblob", INPUT_FILE_PATH, ARG_MANDATORY,
             "The key blob whose tags are to be listed"
         }
     },
@@ -1349,11 +1403,11 @@ static const std::vector<cli_command> cmds = {
     HAL_NOT_NEEDED,
     {
         {
-            "in_keyblob", INPUT_FILE, ARG_MANDATORY,
+            "in_keyblob", INPUT_FILE_PATH, ARG_MANDATORY,
             "The key blob to add the tags to"
         },
         {
-            "out_keyblob", OUTPUT_FILE, ARG_MANDATORY,
+            "out_keyblob", OUTPUT_FILE_PATH, ARG_MANDATORY,
             "The file to which the key blob with the added parameters will be written"
         },
         {
@@ -1374,11 +1428,11 @@ static const std::vector<cli_command> cmds = {
     HAL_NOT_NEEDED,
     {
         {
-            "in_keyblob", INPUT_FILE, ARG_MANDATORY,
+            "in_keyblob", INPUT_FILE_PATH, ARG_MANDATORY,
             "The key blob to delete the tags from"
         },
         {
-            "out_keyblob", OUTPUT_FILE, ARG_MANDATORY,
+            "out_keyblob", OUTPUT_FILE_PATH, ARG_MANDATORY,
             "The file to which the key blob with the deleted parameters will be written"
         },
         {
@@ -1938,7 +1992,6 @@ static int read_and_deserialize_cert_chain(const std::string& path,
     return 0;
 }
 
-#ifndef SUSKEYMASTER_BUILD_HOST
 static int serialize_and_write_cert_chain(const std::string& path,
         const std::vector<std::vector<u8>>& cert_chain)
 {
@@ -1984,7 +2037,6 @@ static int serialize_and_write_cert_chain(const std::string& path,
     std::cout << "Successfully wrote attestation cert chain to \"" << path << "\"" << std::endl;
     return 0;
 }
-#endif /* SUSKEYMASTER_BUILD_HOST */
 
 static int scan_keybox_arg(const char *cmdline,
         std::vector<std::string>& out_cert_chain,
@@ -2423,9 +2475,11 @@ static int match_and_run_handler(int argc, const char **argv)
 
             std::vector<u8> bytes;
             std::vector<KeyParameter> key_params;
+            u32 u32_;
+            std::vector<std::vector<u8>> cert_chain;
 
             switch (a.type) {
-            case INPUT_FILE:
+            case INPUT_FILE_PATH:
                 if (read_file(argv[i], a.name, bytes)) {
                     std::cerr << "Failed to read the " << a.name << " file" << std::endl;
                     return EXIT_FAILURE;
@@ -2443,11 +2497,39 @@ static int match_and_run_handler(int argc, const char **argv)
                 arg_values.emplace(a.name, cli_arg_value(std::move(key_params)));
 
                 break;
-            case OUTPUT_FILE:
-                arg_values.emplace(a.name, cli_arg_value(std::string(argv[i]), true));
+            case OUTPUT_FILE_PATH:
+                arg_values.emplace(a.name, cli_arg_value(std::string(argv[i]), true, false));
+                break;
+            case OUTPUT_CERT_CHAIN_PATH:
+                arg_values.emplace(a.name, cli_arg_value(std::string(argv[i]), true, true));
                 break;
             case INPUT_STRING:
-                arg_values.emplace(a.name, cli_arg_value(std::string(argv[i]), false));
+                arg_values.emplace(a.name, cli_arg_value(std::string(argv[i])));
+                break;
+            case INPUT_BASE64:
+                if (util::b64decode(std::string(argv[i]), bytes)) {
+                    std::cerr << "Failed to decode " << a.name << " base64" << std::endl;
+                    return EXIT_FAILURE;
+                }
+
+                arg_values.emplace(a.name, cli_arg_value(std::move(bytes)));
+                break;
+            case INPUT_U32:
+                if (str_to_int<u32>(std::string(argv[i]), u32_)) {
+                    std::cerr << "Invalid " << a.name << " u32 value" << std::endl;
+                    return EXIT_FAILURE;
+                }
+
+                arg_values.emplace(a.name, cli_arg_value(u32_));
+                break;
+            case INPUT_CERT_CHAIN_PATH:
+                if (read_and_deserialize_cert_chain(std::string(argv[i]), cert_chain)) {
+                    std::cerr << "Couldn't read and deserialize the " << a.name << " cert chain"
+                        << std::endl;
+                    return EXIT_FAILURE;
+                }
+
+                arg_values.emplace(a.name, cli_arg_value(std::move(cert_chain)));
                 break;
             }
         }
@@ -2479,11 +2561,22 @@ static int match_and_run_handler(int argc, const char **argv)
 
         const std::string& path = a.second.out_string();
         const std::string& param_name = a.first;
-        const std::vector<u8>& bytes = a.second.out_bytes();
 
-        if (write_file(path, param_name, bytes)) {
-            std::cerr << "Failed to write \"" << path << "\"" << std::endl;
-            return EXIT_FAILURE;
+        if (a.second.is_cert_chain()) {
+            const std::vector<std::vector<u8>>& cert_chain = a.second.out_cert_chain();
+
+            if (serialize_and_write_cert_chain(path, cert_chain)) {
+                std::cerr << "Failed to seralize and write the " << param_name <<
+                    " cert chain to \"" << path << "\"" << std::endl;
+                return EXIT_FAILURE;
+            }
+        } else {
+            const std::vector<u8>& bytes = a.second.out_bytes();
+
+            if (write_file(path, param_name, bytes)) {
+                std::cerr << "Failed to write \"" << path << "\"" << std::endl;
+                return EXIT_FAILURE;
+            }
         }
     }
 

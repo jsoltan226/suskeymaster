@@ -30,7 +30,7 @@ static int prepare_protector_secret(const std::vector<u8>& secdiscardable,
                                     std::vector<u8>& out);
 
 static int do_user_gatekeeper_auth(GatekeeperHAL& gk_hal,
-                                   u32 uid, const std::vector<u8>& gk_handle,
+                                   u32 uid, u64 challenge, const std::vector<u8>& gk_handle,
                                    const std::vector<u8>& stretched_lskf,
                                    HardwareAuthToken& out);
 
@@ -94,7 +94,7 @@ int spblob::derive_subkey(const char *personalization, std::vector<u8>& out) con
 }
 
 int spblob::user_gatekeeper_auth(GatekeeperHAL& gk_hal,
-                                 u32 uid, const std::vector<u8>& pwd_file,
+                                 u32 uid, u64 challenge, const std::vector<u8>& pwd_file,
                                  const std::vector<u8>& credential,
                                  kmhal::generic::HardwareAuthToken& out)
 {
@@ -110,11 +110,11 @@ int spblob::user_gatekeeper_auth(GatekeeperHAL& gk_hal,
         return EXIT_FAILURE;
     }
 
-    return do_user_gatekeeper_auth(gk_hal, uid, gk_handle, stretched_lskf, out);
+    return do_user_gatekeeper_auth(gk_hal, uid, challenge, gk_handle, stretched_lskf, out);
 }
 
 int spblob::sp_gatekeeper_auth(GatekeeperHAL& gk_hal,
-                               u32 uid, const std::vector<u8>& gk_handle,
+                               u32 uid, u64 challenge, const std::vector<u8>& gk_handle,
                                kmhal::generic::HardwareAuthToken& out) const
 {
     if (!this->is_ok()) {
@@ -133,7 +133,7 @@ int spblob::sp_gatekeeper_auth(GatekeeperHAL& gk_hal,
         return EXIT_FAILURE;
     }
 
-    auto res = gk_hal.verify(uid, UINT64_C(0), gk_handle, gk_password);
+    auto res = gk_hal.verify(uid, challenge, gk_handle, gk_password);
 
     std::cout << "Gatekeeper verification status: "
         << static_cast<i32>(res.code) << " (" << toString(res.code) << ")" << std::endl;
@@ -207,7 +207,9 @@ spblob::spblob(kmhal::SusKMHal& kmhal, GatekeeperHAL& gk_hal,
     HardwareAuthToken auth_token;
     std::cout << std::endl << "Authenticating with Gatekeeper using user credentials..."
         << std::endl;
-    if (do_user_gatekeeper_auth(gk_hal, uid, gk_handle, stretched_lskf, auth_token)) {
+    if (do_user_gatekeeper_auth(gk_hal, uid, UINT64_C(0), gk_handle, stretched_lskf,
+                                auth_token))
+    {
         std::cerr << "Gatekeeper user authentication failed" << std::endl;
         return;
     }
@@ -340,7 +342,7 @@ static int prepare_protector_secret(const std::vector<u8>& secdiscardable,
 }
 
 static int do_user_gatekeeper_auth(GatekeeperHAL& gk_hal,
-                                   u32 uid, const std::vector<u8>& gk_handle,
+                                   u32 uid, u64 challenge, const std::vector<u8>& gk_handle,
                                    const std::vector<u8>& stretched_lskf,
                                    HardwareAuthToken& out)
 {
@@ -372,7 +374,7 @@ static int do_user_gatekeeper_auth(GatekeeperHAL& gk_hal,
      *          to derive KM auth tokens for use by applications.
      */
     const u32 fake_user_id = uid + 100000;
-    auto res = gk_hal.verify(fake_user_id, UINT64_C(0), gk_handle, gk_password);
+    auto res = gk_hal.verify(fake_user_id, challenge, gk_handle, gk_password);
 
     std::cout << "Gatekeeper verification status: "
         << static_cast<i32>(res.code) << " (" << toString(res.code) << ")" << std::endl;
@@ -419,7 +421,8 @@ static int decrypt_keymaster(SusKMHal& hal, HardwareAuthToken const& auth_token,
     params[2].tag = Tag::NONCE;         params[2].blob          = iv;
     params[3].tag = Tag::MAC_LENGTH;    params[3].f.integer     = 8 * util::AES_GCM_TAG_SIZE;
 
-    return hal_ops::crypto::decrypt(hal, ciphertext_with_tag, keyblob, params, auth_token, out);
+    return hal_ops::crypto::decrypt(hal, ciphertext_with_tag,
+            keyblob, params, { auth_token, {} }, out);
 }
 
 } /* namespace auth */

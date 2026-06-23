@@ -78,8 +78,6 @@ SusAidlKeyMint::~SusAidlKeyMint()
     std::cerr << "WARNING: " << this->activeOperationHandles.size()
         << " active handles left during destruction" << std::endl;
 
-    for (struct kmhal_sp *& handle : this->activeOperationHandles)
-        kmhal_sp_destroy(&handle);
     this->activeOperationHandles.clear();
 }
 
@@ -116,6 +114,16 @@ hal_version SusAidlKeyMint::getVersion(void) const
     case 4: return HAL_KEYMINT_4_0;
     default: return HAL_NONE;
     }
+}
+
+u64 SusAidlKeyMint::getOpHandleChallenge(const OpaqueOpHandle& user_handle)
+{
+    const op_handle *handle_view = nullptr;
+
+    if (find_op_handle(user_handle, handle_view) || !handle_view)
+        return UINT64_C(0);
+
+    return handle_view->challenge;
 }
 
 void SusAidlKeyMint::getHardwareInfo(SecurityLevel& out_securityLevel,
@@ -438,24 +446,6 @@ ErrorCode SusAidlKeyMint::destroyAttestationIds(void)
     return err;
 }
 
-static void init_operation_handle(void *&out, struct kmhal_sp *kmhal, u32 handle)
-{
-    struct kmhal_sp *op_handle_sp = nullptr;
-
-    op_handle_sp = kmhal_sp_new_empty(true);
-    if (!op_handle_sp) {
-        std::cerr << "Failed to allocate a new HAL strong pointer struct" << std::endl;
-        std::abort();
-    }
-
-    kmhal_set_binder(op_handle_sp, kmhal_get_binder(kmhal, nullptr), false);
-    kmhal_set_fqname(op_handle_sp, "android.hardware.security.keymint.IKeyMintOperation");
-    kmhal_set_instname(op_handle_sp, kmhal_get_instname(kmhal)); /* for completeness */
-    kmhal_set_handle(op_handle_sp, handle, true);
-
-    out = op_handle_sp;
-}
-
 ErrorCode SusAidlKeyMint::begin(KeyPurpose purpose, std::vector<u8> const& keyBlob,
         std::vector<KeyParameter> const& inParams, HardwareAuthToken const& authToken,
         std::vector<KeyParameter>& out_outParams, OpaqueOpHandle& out_operationHandle)
@@ -489,14 +479,12 @@ ErrorCode SusAidlKeyMint::begin(KeyPurpose purpose, std::vector<u8> const& keyBl
         return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
     }
     if (err == ErrorCode::OK) {
-        void *op_handle = nullptr;
-        init_operation_handle(op_handle, this->hal_.get(),
-                res.IKeyMintOperation_binder_handle);
-        this->activeOperationHandles.push_back(
-                reinterpret_cast<struct kmhal_sp *>(op_handle)
+        this->activeOperationHandles.emplace_back(
+                this->hal_.get(),
+                res.IKeyMintOperation_binder_handle
         );
-        const size_t idx = this->activeOperationHandles.size() - 1;
 
+        const size_t idx = this->activeOperationHandles.size() - 1;
         out_operationHandle = reinterpret_cast<OpaqueOpHandle>(idx + 1 /* skip 0 */);
 
         out_outParams = fromAidlDestroy(res.params);
@@ -506,23 +494,27 @@ ErrorCode SusAidlKeyMint::begin(KeyPurpose purpose, std::vector<u8> const& keyBl
     return err;
 }
 
-int SusAidlKeyMint::get_op_handle(OpaqueOpHandle user_handle,
-                  size_t& out_idx, struct kmhal_sp *& out_handle)
+int SusAidlKeyMint::find_op_handle(OpaqueOpHandle user_handle, const op_handle *& out_view,
+                                   size_t *opt_out_idx)
 {
+    size_t idx = 0;
+
     if (user_handle == reinterpret_cast<OpaqueOpHandle>(0) ||
-        (out_idx = reinterpret_cast<size_t>(user_handle) - 1) >=
-            this->activeOperationHandles.size())
+        (idx = reinterpret_cast<size_t>(user_handle) - 1) >= activeOperationHandles.size())
     {
         std::cerr << __func__ << ": Invalid operation handle" << std::endl;
         return 1;
     }
-    out_handle = this->activeOperationHandles[out_idx];
-    if (out_handle == nullptr || kmhal_ping(out_handle) != OK) {
+
+    out_view = activeOperationHandles[idx].getView();
+    if (out_view->sp == nullptr || kmhal_ping(out_view->sp) != OK) {
         std::cerr << __func__ << ": Dead operation handle" << std::endl;
-        this->activeOperationHandles.erase(this->activeOperationHandles.begin() + out_idx);
+        activeOperationHandles.erase(activeOperationHandles.begin() + idx);
+        out_view = nullptr;
         return 1;
     }
 
+    if (opt_out_idx) *opt_out_idx = idx;
     return 0;
 }
 
@@ -582,13 +574,12 @@ void SusAidlKeyMint::delete_invalidate_op_handle(OpaqueOpHandle& user_handle)
 {
     size_t idx = 0;
     if (user_handle == reinterpret_cast<OpaqueOpHandle>(0) ||
-        (idx = reinterpret_cast<size_t>(user_handle) - 1) >= this->activeOperationHandles.size())
+        (idx = reinterpret_cast<size_t>(user_handle) - 1) >= activeOperationHandles.size())
     {
         return;
     }
 
-    kmhal_sp_destroy(&this->activeOperationHandles[idx]);
-    this->activeOperationHandles.erase(this->activeOperationHandles.begin() + idx);
+    activeOperationHandles.erase(activeOperationHandles.begin() + idx);
 }
 
 ErrorCode SusAidlKeyMint::update(OpaqueOpHandle& operationHandle,
@@ -597,14 +588,13 @@ ErrorCode SusAidlKeyMint::update(OpaqueOpHandle& operationHandle,
         uint32_t& out_inputConsumed, std::vector<KeyParameter>& out_outParams,
         std::vector<u8>& out_output)
 {
-    size_t idx = 0;
-    struct kmhal_sp *op = nullptr;
-    if (get_op_handle(operationHandle, idx, op))
+    const op_handle *op_handle_view = nullptr;
+    if (find_op_handle(operationHandle, op_handle_view) || !op_handle_view)
         return ErrorCode::INVALID_OPERATION_HANDLE;
 
     ErrorCode err = ErrorCode::UNKNOWN_ERROR;
     std::vector<KeyParameter> params(inParams);
-    if ((err = handle_aad_compat(op, params, authToken)) != ErrorCode::OK) {
+    if ((err = handle_aad_compat(op_handle_view->sp, params, authToken)) != ErrorCode::OK) {
         delete_invalidate_op_handle(operationHandle);
         return err;
     }
@@ -628,7 +618,7 @@ ErrorCode SusAidlKeyMint::update(OpaqueOpHandle& operationHandle,
     };
     const size_t n_out_args = u_arr_size(out_args);
 
-    if (kmhal_call(op, KeyMintOpCmd::UPDATE,
+    if (kmhal_call(op_handle_view->sp, KeyMintOpCmd::UPDATE,
                 in_args, n_in_args, out_args, n_out_args, reinterpret_cast<u32 *>(&err)) ||
             err != ErrorCode::OK)
     {
@@ -653,9 +643,8 @@ ErrorCode SusAidlKeyMint::finish(OpaqueOpHandle& operationHandle,
         std::vector<u8> const& signature, HardwareAuthToken const& authToken,
         std::vector<KeyParameter>& out_outParams, std::vector<u8>& out_output)
 {
-    size_t idx = 0;
-    struct kmhal_sp *op = nullptr;
-    if (get_op_handle(operationHandle, idx, op))
+    const op_handle *op_handle_view = nullptr;
+    if (find_op_handle(operationHandle, op_handle_view) || !op_handle_view)
         return ErrorCode::INVALID_OPERATION_HANDLE;
 
     ErrorCode err = ErrorCode::UNKNOWN_ERROR;
@@ -682,7 +671,7 @@ ErrorCode SusAidlKeyMint::finish(OpaqueOpHandle& operationHandle,
     };
     const size_t n_out_args = u_arr_size(out_args);
 
-    if (kmhal_call(op, KeyMintOpCmd::FINISH,
+    if (kmhal_call(op_handle_view->sp, KeyMintOpCmd::FINISH,
                 in_args, n_in_args, out_args, n_out_args, reinterpret_cast<u32 *>(&err)) ||
             err != ErrorCode::OK)
     {
@@ -701,13 +690,12 @@ ErrorCode SusAidlKeyMint::finish(OpaqueOpHandle& operationHandle,
 }
 
 ErrorCode SusAidlKeyMint::abort(OpaqueOpHandle& operationHandle) {
-    size_t idx = 0;
-    struct kmhal_sp *op = nullptr;
-    if (get_op_handle(operationHandle, idx, op))
+    const op_handle *op_handle_view = nullptr;
+    if (find_op_handle(operationHandle, op_handle_view) || !op_handle_view)
         return ErrorCode::INVALID_OPERATION_HANDLE;
 
     ErrorCode err = ErrorCode::UNKNOWN_ERROR;
-    if (kmhal_call(op, KeyMintOpCmd::ABORT, nullptr, 0, nullptr, 0,
+    if (kmhal_call(op_handle_view->sp, KeyMintOpCmd::ABORT, nullptr, 0, nullptr, 0,
                 reinterpret_cast<u32 *>(&err)) != OK)
     {
         std::cerr << __func__ << ": AIDL call failed" << std::endl;
@@ -716,6 +704,48 @@ ErrorCode SusAidlKeyMint::abort(OpaqueOpHandle& operationHandle) {
 
     delete_invalidate_op_handle(operationHandle);
     return err;
+}
+
+SusAidlKeyMint::op_handle::op_handle(struct kmhal_sp *kmhal, u32 op_binder_handle)
+{
+    sp = kmhal_sp_new_empty(true);
+    if (!sp) {
+        std::cerr << "Failed to allocate a new HAL strong pointer struct" << std::endl;
+        std::abort();
+    }
+
+    kmhal_set_binder(sp, kmhal_get_binder(kmhal, nullptr), false);
+    kmhal_set_fqname(sp, "android.hardware.security.keymint.IKeyMintOperation");
+    kmhal_set_instname(sp, kmhal_get_instname(kmhal)); /* for completeness */
+    kmhal_set_handle(sp, op_binder_handle, true);
+}
+
+SusAidlKeyMint::op_handle::~op_handle()
+{
+    kmhal_sp_destroy(&sp);
+    challenge = UINT64_C(0);
+}
+
+SusAidlKeyMint::op_handle::op_handle(op_handle&& other) noexcept
+{
+    this->sp = other.sp;
+    this->challenge = other.challenge;
+
+    other.sp = nullptr;
+    other.challenge = UINT64_C(0);
+}
+
+SusAidlKeyMint::op_handle& SusAidlKeyMint::op_handle::operator=(op_handle&& other) noexcept
+{
+    if (this != &other) {
+        this->sp = other.sp;
+        this->challenge = other.challenge;
+
+        other.sp = nullptr;
+        other.challenge = UINT64_C(0);
+    }
+
+    return *this;
 }
 
 static void convertAndDestroyKeyCharacteristics(KeyCharacteristics& out,

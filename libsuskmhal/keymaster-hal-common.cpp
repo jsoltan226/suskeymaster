@@ -19,6 +19,11 @@ using hidl::fromHidl;
     }                                                               \
 } while (0)
 
+struct kmhal_sp * SusHidlKeymasterHALCommon::getHalSp(void) const
+{
+    return this->getHal();
+}
+
 bool SusHidlKeymasterHALCommon::isHALOk(void) const
 {
     if (!this->getHal()) {
@@ -29,9 +34,10 @@ bool SusHidlKeymasterHALCommon::isHALOk(void) const
     return kmhal_ping(this->getHal()) == OK;
 }
 
-struct kmhal_sp * SusHidlKeymasterHALCommon::getHalSp(void) const
+u64 SusHidlKeymasterHALCommon::getOpHandleChallenge(const OpaqueOpHandle& user_handle)
 {
-    return this->getHal();
+    /* In Keymaster, the handle value itself is the challenge */
+    return reinterpret_cast<u64>(user_handle);
 }
 
 using transport::init_write_p, transport::init_parse_p,
@@ -380,27 +386,6 @@ ErrorCode SusHidlKeymasterHALCommon::abort(OpaqueOpHandle& operationHandle)
         return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
     }
     return ret;
-}
-
-} /* namespace kmhal */
-} /* namespace suskeymaster */
-
-#else /* SUSKEYMASTER_BUILD_HOST */
-
-#include "suskmhal.hpp"
-
-namespace suskeymaster {
-namespace kmhal {
-
-bool SusHidlKeymasterHALCommon::isHALOk(void) const
-{
-    std::cerr << "Keymaster HAL not available in host build!" << std::endl;
-    return false;
-}
-
-struct kmhal_sp * SusHidlKeymasterHALCommon::getHalSp(void) const
-{
-    return nullptr;
 }
 
 } /* namespace kmhal */

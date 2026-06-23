@@ -345,9 +345,8 @@ GatekeeperStatusCode GatekeeperHAL::deleteUser(u32 uid)
         return GatekeeperStatusCode::ERROR_GENERAL_FAILURE;
     }
 
-    using kmhal::transport::init_write_p, kmhal::transport::init_write_i,
-        kmhal::transport::init_write_b, kmhal::transport::init_parse_i,
-        kmhal::transport::init_parse_b;
+    using kmhal::transport::init_write_p, kmhal::transport::init_write_b,
+          kmhal::transport::init_parse_b;
 
     if (kmhal_get_is_aidl(this->get_hal_sp())) {
         const struct kmhal_arg_write_desc in_args[] = {
@@ -399,9 +398,7 @@ GatekeeperStatusCode GatekeeperHAL::deleteAllUsers(void)
         return GatekeeperStatusCode::ERROR_GENERAL_FAILURE;
     }
 
-    using kmhal::transport::init_write_p, kmhal::transport::init_write_i,
-        kmhal::transport::init_write_b, kmhal::transport::init_parse_i,
-        kmhal::transport::init_parse_b;
+    using kmhal::transport::init_parse_b;
 
     if (kmhal_get_is_aidl(this->get_hal_sp())) {
 

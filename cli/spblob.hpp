@@ -107,6 +107,8 @@ struct spblob {
      *
      * @param uid The ID of the Android user to authenticate.
      *
+     * @param challenge Challenge value for the authentication.
+     *
      * @param pwd_file The `pwd_blob` of the user ("*.pwd").
      *
      * @param credential The credentials to verify.
@@ -114,7 +116,7 @@ struct spblob {
      * @return 0 on success, non-zero on failure.
      */
     static int user_gatekeeper_auth(GatekeeperHAL& gk_hal,
-                                    u32 uid, const std::vector<u8>& pwd_file,
+                                    u32 uid, u64 challenge, const std::vector<u8>& pwd_file,
                                     const std::vector<u8>& credential,
                                     kmhal::generic::HardwareAuthToken& out);
 
@@ -125,6 +127,8 @@ struct spblob {
      *
      * @param uid The ID of the Android user who owns the SP.
      *
+     * @param challenge Challenge value for the authentication.
+     *
      * @param gk_handle The contents of the 0000000000000000.handle file
      *  found alongside the encrypted spblob.
      *
@@ -134,7 +138,7 @@ struct spblob {
      * @return 0 on success, non-zero on failure.
      */
     int sp_gatekeeper_auth(GatekeeperHAL& gk_hal,
-                           u32 uid, const std::vector<u8>& gk_handle,
+                           u32 uid, u64 challenge, const std::vector<u8>& gk_handle,
                            kmhal::generic::HardwareAuthToken& out) const;
 
     const std::vector<u8>& get_secret(void) const { return mSecret; };

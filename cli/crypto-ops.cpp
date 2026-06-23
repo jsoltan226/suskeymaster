@@ -1,11 +1,15 @@
 #include "cli.hpp"
 #include "util.hpp"
+#include "spblob.hpp"
+#include "auth-hal.hpp"
+#include "pwd-blob.hpp"
 #include <core/int.h>
 #include <libsuskmhal/suskmhal.hpp>
 #include <libsuskmhal/keymaster-types-cpp.hpp>
 #include <libsuskmhal/util/km-params.hpp>
 #include <libsuskmhal/transport/aosp-hidl-support.hpp>
 #include <vector>
+#include <cstdlib>
 #include <cstring>
 
 namespace suskeymaster {
@@ -17,10 +21,17 @@ using namespace kmhal::generic;
 using kmhal::SusKMHal;
 
 static ErrorCode do_generic_operation_cycle(SusKMHal& hal,
-        KeyPurpose op, std::vector<u8> const& keyblob, std::vector<u8> const& input_,
-        std::vector<KeyParameter> const& params, HardwareAuthToken const& authToken,
-        std::vector<u8> const* finish_signature,
-        std::vector<u8>* output, std::vector<u8>* out_gcm_begin_iv);
+        KeyPurpose op, const std::vector<u8>& keyblob, const KeyCharacteristics& kc,
+        const std::vector<u8>& input, const std::vector<KeyParameter>& params,
+        const gk_auth_data& auth_data, const std::vector<u8> *opt_finish_signature,
+
+        std::vector<u8> *out_output, std::vector<u8> *out_gcm_begin_iv);
+
+static ErrorCode generate_per_op_auth_token(SusKMHal& kmhal, auth::GatekeeperHAL *opt_gk_hal,
+                                            u64 challenge,
+                                            u32 uid, const std::vector<u8>& credential,
+                                            const std::vector<u8>& pwd_file,
+                                            HardwareAuthToken& out);
 
 static void append_vec(std::vector<u8>& dst, const std::vector<u8>& src);
 
@@ -33,9 +44,8 @@ static void init_sign_params_from_user_and_characteristics(
         std::vector<KeyParameter>& out_verify_params
 );
 
-int encrypt(SusKMHal& hal, std::vector<u8> const& plaintext,
-            std::vector<u8> const& key, std::vector<KeyParameter> const& encrypt_params,
-            HardwareAuthToken const& auth_token,
+int encrypt(SusKMHal& hal, const std::vector<u8>& plaintext, const std::vector<u8>& key,
+            const std::vector<KeyParameter>& encrypt_params, const gk_auth_data& auth_data,
             std::vector<u8>& out_ciphertext, std::vector<u8>& out_nonce)
 {
     std::vector<KeyParameter> params(encrypt_params);
@@ -56,8 +66,8 @@ int encrypt(SusKMHal& hal, std::vector<u8> const& plaintext,
     bool is_aes_with_iv = false;
     init_encrypt_params_from_user_and_characteristics(params, kc, &is_aes_with_iv);
 
-    if (do_generic_operation_cycle(hal, KeyPurpose::ENCRYPT, key,
-                plaintext, params, auth_token, nullptr, &out_ciphertext,
+    if (do_generic_operation_cycle(hal, KeyPurpose::ENCRYPT, key, kc,
+                plaintext, params, auth_data, nullptr, &out_ciphertext,
                 (is_aes_with_iv ? &out_nonce : nullptr)
         ) != ErrorCode::OK)
     {
@@ -69,10 +79,9 @@ int encrypt(SusKMHal& hal, std::vector<u8> const& plaintext,
     return 0;
 }
 
-int decrypt(SusKMHal& hal, std::vector<u8> const& ciphertext,
-            std::vector<u8> const& key, std::vector<KeyParameter> const& decrypt_params,
-            HardwareAuthToken const& auth_token,
-            std::vector<u8>& out_plaintext)
+int decrypt(SusKMHal& hal, const std::vector<u8>& ciphertext,
+            const std::vector<u8>& key, const std::vector<KeyParameter>& decrypt_params,
+            const gk_auth_data& auth_data, std::vector<u8>& out_plaintext)
 {
     std::vector<KeyParameter> params(decrypt_params);
 
@@ -88,8 +97,8 @@ int decrypt(SusKMHal& hal, std::vector<u8> const& ciphertext,
 
     init_encrypt_params_from_user_and_characteristics(params, kc, nullptr);
 
-    if (do_generic_operation_cycle(hal, KeyPurpose::DECRYPT, key, ciphertext,
-                params, auth_token, nullptr, &out_plaintext, nullptr) != ErrorCode::OK)
+    if (do_generic_operation_cycle(hal, KeyPurpose::DECRYPT, key, kc, ciphertext,
+                params, auth_data, nullptr, &out_plaintext, nullptr) != ErrorCode::OK)
     {
         std::cerr << "Decryption operation failed!" << std::endl;
         return 1;
@@ -99,10 +108,9 @@ int decrypt(SusKMHal& hal, std::vector<u8> const& ciphertext,
     return 0;
 }
 
-int sign(SusKMHal& hal, std::vector<u8> const& message,
-         std::vector<u8> const& key, std::vector<KeyParameter> const& in_sign_params,
-         HardwareAuthToken const& auth_token,
-         std::vector<u8>& out_signature)
+int sign(SusKMHal& hal, const std::vector<u8>& message,
+         const std::vector<u8>& key, const std::vector<KeyParameter>& in_sign_params,
+         const gk_auth_data& auth_data, std::vector<u8>& out_signature)
 {
     std::vector<KeyParameter> params(in_sign_params), verify_params;
 
@@ -118,8 +126,8 @@ int sign(SusKMHal& hal, std::vector<u8> const& message,
 
     init_sign_params_from_user_and_characteristics(params, kc, verify_params);
 
-    if (do_generic_operation_cycle(hal, KeyPurpose::SIGN, key, message,
-                params, auth_token, nullptr, &out_signature, nullptr) != ErrorCode::OK)
+    if (do_generic_operation_cycle(hal, KeyPurpose::SIGN, key, kc, message,
+                params, auth_data, nullptr, &out_signature, nullptr) != ErrorCode::OK)
     {
         std::cerr << "Signing operation failed!" << std::endl;
         return 1;
@@ -127,6 +135,7 @@ int sign(SusKMHal& hal, std::vector<u8> const& message,
 
     std::cout << "Signing operation OK" << std::endl;
 
+    /*
     bool found_purpose_verify = false;
     for (const auto& kp : kc.hardwareEnforced) {
         if (kp.tag == Tag::PURPOSE && kp.f.purpose == KeyPurpose::VERIFY) {
@@ -140,20 +149,21 @@ int sign(SusKMHal& hal, std::vector<u8> const& message,
         return 0;
     }
 
-    if (do_generic_operation_cycle(hal, KeyPurpose::VERIFY, key, message,
-                verify_params, auth_token, &out_signature, nullptr, nullptr) != ErrorCode::OK)
+    if (do_generic_operation_cycle(hal, KeyPurpose::VERIFY, key, kc, message,
+                verify_params, auth_data, &out_signature, nullptr, nullptr) != ErrorCode::OK)
     {
         std::cerr << "Sanity signature verification failed!" << std::endl;
         return 1;
     }
     std::cout << "Sanity signature verification OK" << std::endl;
+    */
     return 0;
 }
 
 int verify(SusKMHal& hal,
-           std::vector<u8> const& message, std::vector<u8> const& signature,
-           std::vector<u8> const& key, std::vector<KeyParameter> const& in_verify_params,
-           HardwareAuthToken const& auth_token)
+           const std::vector<u8>& message, const std::vector<u8>& signature,
+           const std::vector<u8>& key, const std::vector<KeyParameter>& in_verify_params,
+           const gk_auth_data& auth_data)
 {
     std::vector<u8> app_id, app_data;
     util::extract_application_id_and_data(in_verify_params, app_id, app_data);
@@ -169,8 +179,8 @@ int verify(SusKMHal& hal,
     std::vector<KeyParameter> verify_params;
     init_sign_params_from_user_and_characteristics(dummy, kc, verify_params);
 
-    if (do_generic_operation_cycle(hal, KeyPurpose::VERIFY, key, message,
-                verify_params, auth_token, &signature, nullptr, nullptr) != ErrorCode::OK)
+    if (do_generic_operation_cycle(hal, KeyPurpose::VERIFY, key, kc, message,
+                verify_params, auth_data, &signature, nullptr, nullptr) != ErrorCode::OK)
     {
         std::cerr << "Signature verification failed!" << std::endl;
         return 1;
@@ -180,36 +190,86 @@ int verify(SusKMHal& hal,
     return 0;
 }
 
-static ErrorCode do_generic_operation_cycle(SusKMHal& hal,
-        KeyPurpose op, std::vector<u8> const& keyblob, std::vector<u8> const& input_,
-        std::vector<KeyParameter> const& params, HardwareAuthToken const& auth_token,
-        std::vector<u8> const* finish_signature,
-        std::vector<u8>* output, std::vector<u8>* out_gcm_begin_iv)
+static ErrorCode do_generic_operation_cycle(SusKMHal& kmhal,
+        KeyPurpose op, const std::vector<u8>& keyblob, const KeyCharacteristics& kc,
+        const std::vector<u8>& input, const std::vector<KeyParameter>& params,
+        const gk_auth_data& auth_data, const std::vector<u8> *opt_finish_signature,
+
+        std::vector<u8> *out_output, std::vector<u8> *out_gcm_begin_iv)
 {
     OpaqueOpHandle operation_handle{};
     std::vector<KeyParameter> kp_tmp;
     ErrorCode e = ErrorCode::UNKNOWN_ERROR;
 
-    if (output) output->resize(0);
+    enum auth_token_mode {
+        AT_NONE,    /* No auth token specified */
+        AT_USER,    /* Auth token provided by user */
+        AT_ON_THE_FLY, /* Tag::AUTH_TIMEOUT is not present so auth token
+                          needs to be generated on the fly using user credentials
+                          and the value of the handle's challenge. */
+    } atm = AT_NONE;
+    if (util::tag_exists(Tag::USER_SECURE_ID, kc.hardwareEnforced)) {
+        if (util::tag_exists(Tag::AUTH_TIMEOUT, kc.hardwareEnforced))
+            atm = AT_USER;
+        else
+            atm = AT_ON_THE_FLY;
+    }
 
-    e = hal.begin(op, keyblob, params, auth_token, kp_tmp, operation_handle);
+    if (out_output) out_output->resize(0);
+    if (out_gcm_begin_iv) out_gcm_begin_iv->resize(0);
+
+    HardwareAuthToken begin_auth_token{};
+    if (atm == AT_USER) {
+        if (auth_data.user_provided.empty() &&
+            !auth_data.generated_on_the_fly.pwd_file.empty())
+        {
+            std::cerr << "WARNING: No auth token given for auth-bound key; "
+                "attempting to generate one from provided credentials" << std::endl;
+
+            const auto& d = auth_data.generated_on_the_fly;
+            e = generate_per_op_auth_token(kmhal, d.opt_gk_hal, UINT64_C(0),
+                                           d.uid, d.credential, d.pwd_file,
+                                           begin_auth_token);
+            if (e != ErrorCode::OK) {
+                std::cerr << "WARNING: Failed to generate auth token from credentials: "
+                    << static_cast<int>(e) << " (" << toString(e) << ")" << std::endl;
+                begin_auth_token = {};
+            }
+        } else if (!auth_data.user_provided.empty()) {
+            begin_auth_token = auth_data.user_provided;
+        } else {
+            std::cerr << "WARNING: No auth token provided for auth-bound key" << std::endl;
+        }
+    }
+
+    e = kmhal.begin(op, keyblob, params, begin_auth_token, kp_tmp, operation_handle);
     if (e != ErrorCode::OK) {
         std::cerr << toString(op) << ": BEGIN operation failed: "
             << static_cast<int>(e) << " (" << toString(e) << ")" << std::endl;
         return e;
     }
     if (out_gcm_begin_iv) {
-        for (const auto& kp : kp_tmp) {
-            if (kp.tag == Tag::NONCE) {
-                std::cout << "Extracting GCM IV from params returned by begin()..." << std::endl;
-                out_gcm_begin_iv->resize(kp.blob.size());
-                std::memcpy(out_gcm_begin_iv->data(), kp.blob.data(), kp.blob.size());
-                break;
-            }
+        const std::vector<u8> *iv_blob = util::find_blob_tag(Tag::NONCE, kp_tmp);
+        if (iv_blob) {
+            std::cout << "Extracting GCM IV from params returned by begin()..." << std::endl;
+            *out_gcm_begin_iv = *iv_blob;
         }
     }
 
-    std::vector<u8> input(input_);
+    HardwareAuthToken update_finish_auth_token{};
+    if (atm == AT_ON_THE_FLY) {
+        const auto& d = auth_data.generated_on_the_fly;
+        e = generate_per_op_auth_token(kmhal, d.opt_gk_hal,
+                                       kmhal.getOpHandleChallenge(operation_handle),
+                                       d.uid, d.credential, d.pwd_file,
+                                       update_finish_auth_token);
+        if (e != ErrorCode::OK) {
+            std::cerr << "WARNING: Failed to generate per-operation auth token: "
+                << static_cast<int>(e) << " (" << toString(e) << ")" << std::endl;
+            update_finish_auth_token = {};
+        }
+    }
+
     size_t progress = 0;
     u32 consumed = 0;
 
@@ -217,16 +277,15 @@ static ErrorCode do_generic_operation_cycle(SusKMHal& hal,
         std::vector<u8> chunk(input.begin() + progress, input.end());
         std::vector<u8> tmp_output;
 
-        e = hal.update(operation_handle, {}, chunk, auth_token,
+        e = kmhal.update(operation_handle, {}, chunk, update_finish_auth_token,
                 consumed, kp_tmp, tmp_output);
         if (e != ErrorCode::OK) {
             std::cerr << toString(op) << ": UPDATE operation failed: "
                 << static_cast<int>(e) << " (" << toString(e) << ")" << std::endl;
-            (void) hal.abort(operation_handle);
             return e;
         } else if (consumed == 0) {
             std::cerr << toString(op) << ": input_consumed is 0!" << std::endl;
-            if ((e = hal.abort(operation_handle)) != ErrorCode::OK) {
+            if ((e = kmhal.abort(operation_handle)) != ErrorCode::OK) {
                 std::cerr << toString(op) << ": ABORT failed: "
                     << static_cast<int>(e) << " (" << toString(e) << ")" << std::endl;
             }
@@ -235,22 +294,47 @@ static ErrorCode do_generic_operation_cycle(SusKMHal& hal,
 
         progress += consumed;
 
-        if (output)
-            append_vec(*output, tmp_output);
+        if (out_output)
+            append_vec(*out_output, tmp_output);
     }
 
-    std::vector<u8> last_tmp_output;
-    const std::vector<u8> dummy_;
-
-    const std::vector<u8>& finish_sig_ = finish_signature ? *finish_signature : dummy_;
-    e = hal.finish(operation_handle, {}, {}, finish_sig_, auth_token, kp_tmp, last_tmp_output);
+    std::vector<u8> finish_tmp_output;
+    e = kmhal.finish(operation_handle, {}, {},
+                     opt_finish_signature ? *opt_finish_signature : std::vector<u8>{},
+                     update_finish_auth_token, kp_tmp, finish_tmp_output);
     if (e != ErrorCode::OK) {
         std::cerr << toString(op) << ": FINISH operation failed: "
             << static_cast<int>(e) << " (" << toString(e) << ")" << std::endl;
         return e;
     }
-    if (output)
-        append_vec(*output, last_tmp_output);
+    if (out_output)
+        append_vec(*out_output, finish_tmp_output);
+
+    return ErrorCode::OK;
+}
+
+static ErrorCode generate_per_op_auth_token(SusKMHal& kmhal, auth::GatekeeperHAL *opt_gk_hal,
+                                            u64 challenge,
+                                            u32 uid, const std::vector<u8>& credential,
+                                            const std::vector<u8>& pwd_file,
+                                            HardwareAuthToken& out)
+{
+    auth::pwd_blob pwd(pwd_file);
+    if (!pwd.ok() || pwd.handle.empty()) {
+        std::cerr << "Invalid .pwd file" << std::endl;
+        return ErrorCode::INVALID_ARGUMENT;
+    }
+
+    auth::GatekeeperHAL gk_hal = opt_gk_hal ? *opt_gk_hal : auth::GatekeeperHAL(&kmhal);
+    if (!gk_hal.is_ok()) {
+        std::cerr << "Failed to initialize Gatekeeper HAL" << std::endl;
+        return ErrorCode::SECURE_HW_COMMUNICATION_FAILED;
+    }
+
+    if (auth::spblob::user_gatekeeper_auth(gk_hal, uid, challenge, pwd_file, credential, out)) {
+        std::cerr << "Gatekeeper authentication failed" << std::endl;
+        return ErrorCode::KEY_USER_NOT_AUTHENTICATED;
+    }
 
     return ErrorCode::OK;
 }

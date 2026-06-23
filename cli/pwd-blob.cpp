@@ -124,8 +124,9 @@ pwd_blob::pwd_blob(const std::vector<u8>& in, bool log)
         std::cerr << "Bogus Gatekeeper handle length" << std::endl;
         return;
     } else if (handle_len > 0 && handle_len != sizeof(password_handle_t)) {
-        std::cerr << "WARNING: Gatekeeper handle length " << handle_len
+        std::cerr << "Gatekeeper handle length " << handle_len
             << " is invalid (expected " << sizeof(password_handle_t) << ")" << std::endl;
+        return;
     }
 
 

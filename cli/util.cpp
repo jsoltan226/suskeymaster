@@ -225,7 +225,7 @@ void init_default_params_for_alg_and_purposes(std::vector<KeyParameter>& params,
     }
 
     if (is_auth_bound)
-        defaults.emplace_back(Tag::USER_AUTH_TYPE, HardwareAuthenticatorType::PASSWORD);
+        defaults.emplace_back(Tag::USER_AUTH_TYPE, HardwareAuthenticatorType::ANY);
 
     switch (alg) {
     case Algorithm::RSA:
