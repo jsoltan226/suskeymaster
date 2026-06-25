@@ -233,7 +233,7 @@ kmhal_aidl_manager_get(struct kmhal_binder_ctx *binder,
     /* Read the returned handle... */
     size_t off = KMHAL_PARCEL_DATA_START_OFFSET;
     if (read_handle(parcel, &off, &handle)) {
-        ret = BAD_VALUE;
+        ret = PERMISSION_DENIED;
         goto err;
     }
 
@@ -409,7 +409,7 @@ static int read_handle(const struct kmhal_parcel *parcel,
     struct flat_binder_object flat_binder_obj;
 
     if (kmhal_parcel_read_handle(parcel, offset_p, &flat_binder_obj)) {
-        s_log_error("Failed to read the flat_binder_object (handle) "
+        s_log_verbose("Failed to read the flat_binder_object (handle) "
                 "from the reply");
         return 1;
     }

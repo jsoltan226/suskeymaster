@@ -79,11 +79,9 @@ int generate_app_id(std::vector<u8> const& in_secdiscardable,
 }
 
 int decrypt_de_key(SusKMHal& hal,
-        std::vector<u8> const& in_keystore_key, std::vector<u8> const& in_secdiscardable,
+        std::vector<u8> const& in_km_keyblob, std::vector<u8> const& in_secdiscardable,
         std::vector<u8> const& in_encrypted_key, std::vector<u8>& out_decrypted_key)
 {
-
-    std::vector<u8> km_blob = util::keystore_blob_to_km_blob(in_keystore_key);
 
     std::vector<u8> secret{}; /* empty secret for keystore decryption */
     std::vector<u8> app_id;
@@ -119,7 +117,7 @@ int decrypt_de_key(SusKMHal& hal,
     params[4].blob = app_id;
 
     if (hal_ops::crypto::decrypt(hal, enc_key_ciphertext_with_tag,
-                                 km_blob, params, {}, out_decrypted_key))
+                                 in_km_keyblob, params, {}, out_decrypted_key))
     {
         std::cerr << "Failed to decrypt vold encrypted key" << std::endl;
         return 1;

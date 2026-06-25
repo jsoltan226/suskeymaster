@@ -65,15 +65,32 @@ struct spblob {
      *
      * @param pwd_file The `pwd_blob` of the user, which has data required for unwrapping.
      *
-     * @param ks_key_blob Keystore key blob needed to unwrap the SP blob.
-     *
      * @param secdiscardable The `secdis` file stored alongside the spblob.
+     *
+     * @param km_key_blob Keymaster/KeyMint key blob needed to unwrap the SP.
      *
      * @param sp_blob The encrypted SP blob to unwrap.
      */
     explicit spblob(kmhal::SusKMHal& kmhal, GatekeeperHAL& gk_hal,
                     u32 uid, const std::vector<u8>& credential, const std::vector<u8>& pwd_file,
-                    const std::vector<u8>& secdiscardable, const std::vector<u8>& ks_key_blob,
+                    const std::vector<u8>& secdiscardable, const std::vector<u8>& km_key_blob,
+                    const std::vector<u8>& sp_blob);
+
+    /**
+     * Deserialize and unwrap an encrypted SP blob of a user without a lockscreen set,
+     * using the "default-password" without any Gatekeeper/Weaver authentication.
+     * Always check whether the operation was successful, with `is_ok`.
+     *
+     * @param kmhal Keymaster/KeyMint HAL wrapper handle.
+     *
+     * @param secdiscardable The `secdis` file stored alongside the spblob.
+     *
+     * @param km_key_blob Keymaster/KeyMint key blob needed to unwrap the SP.
+     *
+     * @param sp_blob The encrypted SP blob to unwrap.
+     */
+    explicit spblob(kmhal::SusKMHal& kmhal,
+                    const std::vector<u8>& secdiscardable, const std::vector<u8>& km_key_blob,
                     const std::vector<u8>& sp_blob);
 
     bool is_ok() const { return mOk; };

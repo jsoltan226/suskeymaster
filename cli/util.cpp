@@ -1,3 +1,4 @@
+#include <mutex>
 #define OPENSSL_API_COMPAT 0x10002000L
 #include "util.hpp"
 #include "endian.h"
@@ -745,25 +746,34 @@ static bool is_samsung(void)
 #ifndef SUSKEYMASTER_BUILD_ANDROID
     return false;
 #else
-    const struct prop_info *pi = __system_property_find("ro.build.fingerprint");
-    if (pi == nullptr)
-        return false;
+    static std::mutex mtx;
+    std::lock_guard<std::mutex> scoped_lock(mtx);
 
-    bool ret = false;
-    __system_property_read_callback(pi,
-            [](void *cookie, const char *, const char *value, uint32_t) {
-                if (!strncmp(value, "samsung", sizeof("samsung") - 1)) {
-                    *(bool *)cookie = true;
-                }
-            },
-            &ret
-    );
+    static bool s_val_initialized = false;
+    static bool s_val = false;
 
-    /*
-    if (ret)
-        std::cout << "samsung detected" << std::endl;
+    if (!s_val_initialized) {
+        s_val_initialized = true;
+
+        const struct prop_info *pi = __system_property_find("ro.build.fingerprint");
+        if (pi != nullptr) {
+            __system_property_read_callback(pi,
+                    [](void *cookie, const char *, const char *value, uint32_t) {
+                        if (!strncmp(value, "samsung", sizeof("samsung") - 1)) {
+                            *(bool *)cookie = true;
+                        }
+                    },
+                    &s_val
+            );
+        }
+
+        /*
+        if (s_val)
+            std::cout << "samsung detected" << std::endl;
         */
-    return ret;
+    }
+
+    return s_val;
 #endif /* SUSKEYMASTER_BUILD_HOST */
 }
 

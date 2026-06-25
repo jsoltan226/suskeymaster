@@ -34,6 +34,13 @@ static int do_user_gatekeeper_auth(GatekeeperHAL& gk_hal,
                                    const std::vector<u8>& stretched_lskf,
                                    HardwareAuthToken& out);
 
+static int do_double_decryption(SusKMHal& kmhal, u8 blob_ver,
+                                const std::vector<u8>& ciphertext,
+                                const std::vector<u8>& protector_secret,
+                                const std::vector<u8>& km_key_blob,
+                                const HardwareAuthToken& auth_token,
+                                std::vector<u8>& out);
+
 
 static int decrypt_software(std::vector<u8> const& secret, std::vector<u8> const& enc_blob,
                             std::vector<u8>& out);
@@ -152,7 +159,7 @@ int spblob::sp_gatekeeper_auth(GatekeeperHAL& gk_hal,
 
 spblob::spblob(kmhal::SusKMHal& kmhal, GatekeeperHAL& gk_hal,
                u32 uid, const std::vector<u8>& credential, const std::vector<u8>& pwd_file,
-               const std::vector<u8>& secdiscardable, const std::vector<u8>& ks_key_blob,
+               const std::vector<u8>& secdiscardable, const std::vector<u8>& km_key_blob,
                const std::vector<u8>& sp_blob) :
     mSecret({}),
     mVersion(static_cast<u8>(-1)),
@@ -213,7 +220,6 @@ spblob::spblob(kmhal::SusKMHal& kmhal, GatekeeperHAL& gk_hal,
         std::cerr << "Gatekeeper user authentication failed" << std::endl;
         return;
     }
-    std::vector<u8> km_keyblob = util::keystore_blob_to_km_blob(ks_key_blob);
 
     /* For software decryption */
     std::vector<u8> protector_secret;
@@ -225,36 +231,58 @@ spblob::spblob(kmhal::SusKMHal& kmhal, GatekeeperHAL& gk_hal,
     /** Do the 2-step decryption **/
     const std::vector<u8> ciphertext(sp_blob.begin() + 2 /* SP blob header info is 2 bytes */,
                                      sp_blob.end());
-    std::vector<u8> intermediate;
-    if (mVersion == SYNTHETIC_PASSWORD_VERSION_V1) {
-        /* reversed order for v1 */
-        std::cout << std::endl << "Performing first decryption (in software)..." << std::endl;
-        if (decrypt_software(protector_secret, ciphertext, intermediate)) {
-            std::cerr << "First stage of unwrapping (software decryption) failed" << std::endl;
-            return;
-        }
-        std::cout << std::endl << "Performing second decryption (in TEE)..." << std::endl;
-        if (decrypt_keymaster(kmhal, auth_token, km_keyblob, intermediate, mSecret)) {
-            std::cerr << "Second stage of unwrapping (KM decryption) failed" << std::endl;
-            return;
-        }
-        std::cout << std::endl;
-    } else {
-        std::cout << std::endl << "Performing first decryption (in TEE)..." << std::endl;
-        if (decrypt_keymaster(kmhal, auth_token, km_keyblob, ciphertext, intermediate)) {
-            std::cerr << "First stage of unwrapping (KM decryption) failed" << std::endl;
-            return;
-        }
-        std::cout << std::endl << "Performing second decryption (in software)..." << std::endl;
-        if (decrypt_software(protector_secret, intermediate, mSecret)) {
-            std::cerr << "Second stage of unwrapping (software decryption) failed" << std::endl;
-            return;
-        }
-        std::cout << std::endl;
+    if (do_double_decryption(kmhal, mVersion, ciphertext,
+                             protector_secret, km_key_blob, auth_token,
+                             mSecret))
+    {
+        std::cerr << "Failed to decrypt the SP" << std::endl;
+        return;
     }
 
     mOk = true;
     std::cout << "Successfully unwrapped Synthetic Password blob w/ Gatekeeper" << std::endl;
+}
+
+spblob::spblob(kmhal::SusKMHal& kmhal,
+        const std::vector<u8>& secdiscardable, const std::vector<u8>& km_key_blob,
+        const std::vector<u8>& sp_blob) :
+    mSecret({}),
+    mVersion(static_cast<u8>(-1)),
+    mOk(false)
+{
+    if (!kmhal.isHALOk()) {
+        std::cerr << "GK or KM HAL is not properly initialized" << std::endl;
+        return;
+    } else if (read_validate_header(sp_blob, mVersion)) {
+        std::cerr << "Invalid encrypted SP blob" << std::endl;
+        return;
+    }
+
+    /* When no lock screen is set, there's no .pwd file and no Gatekeeper handle,
+     * so instead of stretching anything, the string "default-password"
+     * is padded to the scrypt output length (32) and passed in
+     * as the "already streched" credential. */
+    std::vector<u8> default_password(std::begin(pwd_blob::DEFAULT_PASSWORD),
+                                     std::end(pwd_blob::DEFAULT_PASSWORD) - 1);
+    default_password.resize(cli::auth::pwd_blob::STRETCHED_LSKF_LENGTH);
+
+    std::vector<u8> protector_secret;
+    if (prepare_protector_secret(secdiscardable, default_password, protector_secret)) {
+        std::cerr << "Failed to derive protector secret" << std::endl;
+        return;
+    }
+
+    const std::vector<u8> ciphertext(sp_blob.begin() + 2 /* SP blob header info is 2 bytes */,
+                                     sp_blob.end());
+    if (do_double_decryption(kmhal, mVersion, ciphertext, protector_secret, km_key_blob, {},
+                             mSecret))
+    {
+        std::cerr << "Failed to decrypt the SP" << std::endl;
+        return;
+    }
+
+    mOk = true;
+    std::cout << "Successfully unwrapped Synthetic Password w/o authentication" << std::endl;
 }
 
 static int read_validate_header(const std::vector<u8>& blob, u8& out_version)
@@ -308,11 +336,13 @@ static int init_pwd_data_for_gatekeeper(const std::vector<u8>& pwd_data,
         return EXIT_FAILURE;
     }
 
-    if (pwd.handle.size() != sizeof(password_handle_t) ||
-        pwd.handle[0] != password_handle_t::HANDLE_VERSION)
+    if (pwd.handle.size() != sizeof(password_handle_t))
     {
         std::cerr << "Invalid or missing Gatekeeper handle in pwd blob" << std::endl;
         return EXIT_FAILURE;
+    } else if (pwd.handle[0] > password_handle_t::HANDLE_VERSION) {
+        std::cerr << "WARNING: Unsupported password handle version: "
+            << static_cast<int>(pwd.handle[0]) << std::endl;
     }
     out_gk_handle = pwd.handle;
 
@@ -388,6 +418,44 @@ static int do_user_gatekeeper_auth(GatekeeperHAL& gk_hal,
     }
 
     out = res.authToken;
+    return EXIT_SUCCESS;
+}
+
+static int do_double_decryption(SusKMHal& kmhal, u8 blob_ver,
+                                const std::vector<u8>& ciphertext,
+                                const std::vector<u8>& protector_secret,
+                                const std::vector<u8>& km_key_blob,
+                                const HardwareAuthToken& auth_token,
+                                std::vector<u8>& out)
+{
+    std::vector<u8> intermediate;
+    if (blob_ver == spblob::SYNTHETIC_PASSWORD_VERSION_V1) {
+        /* reversed order for v1 */
+        std::cout << std::endl << "Performing first decryption (in software)..." << std::endl;
+        if (decrypt_software(protector_secret, ciphertext, intermediate)) {
+            std::cerr << "First stage of unwrapping (software decryption) failed" << std::endl;
+            return EXIT_FAILURE;
+        }
+        std::cout << std::endl << "Performing second decryption (in TEE)..." << std::endl;
+        if (decrypt_keymaster(kmhal, auth_token, km_key_blob, intermediate, out)) {
+            std::cerr << "Second stage of unwrapping (KM decryption) failed" << std::endl;
+            return EXIT_FAILURE;
+        }
+        std::cout << std::endl;
+    } else {
+        std::cout << std::endl << "Performing first decryption (in TEE)..." << std::endl;
+        if (decrypt_keymaster(kmhal, auth_token, km_key_blob, ciphertext, intermediate)) {
+            std::cerr << "First stage of unwrapping (KM decryption) failed" << std::endl;
+            return EXIT_FAILURE;
+        }
+        std::cout << std::endl << "Performing second decryption (in software)..." << std::endl;
+        if (decrypt_software(protector_secret, intermediate, out)) {
+            std::cerr << "Second stage of unwrapping (software decryption) failed" << std::endl;
+            return EXIT_FAILURE;
+        }
+        std::cout << std::endl;
+    }
+
     return EXIT_SUCCESS;
 }
 

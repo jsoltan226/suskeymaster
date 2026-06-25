@@ -44,6 +44,7 @@ static std::unique_ptr<SusKMHal> g_hal = nullptr;
 
 enum cli_arg_type {
     INPUT_FILE_PATH,
+    INPUT_KEYBLOB_PATH,
     OUTPUT_FILE_PATH,
     KEY_PARAMETERS,
     INPUT_STRING,
@@ -81,7 +82,7 @@ public:
 
     cli_arg_value() { }
 
-    /* For cli_arg_type::INPUT_FILE_PATH */
+    /* For cli_arg_type::INPUT_FILE_PATH and cli_arg_type::INPUT_KEYBLOB_PATH */
     cli_arg_value(std::vector<u8>&& b) {
         bytes = std::move(b);
     }
@@ -226,7 +227,7 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_ANY,
     {
-        { "key_blob", INPUT_FILE_PATH, ARG_MANDATORY,
+        { "key_blob", INPUT_KEYBLOB_PATH, ARG_MANDATORY,
             "The key blob whose characteristics are to be read"
         },
         { "deserialization_params", KEY_PARAMETERS, ARG_OPTIONAL,
@@ -236,7 +237,7 @@ static const std::vector<cli_command> cmds = {
     },
     [](arg_map_t& a) {
         return cli::hal_ops::get_print_key_characteristics(*g_hal,
-                a["key_blob"].in_bytes(),
+                cli::util::keystore_blob_to_km_blob(a["key_blob"].in_bytes()),
                 a["deserialization_params"].in_key_params()
         );
     }
@@ -339,7 +340,7 @@ static const std::vector<cli_command> cmds = {
     },
     UNTIL_KEYMASTER_4_1,
     {
-        { "keyblob", INPUT_FILE_PATH, ARG_MANDATORY,
+        { "keyblob", INPUT_KEYBLOB_PATH, ARG_MANDATORY,
             "The KeyMaster key blob to attest"
         },
         { "attest_params", KEY_PARAMETERS, ARG_OPTIONAL,
@@ -400,7 +401,7 @@ static const std::vector<cli_command> cmds = {
     },
     UNTIL_KEYMASTER_4_1,
     {
-        { "in_keyblob", INPUT_FILE_PATH, ARG_MANDATORY,
+        { "in_keyblob", INPUT_KEYBLOB_PATH, ARG_MANDATORY,
             "The key blob whose public key is to be exported"
         },
         { "out_exported", OUTPUT_FILE_PATH, ARG_MANDATORY,
@@ -425,7 +426,7 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_ANY,
     {
-        { "in_keyblob_to_upgrade", INPUT_FILE_PATH, ARG_MANDATORY,
+        { "in_keyblob_to_upgrade", INPUT_KEYBLOB_PATH, ARG_MANDATORY,
             "The key blob to be upgraded"
         },
         { "out_upgraded_keyblob", OUTPUT_FILE_PATH, ARG_MANDATORY,
@@ -455,7 +456,7 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_ANY,
     {
-        { "in_key_blob", INPUT_FILE_PATH, ARG_MANDATORY,
+        { "in_key_blob", INPUT_KEYBLOB_PATH, ARG_MANDATORY,
             "The encryption key blob"
         },
         { "in_plaintext", INPUT_FILE_PATH, ARG_MANDATORY,
@@ -520,7 +521,7 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_ANY,
     {
-        { "in_key_blob", INPUT_FILE_PATH, ARG_MANDATORY,
+        { "in_key_blob", INPUT_KEYBLOB_PATH, ARG_MANDATORY,
             "The decryption key blob"
         },
         { "in_ciphertext", INPUT_FILE_PATH, ARG_MANDATORY,
@@ -571,7 +572,7 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_ANY,
     {
-        { "in_key_blob", INPUT_FILE_PATH, ARG_MANDATORY,
+        { "in_key_blob", INPUT_KEYBLOB_PATH, ARG_MANDATORY,
             "The signing key blob"
         },
         { "in_message", INPUT_FILE_PATH, ARG_MANDATORY,
@@ -622,7 +623,7 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_ANY,
     {
-        { "in_key_blob", INPUT_FILE_PATH, ARG_MANDATORY,
+        { "in_key_blob", INPUT_KEYBLOB_PATH, ARG_MANDATORY,
             "The key blob with which the signature was generated"
         },
         { "in_message", INPUT_FILE_PATH, ARG_MANDATORY,
@@ -875,7 +876,7 @@ static const std::vector<cli_command> cmds = {
             "The masking key generated during the wrapping process"
         },
         {
-            "in_wrapping_keyblob", INPUT_FILE_PATH, ARG_MANDATORY,
+            "in_wrapping_keyblob", INPUT_KEYBLOB_PATH, ARG_MANDATORY,
             "The wrapping key blob file"
         },
         {
@@ -928,23 +929,8 @@ static const std::vector<cli_command> cmds = {
         std::vector<u8> masking_key;
 
         std::vector<u8> imported_keyblob;
-        const bool is_keymint = g_hal->getVersion() >= HAL_KEYMINT_1_0;
-        std::vector<std::vector<u8>> imported_cert_chain;
 
         std::vector<KeyParameter> params = a["params"].in_key_params();
-
-        bool is_asymmetric = false;
-        {
-            Algorithm alg = cli::util::determine_algorithm_from_params_and_pkey(params,
-                    a["in_private_key"].in_bytes());
-            if (alg == Algorithm::EC || alg == Algorithm::RSA){
-                is_asymmetric = true;
-            } else if (alg == static_cast<Algorithm>(-1)) {
-                std::cerr << "Provide a valid key blob or specify `ALGORITHM` in the key params!"
-                    << std::endl;
-                return EXIT_FAILURE;
-            }
-        }
 
         if (cli::secureimport::target::generate_and_attest_wrapping_key(*g_hal,
                 wrapping_blob, wrapping_pub, &cert_chain, {}))
@@ -954,21 +940,11 @@ static const std::vector<cli_command> cmds = {
         }
         std::cout << "Wrapping key attestation:" << std::endl;
 
-        /* This is supposed to be a flexible wrapper
-         * for testing purposes, we're doing everything locally anyway */
+        /* This is supposed to be a flexible wrapper for testing purposes,
+         * we're doing everything locally anyway */
         /*
         (void) cli::secureimport::host::verify_attestation(cert_chain);
         */
-
-        /* KeyMint provides the attestation during import,
-         * while Keymaster does it with `attestKey`.
-         * This means that for KeyMint, we need to add attestation parameters here. */
-        if (is_keymint && is_asymmetric) {
-            util::init_default_params(params, {
-                    { Tag::ATTESTATION_CHALLENGE, util::get_attestation_challenge() },
-                    { Tag::ATTESTATION_APPLICATION_ID, util::get_attestation_application_id() }
-            });
-        }
 
         if (cli::secureimport::host::wrap_key(a["in_private_key"].in_bytes(), wrapping_pub,
                     a["params"].in_key_params(), wrapped_data, masking_key))
@@ -979,48 +955,13 @@ static const std::vector<cli_command> cmds = {
 
 
         if (cli::secureimport::target::import_wrapped_key(*g_hal, wrapped_data, masking_key,
-                    wrapping_blob, {}, imported_keyblob, &imported_cert_chain))
+                    wrapping_blob, {}, imported_keyblob))
         {
             std::cerr << "Failed to import the wrapped key" << std::endl;
             return EXIT_FAILURE;
         }
         a["out_key_blob"].out_bytes() = imported_keyblob;
         std::cout << "importWrappedKey OK" << std::endl;
-        if (a["out_attestation"].in_string().empty())
-            return EXIT_SUCCESS;
-
-        if (!is_asymmetric) {
-            std::cerr << "Can't generate an attestation for non-asymmetric key!" << std::endl;
-            return EXIT_FAILURE;
-        }
-
-        if (!is_keymint) {
-            std::vector<KeyParameter> att_params = {
-                { Tag::ATTESTATION_CHALLENGE, {}, util::get_attestation_challenge() },
-                { Tag::ATTESTATION_APPLICATION_ID, {}, util::get_attestation_application_id() }
-            };
-
-            const std::vector<u8> *tmp = nullptr;
-            if ((tmp = cli::util::find_blob_tag(Tag::APPLICATION_ID, params)))
-                att_params.push_back({ Tag::APPLICATION_ID, {}, *tmp });
-            if ((tmp = cli::util::find_blob_tag(Tag::APPLICATION_DATA, params)))
-                att_params.push_back({ Tag::APPLICATION_DATA, {}, *tmp });
-
-            if (cli::hal_ops::attest_key(*g_hal, imported_keyblob, att_params,
-                        imported_cert_chain))
-            {
-                std::cerr << "Failed to attest the newly securely imported keyblob" << std::endl;
-                return EXIT_FAILURE;
-            }
-        }
-
-        if (cli::secureimport::host::verify_attestation(imported_cert_chain)) {
-            std::cerr << "Failed to verify the newly securely imported keyblob's attestation"
-                << std::endl;
-            return EXIT_FAILURE;
-        }
-
-        a["out_attestation"].out_cert_chain() = std::move(imported_cert_chain);
         return EXIT_SUCCESS;
     }
 },
@@ -1083,7 +1024,7 @@ static const std::vector<cli_command> cmds = {
             "The vold DE key to decrypt"
         },
         {
-            "in_keyblob", INPUT_FILE_PATH, ARG_MANDATORY,
+            "in_keyblob", INPUT_KEYBLOB_PATH, ARG_MANDATORY,
             "The keystore/keymaster key used to encrypt <in_vold_encrypted_key>"
         },
         {
@@ -1229,7 +1170,7 @@ static const std::vector<cli_command> cmds = {
     {
         { "user_id", INPUT_U32, ARG_MANDATORY,
             "ID of the user who owns the given credentials" },
-        { "in_keystore_key_blob", INPUT_FILE_PATH, ARG_MANDATORY,
+        { "in_keystore_key_blob", INPUT_KEYBLOB_PATH, ARG_MANDATORY,
             "Wrapping keystore key blob. See above." },
         { "in_pwd_file", INPUT_FILE_PATH, ARG_MANDATORY, "The SP data (\"*.pwd\") file" },
         { "in_secdiscardable", INPUT_FILE_PATH, ARG_MANDATORY,
@@ -1287,7 +1228,7 @@ static const std::vector<cli_command> cmds = {
     },
     HAL_ANY,
     {
-        { "in_keystore_key_blob", INPUT_FILE_PATH, ARG_MANDATORY,
+        { "in_keystore_key_blob", INPUT_KEYBLOB_PATH, ARG_MANDATORY,
             "Wrapping keystore key blob. See `gatekeeper unwrap-sp-blob`." },
         { "in_secdiscardable", INPUT_FILE_PATH, ARG_MANDATORY,
             "The secdiscardable (\"*.secdis\") file" },
@@ -1298,20 +1239,15 @@ static const std::vector<cli_command> cmds = {
                 "The content should be a 32- or 64-byte uppercase hex string." },
     },
     [](arg_map_t& a) {
-        std::vector<u8> default_password(std::begin(cli::auth::pwd_blob::DEFAULT_PASSWORD),
-                                         std::end(cli::auth::pwd_blob::DEFAULT_PASSWORD) - 1);
-        default_password.resize(cli::auth::pwd_blob::STRETCHED_LSKF_LENGTH);
+        cli::auth::spblob sp(*g_hal, a["in_secdiscardable"].in_bytes(),
+                    a["in_keystore_key_blob"].in_bytes(), a["in_spblob"].in_bytes());
+        if (!sp.is_ok()) {
+            std::cerr << "Failed to unwrap the synthetic password" << std::endl;
+            return EXIT_FAILURE;
+        }
 
-
-        (void) a;
-        return EXIT_FAILURE;
-        /*
-        u8 dummy;
-        return cli::gatekeeper::unwrap_sp_blob(*g_hal, 0,
-                a["in_keystore_key_blob"].in_bytes(), default_password,
-                a["in_secdiscardable"].in_bytes(), a["in_spblob"].in_bytes(),
-                a["out_decrypted_blob"].out_bytes(), dummy);
-                */
+        a["out_decrypted_blob"].out_bytes() = sp.get_secret();
+        return EXIT_SUCCESS;
     }
 },
 #endif /* SUSKEYMASTER_BUILD_HOST */
@@ -1387,7 +1323,7 @@ static const std::vector<cli_command> cmds = {
     HAL_NOT_NEEDED,
     {
         {
-            "in_keyblob", INPUT_FILE_PATH, ARG_MANDATORY,
+            "in_keyblob", INPUT_KEYBLOB_PATH, ARG_MANDATORY,
             "The key blob whose tags are to be listed"
         }
     },
@@ -1403,7 +1339,7 @@ static const std::vector<cli_command> cmds = {
     HAL_NOT_NEEDED,
     {
         {
-            "in_keyblob", INPUT_FILE_PATH, ARG_MANDATORY,
+            "in_keyblob", INPUT_KEYBLOB_PATH, ARG_MANDATORY,
             "The key blob to add the tags to"
         },
         {
@@ -1428,7 +1364,7 @@ static const std::vector<cli_command> cmds = {
     HAL_NOT_NEEDED,
     {
         {
-            "in_keyblob", INPUT_FILE_PATH, ARG_MANDATORY,
+            "in_keyblob", INPUT_KEYBLOB_PATH, ARG_MANDATORY,
             "The key blob to delete the tags from"
         },
         {
@@ -2487,6 +2423,18 @@ static int match_and_run_handler(int argc, const char **argv)
 
                 arg_values.emplace(a.name, cli_arg_value(std::move(bytes)));
 
+                break;
+            case INPUT_KEYBLOB_PATH:
+                if (read_file(argv[i], a.name, bytes)) {
+                    std::cerr << "Failed to read the " << a.name << " file" << std::endl;
+                    return EXIT_FAILURE;
+                }
+
+                /* If the provided keyblob is a keystore key blob, it will be converted to a KM one.
+                 * Otherwise, this has no effect. */
+                bytes = cli::util::keystore_blob_to_km_blob(bytes);
+
+                arg_values.emplace(a.name, cli_arg_value(std::move(bytes)));
                 break;
             case KEY_PARAMETERS:
                 if (kmhal::util::parse_km_tag_params(argv[i], key_params)) {

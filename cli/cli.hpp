@@ -125,7 +125,7 @@ namespace vold {
             std::vector<u8>& out_app_id);
 
     int decrypt_de_key(SusKMHal& hal,
-            const std::vector<u8>& in_keystore_key, const std::vector<u8>& in_secdiscardable,
+            const std::vector<u8>& in_km_keyblob, const std::vector<u8>& in_secdiscardable,
             const std::vector<u8>& in_encrypted_key, std::vector<u8>& out_decrypted_key);
 
     int decrypt_ce_key(

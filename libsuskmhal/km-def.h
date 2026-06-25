@@ -1145,7 +1145,7 @@
      *                                                                                                  \
      * This value is added to the salt (along with Tag::ROOT_OF_TRUST)                                  \
      * used for all key blob wrapping and unwrapping operations,                                        \
-     * so any change in its value render all key blobs unusable. */                                     \
+     * so any change renders all key blobs unusable. */                                                 \
     KM_DECL_TAG(INTEGRITY_STATUS, UINT, 5031, integrityStatus, NULL, INTEGER, _)                        \
                                                                                                         \
     /** Encrypted key blob tags **/                                                                     \
