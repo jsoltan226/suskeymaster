@@ -916,9 +916,6 @@ static const std::vector<cli_command> cmds = {
         { "params", KEY_PARAMETERS, ARG_OPTIONAL,
             "A space-separated list of key parameters that the imported key blob should have"
         },
-        { "out_attestation", OUTPUT_CERT_CHAIN_PATH, ARG_OPTIONAL,
-            "An optional file to which an attestation of the *newly imported key* should be written"
-        },
     },
     [](arg_map_t& a) {
         std::vector<u8> wrapping_blob;
@@ -938,11 +935,11 @@ static const std::vector<cli_command> cmds = {
             std::cerr << "Failed to generate the wrapping key pair" << std::endl;
             return EXIT_FAILURE;
         }
-        std::cout << "Wrapping key attestation:" << std::endl;
 
         /* This is supposed to be a flexible wrapper for testing purposes,
          * we're doing everything locally anyway */
         /*
+        std::cout << "Wrapping key attestation:" << std::endl;
         (void) cli::secureimport::host::verify_attestation(cert_chain);
         */
 
